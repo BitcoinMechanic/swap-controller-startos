@@ -68,6 +68,16 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(len(mounts),2)
         self.assertFalse(any('/nodes' in m or 'docker.sock' in m for m in mounts))
 
+    def test_lost_journal_uses_same_isolated_packaged_container(self):
+        command = driver.controller_command(ROOT, Path('/shared'), 'image', 'none', 'child', self.job(),
+                                            partition=True, packaged=True, lifecycle=True, lost=True)
+        self.assertIn('LOST_JOURNAL_TEST=1', command)
+        self.assertIn('STALE_RESTORE_TEST=0', command)
+        self.assertIn('/remote-tests/partition_check.py', command)
+        self.assertIn('--cap-drop=ALL', command)
+        mounts = [command[i+1] for i,v in enumerate(command) if v == '--mount']
+        self.assertEqual(len(mounts),2)
+
     def test_partition_uses_network_none_and_no_crash_flag(self):
         command = driver.controller_command(Path('/repo'), Path('/shared'), 'image', 'none', 'child', self.job(), True)
         self.assertEqual(command[command.index('--network')+1], 'none')

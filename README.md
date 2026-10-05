@@ -328,3 +328,61 @@ python3 scripts/test-separated-controller.py \
 
 The test writes only disposable regtest files; do not supply live pairing files
 or copy a real active journal into this harness.
+
+
+## Lost current journal (resolution-only regtest)
+
+`--lost-journal` is a separate fault-injection mode, requiring
+`--packaged-executor --lifecycle-worker` and excluding `--stale-restore`.
+It retains an authorized pre-submission synthetic snapshot, makes the original
+outgoing attempt, then **deletes the entire current executor directory** after
+the submission crash. Subsequent fresh controller containers use the stale
+prepared snapshot and remote evidence, never the deleted journal. Node-fixture
+state mirrors still exist for balance/assertion compatibility; they are output
+views only and are not consumed by the resolver.
+
+The test-only `lost_journal.py` resolver is mounted from `tests/remote`, not
+installed in the controller image or exposed as a StartOS action. Its caller
+must opt into disposable regtest and supply the exact saved intent digest.
+Both coordinator identities, invoice, incoming gate and single outgoing attempt
+are checked before resolution. The observed payment id/groupid/partid is pinned
+in a separate reconciliation receipt. Forward held quotes additionally bind the
+outgoing invoice and amount to `xbt-spend-info`, and verify the incoming fixture
+amount/expiry. This is restricted to the existing direct-channel regtest
+fixtures; it adds no live timing, deadline, on-chain, routing or ownership policy.
+
+The node harness issues separate resolution credentials: read methods on both
+coordinators and gate resolution methods only on the incoming coordinator.
+Actual HTTPS requests prove these runes reject `sendpay`, `pay`, `withdraw` and
+`createrune`, including after coordinator restart. The resolver independently
+rejects all payment-submission methods. Existing broader fixture credentials
+remain in the synthetic snapshot but are never used by the resolver.
+
+Pending, missing, ambiguous and inconsistent outcomes never authorize resolution.
+A complete outgoing record requires its matching preimage; definite failure
+permits failure of the exact bound incoming HTLC. A durable resolution-intent
+receipt is written before the RPC. If its reply is lost, a later invocation may
+reconcile an already-terminal gate, but must not repeat a mutation while its
+outcome remains unknown. The original stale state and its restore barrier stay
+unchanged. The ordinary executor and lifecycle worker remain blocked on it.
+
+This establishes a controlled recovery experiment, not supported active-job
+StartOS backups or production restoration. In particular, the harness guarantees
+that the original executor is gone; it does not establish distributed ownership
+against another surviving controller. Package backups still exclude job journals
+and credentials. The installed package, read-only monitor and version are unchanged.
+
+```bash
+python3 tests/test_lost_journal.py -v &&
+python3 tests/test_stale_restore.py -v &&
+python3 tests/test_container_boundary.py -v &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker --lost-journal
+```
+
+The four funded cases must still verify one outgoing submission, one gate
+resolution, the original attempt identity, correct final balances and no pending
+HTLCs. Lost resolution replies and refusal to retry an uncertain resolution are
+covered by unit tests; the funded cases exercise normal resolution acknowledgments.

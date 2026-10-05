@@ -15,4 +15,6 @@
 The installed service remains read-only. Packaged execution is regtest-only and
 registered through a dormant lifecycle daemon; there is no live execution or quote API.
 
-- [ ] Run all four synthetic stale-journal inspections alongside the retained original executor; do not clear restore barriers.
+- [x] Run all four synthetic stale-journal inspections alongside the retained original executor; do not clear restore barriers.
+
+- [ ] Run all four lost-current-journal regtests with separate resolution-only runes; keep restored snapshots blocked.

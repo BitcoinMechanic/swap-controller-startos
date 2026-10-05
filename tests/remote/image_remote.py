@@ -21,6 +21,7 @@ class RemoteLab(PairLab):
         super().__init__(*args)
         self.rest = {}
         self.connections = {}
+        self.recovery_connections = {}
 
     def start(self, args, logfile, new_session=False):
         if str(args[0]).endswith('/bin/lightningd'):
@@ -67,6 +68,26 @@ class RemoteLab(PairLab):
             except urllib.error.HTTPError as exc:
                 assert exc.code in (401, 403)
                 exc.close()
+        if os.environ.get('LOST_JOURNAL_TEST') == '1':
+            direction = os.environ['RECOVERY_DIRECTION']
+            from lost_journal import allowed
+            recovery_methods = allowed(network,direction)
+            if name not in self.recovery_connections:
+                token = self.rpc([*node['cli'], '-k'], 'createrune',
+                    'restrictions='+json.dumps([['method='+m for m in sorted(recovery_methods)]]))
+                self.recovery_connections[name] = dict(config, rune=token['rune'])
+            recovery = self.recovery_connections[name]
+            # Exercise the actual CLN authorization layer, not the local filter.
+            for method in ('sendpay','pay','withdraw','createrune'):
+                req = urllib.request.Request(recovery['url']+'/v1/'+method, data=b'{}',
+                    headers={'Content-Type':'application/json','Rune':recovery['rune']})
+                try:
+                    with remote.client.opener.open(req, timeout=10):
+                        raise AssertionError('recovery rune accepted forbidden method')
+                except urllib.error.HTTPError as exc:
+                    assert exc.code in (401,403)
+                    exc.close()
+            save(Path('/exchange/control/remote-recovery.json'), list(self.recovery_connections.values()))
         save(self.root/'remote.json', list(self.connections.values()))
         if os.environ.get('SEPARATE_CONTROLLER') == '1':
             save(Path('/exchange/control/remote.json'), list(self.connections.values()))

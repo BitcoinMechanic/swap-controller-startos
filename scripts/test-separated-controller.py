@@ -46,7 +46,7 @@ def validate_job(job):
     return job
 
 
-def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False, lifecycle=False, stale=False):
+def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False, lifecycle=False, stale=False, lost=False):
     validate_job(job)
     command = ['docker', 'run', '--rm', '--name', name, '--network', network,
                '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
@@ -57,6 +57,7 @@ def controller_command(repo, shared, image, network, name, job, partition=False,
                '-e', 'PACKAGED_EXECUTOR='+('1' if packaged else '0'),
                '-e', 'LIFECYCLE_WORKER='+('1' if lifecycle else '0'),
                '-e', 'STALE_RESTORE_TEST='+('1' if stale else '0'),
+               '-e', 'LOST_JOURNAL_TEST='+('1' if lost else '0'),
                *mount(shared/'control', '/controller-state'),
                *([] if packaged else [*mount(shared/'modules', '/pinned', True),
                *mount(repo/'assets', '/controller-assets', True)]),
@@ -76,7 +77,7 @@ def respond(path, result):
     temporary.replace(path)
 
 
-def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False, lifecycle=False, stale=False):
+def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False, lifecycle=False, stale=False, lost=False):
     work = results/mode
     work.mkdir()
     shared = work/'exchange'; shared.mkdir()
@@ -96,6 +97,8 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
         created_network = True
         docker('run', '-d', '--name', node, '--network', network, '--init',
             '-e', 'BTC_XBT_DISPOSABLE_CONTAINER=1', '-e', 'PYTHONDONTWRITEBYTECODE=1',
+            '-e', 'LOST_JOURNAL_TEST='+('1' if lost else '0'),
+            '-e', 'RECOVERY_DIRECTION='+('forward' if mode.startswith('forward') else 'reverse'),
             *mount(backend, '/test-bitcoind', True), *mount(prefix, '/opt/xbt', True),
             *mount(repo.parent/'btc-cln-startos/tests', '/pair-fixtures', True),
             *mount(repo/'assets', '/controller-assets', True),
@@ -127,14 +130,14 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
                         continue  # The atomic writer has not yet set metadata permissions.
                     jobs_seen.add(request.name)
                     if disconnect and not partition_done and job['phase'] == 'outgoing_started':
-                        blocked = subprocess.run(controller_command(repo, shared, controller, 'none', child, job, True, packaged, lifecycle, stale),
+                        blocked = subprocess.run(controller_command(repo, shared, controller, 'none', child, job, True, packaged, lifecycle, stale, lost),
                             capture_output=True, text=True, timeout=25)
                         (work/'partition.log').write_text(blocked.stdout+blocked.stderr)
                         if blocked.returncode or blocked.stdout.strip() != '{"partition_preserved":true}':
                             raise RuntimeError('isolated_recovery_check_failed; inspect disposable container setup')
                         partition_done = True
                         print('PASS: controller network unavailable while payment pending; journal and RPC audit unchanged', flush=True)
-                    result = subprocess.run(controller_command(repo, shared, controller, network, child, job, packaged=packaged, lifecycle=lifecycle, stale=stale),
+                    result = subprocess.run(controller_command(repo, shared, controller, network, child, job, packaged=packaged, lifecycle=lifecycle, stale=stale, lost=lost),
                         capture_output=True, text=True, timeout=30)
                     respond(request.with_suffix('.response'), result)
                 time.sleep(0.05)
@@ -153,6 +156,13 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
             assert len(report) == 2 and {r['stale_phase'] for r in report} == {'prepared', 'outgoing_started'}
             assert all(r['outgoing_status'] == expected and r['restored_block'] and not r['execution_authorized'] for r in report)
             print('PASS: stale prepared and submitted snapshots inspected original outcome; both remained blocked; original journal alone settled', flush=True)
+        if lost:
+            report=json.loads(docker('run','--rm','--network','none',
+                *mount(shared/'control','/controller-state',True),'--entrypoint','python3',controller,
+                '-c', "from pathlib import Path; assert not Path('/controller-state/execution').exists(); print(Path('/controller-state/lost-result.json').read_text())"))
+            phase=('btc_' if mode.startswith('forward') else 'xbt_')+('failed' if mode.endswith('failure') else 'released')
+            assert report==dict(phase=phase,original_journal_absent=True,stale_phase='prepared',restored_block=True)
+            print('PASS: original executor journal deleted; stale prepared record reconciled and resolved original HTLC; restore block retained; recovery runes reject sendpay',flush=True)
         print('Separate controller container OK ('+mode+('; recovery outage' if disconnect else '')+')', flush=True)
     finally:
         for name in (child, node):
@@ -174,7 +184,9 @@ def main():
     parser.add_argument('--packaged-executor', action='store_true')
     parser.add_argument('--lifecycle-worker', action='store_true')
     parser.add_argument('--stale-restore', action='store_true')
+    parser.add_argument('--lost-journal', action='store_true')
     args = parser.parse_args()
+    if args.lost_journal and (not args.lifecycle_worker or args.stale_restore): parser.error('--lost-journal requires --lifecycle-worker and excludes --stale-restore')
     if args.stale_restore and not args.lifecycle_worker: parser.error('--stale-restore requires --lifecycle-worker')
     if args.lifecycle_worker and not args.packaged_executor: parser.error('--lifecycle-worker requires --packaged-executor')
     os.umask(0o077)
@@ -194,7 +206,7 @@ def main():
         try: docker('cp', container+':/usr/local/.', str(prefix)+'/')
         finally: docker('rm', container)
         for mode in MODES if args.mode == 'all' else (args.mode,):
-            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor, args.lifecycle_worker, args.stale_restore)
+            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor, args.lifecycle_worker, args.stale_restore, args.lost_journal)
 
 
 if __name__ == '__main__': main()

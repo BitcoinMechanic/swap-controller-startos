@@ -171,3 +171,30 @@ python3 scripts/test-separated-controller.py \
   swap-controller:regtest ../bitcoind all \
   --disconnect-recovery --packaged-executor --lifecycle-worker --stale-restore
 ```
+
+
+### Lost current journal test
+
+The next disposable test removes the current execution journal after its payment
+has been submitted. A separate resolver uses the older prepared snapshot and
+both coordinators' records to finish the existing swap. Its separate credentials
+cannot send payments. The snapshot remains blocked from ordinary execution.
+
+This does not enable restoring active swaps on StartOS. It tests direct regtest
+channels with the original executor removed. No installed service changes,
+rebuild or live credentials are needed.
+
+On the packaging VM:
+
+```bash
+python3 tests/test_lost_journal.py -v &&
+python3 tests/test_stale_restore.py -v &&
+python3 tests/test_container_boundary.py -v &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker --lost-journal
+```
+
+All four success/failure cases should confirm that the original journal is
+absent, the restore block remains, and only the original payment was submitted.
