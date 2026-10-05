@@ -27,4 +27,7 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 
 - [x] Repeat fenced recovery with the original sendpay reply discarded before reaching the controller algorithm.
 
-- [ ] Verify partial coordinator revocation blocks a fresh replacement until the second administration endpoint returns and both revocations are confirmed.
+- [x] Verify partial coordinator revocation blocks a fresh replacement until the second administration endpoint returns and both revocations are confirmed.
+
+- [ ] Run all four funded scenarios through packaged recovery admission, including durable partial confirmation and fresh access verification.
+- [ ] Expose reviewed recovery admission through StartOS actions after packaged validation.

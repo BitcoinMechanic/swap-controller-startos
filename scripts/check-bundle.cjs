@@ -3,7 +3,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
-for (const name of ['recovery.py','recovery_inspection.py']) {
+for (const name of ['recovery.py','recovery_inspection.py','recovery_workflow.py']) {
  assert.ok(fs.readFileSync('Dockerfile','utf8').includes('assets/'+name))
  assert.ok(fs.readFileSync('.dockerignore','utf8').includes('!assets/'+name))
 }

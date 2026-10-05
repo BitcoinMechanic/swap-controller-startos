@@ -387,3 +387,51 @@ python3 scripts/test-separated-controller.py \
 ```
 
 No image rebuild, StartOS installation or live credential change is required.
+
+## Packaged regtest recovery admission
+
+The `recovery_workflow.py` entry point records explicit operator confirmation
+separately for BTC regtest and XBT regtest. It binds the record to the immutable
+swap intent and the exact replacement credential set. Confirmation verifies the
+replacement node identity over HTTPS, rejects an old rune that still works, and
+requires authentication refusal for replacement `sendpay`, `pay`, `withdraw`,
+`createrune`, and `blacklistrune` probes. An outage, parameter error or HTTP 500
+cannot count as credential rejection. Probes use empty parameters in disposable
+regtest only; they are not a general production rune-policy verifier.
+
+The first confirmation survives an interrupted second confirmation. Resolution
+requires both confirmations and fresh verification of both nodes. Each subsequent
+step rechecks access; saved readiness is not perpetual authorization. Status
+contains no credentials, endpoints or raw errors. The restore barrier remains in
+place and this workflow cannot submit a new outgoing payment.
+
+The administrator still revokes the old parent runes outside the controller.
+Confirmation is explicit operator input plus access checks, not a signed proof of
+revocation or a distributed ownership lease. The controller receives no admin
+credentials. The existing lower-level regtest resolver remains for regression
+coverage; this admission record is not an OS security boundary against a process
+with direct access to the same credentials.
+
+`--owner-fence --packaged-recovery` now drives the packaged admission command in
+fresh controller processes before resolution. With `--partial-fence`, the test
+also persists the first confirmation while the second RPC socket is unavailable,
+checks that the second confirmation fails and resolution refuses twice, then
+restores the socket and completes fencing. CLNRest also needs that socket, so the
+second old credential is checked before the outage and after socket restoration.
+
+Rebuild the test image before this test:
+
+```bash
+docker buildx build --builder startos-builder --load -t swap-controller:regtest .
+python3 tests/test_recovery_workflow.py -v
+python3 tests/test_packaged_recovery.py -v
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker \
+  --lost-journal --drop-resolution-reply --packaged-recovery \
+  --owner-fence --drop-submission-reply --partial-fence
+```
+
+This changes the disposable test image only. No StartOS installation, live
+execution, automatic revocation or new StartOS action is introduced here.

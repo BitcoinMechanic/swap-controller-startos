@@ -31,9 +31,18 @@ def recover_lost(external, direction):
     except ValueError as exc: assert str(exc)=='restored_execution_blocked'
     else: raise AssertionError('stale executor became enabled')
     if os.environ.get('PACKAGED_RECOVERY') == '1':
-        child=subprocess.run([sys.executable, '/app/recovery.py', '--root', str(root),
-            '--expected-digest', marker['digest'], '--credentials', str(parent/'remote-recovery.json'),
-            '--confirm-resolution-only'], capture_output=True, text=True)
+        options=['--root',str(root),'--expected-digest',marker['digest'],
+                 '--credentials',str(parent/'remote-recovery.json'),'--confirm-resolution-only']
+        program=[sys.executable,'/app/recovery.py']
+        if os.environ.get('OWNER_FENCE_TEST')=='1':
+            # Admin-side fencing has completed. Each explicit confirmation is
+            # independently checked and saved by the packaged workflow.
+            for network in ('regtest','xbt-regtest'):
+                confirmed=subprocess.run([sys.executable,'/app/recovery_workflow.py','confirm',
+                    *options,'--network',network],capture_output=True,text=True)
+                if confirmed.returncode:return confirmed.returncode
+            program=[sys.executable,'/app/recovery_workflow.py','run']
+        child=subprocess.run([*program,*options],capture_output=True,text=True)
         # The packaged resolver keeps its own audit; merge only newly recorded
         # mutations into the fixture audit, including a discarded reply.
         audit=root.parent.parent/'recovery-audit.jsonl'
