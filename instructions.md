@@ -39,3 +39,33 @@ not revoked by controller restoration. Store your restricted runes and public
 CA files securely or retrieve them through each node's actions.
 
 There is no web UI, inbound API or additional Lightning node in this package.
+# Developer test: swap recovery over HTTPS
+
+The installed controller remains read-only. Its live pairing, restart,
+restore-to-unpaired and re-pairing checks have passed.
+
+On the packaging VM, the next test uses disposable regtest coins and the
+existing BTC/XBT images. Keep this repository beside `btc-cln-startos`:
+
+```bash
+python3 tests/test_https_rpc.py -v &&
+python3 tests/test_controller.py -v &&
+bash scripts/test-remote-controller.sh \
+  btc-cln:swap-preparation xbt-cln:recovery-test ../bitcoind all
+```
+
+This covers settlement and outgoing failure in both directions, coordinator
+restarts with payments pending, and fresh controller recovery over HTTPS.
+The test creates its own method-restricted credentials and certificates.
+It does not use your saved pairing or either live wallet.
+
+Then repeat with the submission reply discarded before the controller receives
+it. Recovery must find the original attempt without submitting another:
+
+```bash
+bash scripts/test-remote-controller.sh \
+  btc-cln:swap-preparation xbt-cln:recovery-test ../bitcoind all --drop-send-reply
+```
+
+No package rebuild or installation is required. Successful tests establish
+regtest transport compatibility, not readiness for live swaps.
