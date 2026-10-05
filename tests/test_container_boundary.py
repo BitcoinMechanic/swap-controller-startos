@@ -20,6 +20,17 @@ driver = importlib.util.module_from_spec(spec); spec.loader.exec_module(driver)
 
 
 class BoundaryTests(unittest.TestCase):
+    def test_quote_flow_uses_packaged_entrypoint_and_fixed_stages(self):
+        spec=importlib.util.spec_from_file_location('quote_driver',ROOT/'scripts/test-quote-flow.py')
+        quote=importlib.util.module_from_spec(spec);spec.loader.exec_module(quote)
+        command=quote.command(ROOT,Path('/shared'),'image','network','test','prepare')
+        self.assertEqual(command[-2:],['/remote-tests/quote_step.py','prepare'])
+        self.assertIn('BTC_XBT_DISPOSABLE_CONTAINER=1',command)
+        for forbidden in ('dst=/controller-assets','dst=/pinned','dst=/results','docker.sock','lightning-rpc'):
+            self.assertFalse(any(forbidden in str(v) for v in command))
+        for stage in ('../prepare','sendpay','sh'):
+            with self.assertRaises(ValueError):quote.command(ROOT,Path('/shared'),'image','network','test',stage)
+
     def job(self):
         return dict(direction='forward', flags=['--crash-after-sendpay'], filename='swap-state.json', phase='prepared')
 

@@ -38,6 +38,11 @@ def inventory(root):
         if not re.fullmatch('[a-z0-9][a-z0-9-]{0,63}',job.name) or job.is_symlink() or not job.is_dir():
             reports.append(dict(outcome='unreadable')); continue
         try:
+            if (job/'review.json').exists() and not (job/'intent.json').exists():
+                from quote_workflow import report
+                quote=report(job)
+                reports.append(dict(job=job.name,direction='forward',phase=quote['phase'],outcome='unresolved_quote'))
+                continue
             intent, state=executor.records(job)
             phase=state['phase']
             outcome=('terminal' if phase in executor.TERMINAL[intent['direction']] else
@@ -91,7 +96,11 @@ def tick(root):
     outcomes={}
     for job in selected:
         if not re.fullmatch('[a-z0-9][a-z0-9-]{0,63}',job.name) or job.is_symlink() or not job.is_dir(): continue
-        try: outcomes[job.name]=executor.step(job)
+        try:
+            if (job/'review.json').exists():
+                from quote_workflow import advance
+                outcomes[job.name]=advance(job)
+            else: outcomes[job.name]=executor.step(job)
         except Exception:
             outcomes[job.name]=None
             print('{"event":"worker_job_needs_attention","details":"withheld"}', flush=True)

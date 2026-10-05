@@ -727,3 +727,75 @@ After installing 0.1.0:3, Worker Status should show `restored_block: true`,
 expect `backup_paused: false` and `backup_pause_state: legacy_restored_marker`.
 Recovery Status remains blocked and pairing remains ready. No new restore or
 funded swap test is needed to check this reporting correction.
+
+## Packaged forward quote flow (disposable regtest)
+
+The image now includes `/app/quote_workflow.py`. It accepts a recipient invoice
+and an explicitly supplied BTC price, uses the pinned `swap_service.create`
+validation, and persists a review before any quote registration or signing.
+An explicit approval must match the full saved review digest. It registers the
+unchanged terms and signs the BTC invoice through verified HTTPS using the
+pinned publication code. A repeated approval returns the saved invoice.
+
+The disposable workflow is:
+
+1. `prepare`: save the validated recipient invoice, price, direct channel,
+   expiry, coordinator identities and connection binding; return review fields.
+2. `approve`: require the review digest and `confirmed: true`, recheck readiness,
+   and publish the BTC invoice. Approval authorizes this exact swap to proceed
+   when its incoming BTC HTLC becomes committed, before the quote expires.
+3. The lifecycle worker waits for the quote gate's exact committed HTLC,
+   validates the held amount, invoice, expiry and binding, then imports the
+   resulting state into the existing executor and authorizes that intent.
+4. The existing executor submits once and reconciles the original outgoing
+   attempt. Fresh worker invocations report terminal state without another send
+   or gate resolution. `btc_released` records gate release; the test independently
+   verifies payer completion, recipient payment and all four channel balances.
+
+Each CLI invocation takes `MANAGER MODE JOB`. Preparation reads JSON containing
+`connections`, `xbt_invoice` and `btc_sats` from stdin. Approval reads `digest`
+and `confirmed` from stdin. Status/step do not read a request. The fixture manages
+these private inputs; do not supply installed pairing files or live credentials.
+
+The new adapter permits quote reads plus BTC `xbt-register` and `signinvoice`.
+It does not add these methods to the read-only pairing client or the execution
+transport. Both coordinator identities are checked before quote RPCs; live
+networks and missing disposable-container opt-in are refused. Endpoint changes,
+changed review terms, an existing outgoing attempt, unsuitable direct-channel
+liquidity, or an expired quote prevent publication/start.
+
+Limits: BTC price at most 1,000,000 sats and XBT amount at most 1,000,000,000 msat;
+fixed-amount BOLT11; one direct XBT hop; controlled regtest chains only. Price is
+operator-supplied, not a market quote. The direct outgoing hop has zero routing
+fee; the BTC payer's routing fee is outside the quoted price. The existing live
+pricing, routing, deadline/on-chain and coordinator activation work is not
+implemented by this adapter. No new StartOS action or public quote listener is
+registered, and no live node credential changes are needed.
+
+Private reviews, quote secrets and approval records live inside excluded
+`execution/jobs` directories. Unresolved quotes refuse backup. Restore and backup
+pause barriers are checked at preparation, publication, handoff and execution.
+A failed/incomplete preparation remains blocked for inspection in the disposable
+fixture. A lost registration/signing reply requires explicit publication resume
+with the original saved terms; the worker cannot create a different quote.
+
+On the packaging VM, run the new funded scenario (no full four-way recovery
+rerun is needed for this step):
+
+```bash
+docker buildx build --builder startos-builder --load -t swap-controller:regtest . &&
+python3 scripts/test-quote-flow.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind
+```
+
+The launcher first runs quote-policy tests against the actual pinned modules
+inside the controller image. It then funds disposable nodes and starts a fresh
+isolated controller container for each preparation, approval and worker step.
+The controller has no CLN binaries, node volumes, RPC sockets, source-module
+mounts or Docker socket. The node fixture creates the recipient invoice and pays
+the published BTC invoice; it no longer supplies a prepared executor state.
+The run checks repeated preparation/publication, waiting before BTC payment,
+exactly one outgoing attempt and release, matching preimages, balances and
+terminal repetition. Docker execution is verified on the packaging VM; local
+unit tests alone are not evidence of a funded pass.
