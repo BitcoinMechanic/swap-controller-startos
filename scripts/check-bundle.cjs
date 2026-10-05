@@ -3,6 +3,10 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
+for (const name of ['recovery.py','recovery_inspection.py']) {
+ assert.ok(fs.readFileSync('Dockerfile','utf8').includes('assets/'+name))
+ assert.ok(fs.readFileSync('.dockerignore','utf8').includes('!assets/'+name))
+}
 const { manifest, actions } = require('../javascript/index.js')
 assert.equal(manifest.id, 'swap-controller')
 assert.equal(manifest.version, '0.1.0:1')

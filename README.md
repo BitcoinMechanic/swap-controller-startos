@@ -424,3 +424,42 @@ python3 scripts/test-separated-controller.py \
 
 No service image rebuild or StartOS upgrade is required. All changes remain in
 the test harness; installed live execution and restore behavior are unchanged.
+
+## Packaged resolution-only recovery (regtest)
+
+The image now includes `/app/recovery.py` and `/app/recovery_inspection.py`.
+The command requires `BTC_XBT_DISPOSABLE_CONTAINER=1`, a saved intent digest,
+separate resolution-only credentials, and `--confirm-resolution-only`. Both
+saved connections must be regtest networks. It retains the restore barrier,
+never submits an outgoing payment, and does not alter the original snapshot.
+This is a disposable-fixture command, not a production recovery workflow or
+an ownership handoff. Forward recovery still requires the exact tested fixture
+terms; it is not a general recovery tool for arbitrary swaps.
+
+Only filtered phase/status fields go to stdout; errors withhold RPC details.
+Private compatibility results (including a successful preimage) are written
+with mode 0600 at `jobs/swap/recovery-result.json`. Recovery records its own
+mutation audit at the snapshot manager's `recovery-audit.jsonl`. The test adapter
+copies new audit entries into the fixture audit and propagates exit 89 when
+`DROP_RESOLUTION_REPLY=1` deliberately discards a resolution reply.
+
+`--packaged-recovery` on the separated-container driver requires `--lost-journal`.
+It invokes `/app/recovery.py` in a fresh process instead of importing the mounted
+resolver, including after a lost reply. The original executor journal remains
+absent, and the stale executable state remains blocked. The installed monitor,
+lifecycle worker, StartOS actions and live credentials remain unchanged.
+
+Rebuild the disposable controller image and run:
+
+```sh
+python3 tests/test_packaged_recovery.py -v &&
+python3 tests/test_container_boundary.py -v &&
+docker buildx build --builder startos-builder --load -t swap-controller:regtest . &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker \
+  --lost-journal --drop-resolution-reply --packaged-recovery
+```
+
+No StartOS reinstall is required for this disposable-image validation.

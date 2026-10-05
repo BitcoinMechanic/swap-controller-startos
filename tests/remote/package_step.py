@@ -13,7 +13,6 @@ from controller import private_load, save
 import executor
 import lifecycle
 import stale_restore
-import lost_journal
 from partition_check import isolation
 
 
@@ -28,7 +27,30 @@ def recover_lost(external, direction):
     try: executor.step(root)
     except ValueError as exc: assert str(exc)=='restored_execution_blocked'
     else: raise AssertionError('stale executor became enabled')
-    mirror,result=lost_journal.resolve(root,marker['digest'],private_load(parent/'remote-recovery.json'),parent/'remote-audit.jsonl')
+    if os.environ.get('PACKAGED_RECOVERY') == '1':
+        child=subprocess.run([sys.executable, '/app/recovery.py', '--root', str(root),
+            '--expected-digest', marker['digest'], '--credentials', str(parent/'remote-recovery.json'),
+            '--confirm-resolution-only'], capture_output=True, text=True)
+        # The packaged resolver keeps its own audit; merge only newly recorded
+        # mutations into the fixture audit, including a discarded reply.
+        audit=root.parent.parent/'recovery-audit.jsonl'
+        checkpoint=parent/'packaged-recovery-audit-count.json'
+        count=private_load(checkpoint)['count'] if checkpoint.exists() else 0
+        entries=audit.read_text().splitlines(True) if audit.exists() else []
+        assert count <= len(entries)
+        with (parent/'remote-audit.jsonl').open('a') as stream:
+            stream.writelines(entries[count:]); stream.flush(); os.fsync(stream.fileno())
+        save(checkpoint,dict(count=len(entries)))
+        dropped=root.parent.parent/'resolution-reply-lost.json'
+        if dropped.exists(): save(parent/'resolution-reply-lost.json',private_load(dropped))
+        if child.returncode:
+            if child.returncode != 89: print('{"event":"packaged_recovery_blocked"}')
+            return child.returncode
+        output=private_load(root/'recovery-result.json')
+        mirror,result=output['mirror'],output['result']
+    else:
+        import lost_journal
+        mirror,result=lost_journal.resolve(root,marker['digest'],private_load(parent/'remote-recovery.json'),parent/'remote-audit.jsonl')
     assert before=={name:(root/name).read_bytes() for name in before}
     assert private_load(root.parent.parent/'restored.json')=={'blocked':True}
     save(external,mirror)  # Output-only compatibility view for the node fixture.

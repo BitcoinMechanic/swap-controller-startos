@@ -23,6 +23,13 @@ class BoundaryTests(unittest.TestCase):
     def job(self):
         return dict(direction='forward', flags=['--crash-after-sendpay'], filename='swap-state.json', phase='prepared')
 
+    def test_packaged_recovery_flag_and_image_boundary(self):
+        command=driver.controller_command(ROOT,Path('/shared'),'image','network','test',self.job(),
+            packaged=True,lifecycle=True,lost=True,packaged_recovery=True)
+        self.assertIn('PACKAGED_RECOVERY=1',command)
+        self.assertFalse(any('/controller-assets' in str(v) for v in command))
+        self.assertFalse(any('dst=/pinned' in str(v) for v in command))
+
     def test_fixed_job_schema_rejects_path_and_command_injection(self):
         for field, value in [('filename', '../../wallet'), ('direction', 'shell'),
                              ('flags', ['--entrypoint=sh']), ('phase', 'unknown'),
