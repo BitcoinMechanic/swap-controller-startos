@@ -15,6 +15,6 @@ COPY --from=source /src/tools/blake2b/ /opt/swap/
 COPY --from=source /src/LICENSE /opt/swap/LICENSE
 COPY assets/executor.py assets/execution_child.py assets/execution_rpc.py assets/lifecycle.py /app/
 COPY assets/recovery.py assets/recovery_inspection.py assets/recovery_workflow.py assets/recovery_actions.py /app/
-COPY assets/quote_workflow.py /app/
+COPY assets/quote_workflow.py assets/quote_actions.py /app/
 RUN python3 -m py_compile /app/controller.py /app/read_only_rpc.py /app/recovery.py /app/recovery_inspection.py
 CMD ["python3", "/app/controller.py", "/data", "run"]

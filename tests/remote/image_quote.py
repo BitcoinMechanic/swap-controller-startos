@@ -24,7 +24,7 @@ image_remote.restrictions=quote_restrictions
 
 
 def bridge(stage,request=None):
-    assert stage in ('prepare','approve','status','worker')
+    assert stage in ('prepare','approve','status','review','worker')
     root=Path('/exchange/control')
     if request is not None:save(root/'quote-input.json',request)
     mailbox=Path('/exchange/jobs')/(uuid.uuid4().hex+'.request')
@@ -69,14 +69,19 @@ def run(lab):
     print('PASS: funded BTC payer -> coordinator and XBT coordinator -> recipient channels',flush=True)
     invoice=rpc(receiver,'invoice','200000000msat','packaged-quote','Packaged quote flow')
     request=dict(connections=list(lab.connections.values()),xbt_invoice=invoice['bolt11'],btc_sats=100000)
+    assert bridge('status')['quotes']==[]
     review=bridge('prepare',request)
     assert review['phase']=='review_required' and review['btc_price_sats']==100000 and review['xbt_amount_msat']==200000000
     assert 'btc_invoice' not in review
     assert review==bridge('prepare',request)
+    saved=bridge('review');assert saved['review_digest']==review['review_digest']
+    assert saved['recipient']==receiver['id'] and saved['btc_price_sats']==100000
+    summaries=bridge('status')['quotes'];assert len(summaries)==1 and summaries[0]['state']=='recorded'
+    assert summaries[0]['review_digest']==review['review_digest']
     assert rpc(op_btc,'xbt-pilot-info')['registered_quotes']==0
     assert rpc(op_xbt,'listsendpays')['payments']==[]
     assert bridge('worker')['phase']=='review_required'
-    print('PASS: packaged quote reviewed; repeat preparation preserved terms; no gate registration or payment before approval',flush=True)
+    print('PASS: packaged action prepared and locally reviewed quote; repeat preparation preserved terms; no gate registration or payment before approval',flush=True)
     approved=bridge('approve',dict(digest=review['review_digest'],confirmed=True))
     again=bridge('approve',dict(digest=review['review_digest'],confirmed=True))
     assert approved==again and approved['phase']=='waiting_for_btc'
@@ -86,7 +91,7 @@ def run(lab):
     assert rpc(op_btc,'xbt-pilot-info')['registered_quotes']==1
     assert bridge('worker')['phase']=='waiting_for_btc'
     assert rpc(op_xbt,'listsendpays')['payments']==[]
-    print('PASS: explicit digest approval published a verified BTC invoice; repeated approval returned the same invoice; worker waited for BTC',flush=True)
+    print('PASS: explicit action approval published a verified BTC invoice; repeated approval returned the same invoice; worker waited for BTC',flush=True)
     paylog=lab.root/'payer-pay.log'
     payer_process=lab.start([*payer['cli'],'pay',approved['btc_invoice']],paylog)
     def held():
@@ -130,7 +135,7 @@ def main():
     lab=image_remote.RemoteLab(root,'/test-bitcoind','/usr/bin/bitcoin-cli')
     try:run(lab)
     finally:lab.close()
-    print('Packaged quote -> approval -> BTC invoice -> worker settlement OK (isolated HTTPS; regtest only)',flush=True)
+    print('Packaged StartOS quote action -> approval -> BTC invoice -> worker settlement OK (isolated HTTPS; regtest only)',flush=True)
 
 
 if __name__=='__main__':main()

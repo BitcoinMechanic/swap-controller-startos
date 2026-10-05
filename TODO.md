@@ -34,4 +34,6 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 
 - [x] Install 0.1.0:3 and verify inherited pause reporting with the restore barrier intact.
 
-- [ ] Run the packaged forward quote flow: review an XBT invoice, explicitly approve its BTC price, pay the published BTC invoice, and verify isolated worker settlement.
+- [x] Run the packaged forward quote flow: review an XBT invoice, explicitly approve its BTC price, pay the published BTC invoice, and verify isolated worker settlement.
+
+- [ ] Run the funded quote flow through the packaged StartOS action handler, then install 0.1.0:4 and verify local quote status, forms, pairing and preserved restore barrier.

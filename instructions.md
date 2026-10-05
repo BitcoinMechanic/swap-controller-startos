@@ -598,3 +598,49 @@ The run checks repeated preparation/publication, waiting before BTC payment,
 exactly one outgoing attempt and release, matching preimages, balances and
 terminal repetition. Docker execution is verified on the packaging VM; local
 unit tests alone are not evidence of a funded pass.
+
+## StartOS quote actions (0.1.0:4)
+
+The Quotes action group now has four actions:
+
+- **Quote Status** lists local saved quote summaries. It performs no RPC and
+  does not return invoices, runes, endpoint URLs, certificates or preimages.
+- **Review Saved Quote** reads one quote ID and returns its recipient, BTC price,
+  XBT amount, expiry and copyable review code. This does not grant approval.
+- **Prepare BTC to XBT Quote (Regtest)** takes a new quote ID, recipient XBT
+  regtest invoice and explicit BTC price. It saves terms without publication.
+- **Approve and Publish BTC Invoice (Regtest)** takes the saved quote ID, exact
+  review code and an explicit confirmation, defaulting to off. Approval permits
+  the worker to send the reviewed XBT amount after the matching incoming BTC
+  payment commits before expiry. The BTC regtest invoice is masked and copyable.
+
+Preparation and approval remain blocked on installed live services, before any
+job lookup, record creation or RPC. The UI cannot enable the disposable-regtest
+flag or submit coordinator addresses/runes. Quote Status and Review Saved Quote
+remain local inspection actions even after restore. A saved BTC release is not
+independent proof of the payer's final settlement.
+
+Disposable tests provision `execution/regtest-quote-nodes.json` privately. This
+is separate from the read-only monitor pairing and is not configured by these
+forms. The action loads only that fixed file for preparation; approval uses the
+connections already bound to the reviewed quote. This file is excluded from
+backups and removed during restore, after the independent restore barrier is
+written. Job directories containing quote approvals/credentials remain excluded.
+No live credential changes or manual edits to the installed service are needed.
+
+`scripts/test-quote-flow.py` now runs preparation, local review and approval
+through `/app/quote_actions.py`, the same fixed command used by StartOS. It runs
+the quote and action policy tests inside the built image, then the funded BTC
+invoice flow. Local SDK-form tests verify the registered actions, private stdin,
+unchecked approval, invoice presentation and filtered errors. The funded fixture
+still uses isolated controller containers with no node binaries, node volumes,
+RPC sockets, source-module mounts or Docker socket.
+
+After the funded action test passes, build `0.1.0:4` with
+`BUILDX_BUILDER=startos-builder make x86` and install the resulting package. On
+the existing live installation, verify Quote Status reports an empty quote list,
+`live_payment_enabled: false`, and the existing restore-barrier state. Verify the
+four Quotes actions are present and Connection Status remains ready. Do not enter
+live invoices or credentials into the regtest forms. A restart should preserve
+pairing and the restore barrier; another backup/restore cycle is not needed for
+this action-only installation check.
