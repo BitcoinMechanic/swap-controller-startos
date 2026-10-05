@@ -198,3 +198,28 @@ python3 scripts/test-separated-controller.py \
 
 All four success/failure cases should confirm that the original journal is
 absent, the restore block remains, and only the original payment was submitted.
+
+
+### Lost settlement/refund reply test
+
+This extends the lost-journal test by terminating recovery immediately after the
+coordinator accepts its settlement or refund request, before the controller can
+record completion. A new container must recognize the existing outcome without
+sending that request again. Both directions and both outcomes are tested.
+
+On the packaging VM, using the existing images:
+
+```bash
+python3 tests/test_resolution_reply.py -v &&
+python3 tests/test_lost_journal.py -v &&
+python3 tests/test_container_boundary.py -v &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker \
+  --lost-journal --drop-resolution-reply
+```
+
+Each case should report that the resolution reply was discarded, a fresh
+container reconciled the terminal gate, and the audit remained unchanged.
+No rebuild or StartOS installation is needed.

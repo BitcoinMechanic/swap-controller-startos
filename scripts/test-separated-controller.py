@@ -46,8 +46,9 @@ def validate_job(job):
     return job
 
 
-def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False, lifecycle=False, stale=False, lost=False):
+def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False, lifecycle=False, stale=False, lost=False, drop_resolution_reply=False, reply_check=None):
     validate_job(job)
+    if reply_check not in (None,'before','after'): raise ValueError('invalid_reply_check')
     command = ['docker', 'run', '--rm', '--name', name, '--network', network,
                '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
                '--tmpfs', '/tmp:rw,nosuid,nodev,size=16m',
@@ -58,11 +59,14 @@ def controller_command(repo, shared, image, network, name, job, partition=False,
                '-e', 'LIFECYCLE_WORKER='+('1' if lifecycle else '0'),
                '-e', 'STALE_RESTORE_TEST='+('1' if stale else '0'),
                '-e', 'LOST_JOURNAL_TEST='+('1' if lost else '0'),
+               '-e', 'DROP_RESOLUTION_REPLY='+('1' if drop_resolution_reply else '0'),
                *mount(shared/'control', '/controller-state'),
                *([] if packaged else [*mount(shared/'modules', '/pinned', True),
                *mount(repo/'assets', '/controller-assets', True)]),
                *mount(repo/'tests/remote', '/remote-tests', True),
                '--entrypoint', 'python3', image]
+    if reply_check:
+        return [*command, '/remote-tests/resolution_reply_check.py',job['direction'],job['filename'],reply_check]
     if partition:
         return [*command, '/remote-tests/partition_check.py', job['direction'], job['filename']]
     return [*command, '/remote-tests/'+('package_step.py' if packaged else 'run_controller.py'), job['direction'],
@@ -77,7 +81,7 @@ def respond(path, result):
     temporary.replace(path)
 
 
-def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False, lifecycle=False, stale=False, lost=False):
+def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False, lifecycle=False, stale=False, lost=False, drop_resolution_reply=False):
     work = results/mode
     work.mkdir()
     shared = work/'exchange'; shared.mkdir()
@@ -91,6 +95,7 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
     fixture = None
     created_network = False
     partition_done = False
+    resolution_reply_done = False
     jobs_seen = set()
     try:
         docker('network', 'create', '--internal', network)
@@ -137,8 +142,27 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
                             raise RuntimeError('isolated_recovery_check_failed; inspect disposable container setup')
                         partition_done = True
                         print('PASS: controller network unavailable while payment pending; journal and RPC audit unchanged', flush=True)
-                    result = subprocess.run(controller_command(repo, shared, controller, network, child, job, packaged=packaged, lifecycle=lifecycle, stale=stale, lost=lost),
+                    result = subprocess.run(controller_command(repo, shared, controller, network, child, job, packaged=packaged, lifecycle=lifecycle, stale=stale, lost=lost, drop_resolution_reply=drop_resolution_reply),
                         capture_output=True, text=True, timeout=30)
+                    if drop_resolution_reply and result.returncode==89:
+                        if resolution_reply_done or job['flags'] or job['phase']!='outgoing_started':
+                            raise RuntimeError('unexpected_resolution_crash')
+                        for stage in ('before','after'):
+                            checked=subprocess.run(controller_command(repo,shared,controller,'none',child,job,
+                                packaged=True,lifecycle=True,lost=True,reply_check=stage),
+                                capture_output=True,text=True,timeout=15)
+                            (work/('resolution-reply-'+stage+'.log')).write_text(checked.stdout+checked.stderr)
+                            if checked.returncode or checked.stdout.strip()!='{"lost_resolution_reply_verified":true}':
+                                raise RuntimeError('resolution_reply_check_failed; inspect '+str(work))
+                            if stage=='before':
+                                # A distinct container/process starts with the intent receipt.
+                                result=subprocess.run(controller_command(repo,shared,controller,network,child,job,
+                                    packaged=True,lifecycle=True,lost=True),capture_output=True,text=True,timeout=30)
+                                if result.returncode:
+                                    (work/'resolution-recovery.log').write_text(result.stdout+result.stderr)
+                                    raise RuntimeError('fresh_resolution_recovery_failed; inspect '+str(work))
+                        resolution_reply_done=True
+                        print('PASS: resolution reply discarded by process exit; fresh container reconciled terminal gate; audit unchanged; no repeated resolution',flush=True)
                     respond(request.with_suffix('.response'), result)
                 time.sleep(0.05)
             sys.stdout.write(reader.read()); sys.stdout.flush()
@@ -146,6 +170,8 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
             raise RuntimeError('separate_controller_fixture_failed; inspect '+str(log))
         if disconnect and not partition_done:
             raise RuntimeError('missing_partition_check')
+        if drop_resolution_reply and not resolution_reply_done:
+            raise RuntimeError('resolution_reply_crash_not_exercised')
         if stale:
             report = json.loads(docker('run', '--rm', '--network', 'none',
                 *mount(shared/'control', '/controller-state', True), '--entrypoint', 'python3', controller,
@@ -185,7 +211,9 @@ def main():
     parser.add_argument('--lifecycle-worker', action='store_true')
     parser.add_argument('--stale-restore', action='store_true')
     parser.add_argument('--lost-journal', action='store_true')
+    parser.add_argument('--drop-resolution-reply', action='store_true')
     args = parser.parse_args()
+    if args.drop_resolution_reply and not args.lost_journal: parser.error('--drop-resolution-reply requires --lost-journal')
     if args.lost_journal and (not args.lifecycle_worker or args.stale_restore): parser.error('--lost-journal requires --lifecycle-worker and excludes --stale-restore')
     if args.stale_restore and not args.lifecycle_worker: parser.error('--stale-restore requires --lifecycle-worker')
     if args.lifecycle_worker and not args.packaged_executor: parser.error('--lifecycle-worker requires --packaged-executor')
@@ -206,7 +234,7 @@ def main():
         try: docker('cp', container+':/usr/local/.', str(prefix)+'/')
         finally: docker('rm', container)
         for mode in MODES if args.mode == 'all' else (args.mode,):
-            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor, args.lifecycle_worker, args.stale_restore, args.lost_journal)
+            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor, args.lifecycle_worker, args.stale_restore, args.lost_journal, args.drop_resolution_reply)
 
 
 if __name__ == '__main__': main()

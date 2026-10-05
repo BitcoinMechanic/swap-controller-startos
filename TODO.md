@@ -17,4 +17,6 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 
 - [x] Run all four synthetic stale-journal inspections alongside the retained original executor; do not clear restore barriers.
 
-- [ ] Run all four lost-current-journal regtests with separate resolution-only runes; keep restored snapshots blocked.
+- [x] Run all four lost-current-journal regtests with separate resolution-only runes; keep restored snapshots blocked.
+
+- [ ] Run all four funded lost-journal scenarios with the final resolution reply discarded before the terminal checkpoint.

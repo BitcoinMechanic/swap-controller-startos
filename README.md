@@ -386,3 +386,41 @@ The four funded cases must still verify one outgoing submission, one gate
 resolution, the original attempt identity, correct final balances and no pending
 HTLCs. Lost resolution replies and refusal to retry an uncertain resolution are
 covered by unit tests; the funded cases exercise normal resolution acknowledgments.
+
+
+## Lost final resolution reply (regtest)
+
+Add `--drop-resolution-reply` to `--lost-journal`. The resolution transport exits
+with code 89 after a gate RPC has returned and its audit entry has been fsynced,
+but before returning the reply to the resolver. The reconciliation receipt must
+still be `resolution_intent`; the fixture mirror must still be pending and lack
+a preimage. This simulates loss at the transport-to-controller boundary, not a
+server-side packet drop.
+
+The host verifies that crash point in a separate network-disabled container,
+then launches a fresh recovery container with the fault disabled. Recovery must
+read the coordinator's terminal gate and finish the original reconciliation.
+Another network-disabled check requires an identical RPC audit, immutable stale
+snapshot, unchanged attempt/binding, retained restore block, absent original
+executor directory and a terminal reconciliation receipt. Each scenario must
+exercise exactly one such crash; merely completing without reaching it fails.
+The existing balance, original-payment and pending-HTLC assertions still apply.
+
+The new checker contains no RPC calls. Unit tests exercise real Python process
+exit for all four gate methods and reject changed snapshots, duplicate audit
+mutations and premature terminal checkpoints. Funded validation uses the same
+fault in the isolated controller against the packaged CLN nodes.
+
+```bash
+python3 tests/test_resolution_reply.py -v &&
+python3 tests/test_lost_journal.py -v &&
+python3 tests/test_container_boundary.py -v &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker \
+  --lost-journal --drop-resolution-reply
+```
+
+No service image rebuild or StartOS upgrade is required. All changes remain in
+the test harness; installed live execution and restore behavior are unchanged.

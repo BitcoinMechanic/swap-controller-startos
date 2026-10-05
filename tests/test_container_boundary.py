@@ -78,6 +78,20 @@ class BoundaryTests(unittest.TestCase):
         mounts = [command[i+1] for i,v in enumerate(command) if v == '--mount']
         self.assertEqual(len(mounts),2)
 
+    def test_resolution_reply_checker_is_network_free_and_has_no_crash_flags(self):
+        command = driver.controller_command(ROOT,Path('/shared'),'image','none','child',self.job(),
+                                            packaged=True,lifecycle=True,lost=True,reply_check='before')
+        self.assertIn('/remote-tests/resolution_reply_check.py',command)
+        self.assertEqual(command[-1],'before')
+        self.assertEqual(command[command.index('--network')+1],'none')
+        self.assertNotIn('--crash-after-sendpay',command)
+        self.assertIn('DROP_RESOLUTION_REPLY=0',command)
+        fault = driver.controller_command(ROOT,Path('/shared'),'image','test-net','child',self.job(),
+                                          packaged=True,lifecycle=True,lost=True,drop_resolution_reply=True)
+        self.assertIn('DROP_RESOLUTION_REPLY=1',fault)
+        with self.assertRaises(ValueError):
+            driver.controller_command(ROOT,Path('/shared'),'image','none','child',self.job(),reply_check='invalid')
+
     def test_partition_uses_network_none_and_no_crash_flag(self):
         command = driver.controller_command(Path('/repo'), Path('/shared'), 'image', 'none', 'child', self.job(), True)
         self.assertEqual(command[command.index('--network')+1], 'none')

@@ -35,6 +35,13 @@ class ResolutionClient:
             with self.audit.open('a') as stream:
                 stream.write(json.dumps(dict(network=self.remote.network, method=method))+'\n')
                 stream.flush(); os.fsync(stream.fileno())
+            if os.environ.get('DROP_RESOLUTION_REPLY') == '1':
+                executor.guard()
+                # Remote accepted the mutation, but resolve() never receives
+                # its return value and cannot save a terminal receipt.
+                save(self.audit.parent/'resolution-reply-lost.json',
+                     dict(network=self.remote.network, method=method))
+                os._exit(89)
         return result
 
 
