@@ -21,4 +21,6 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 
 - [x] Run all four funded lost-journal scenarios with the final resolution reply discarded before the terminal checkpoint.
 
-- [ ] Repeat those four cases through the packaged, explicitly confirmed regtest recovery command.
+- [x] Repeat those four cases through the packaged, explicitly confirmed regtest recovery command.
+
+- [ ] Verify coordinator rune revocation fences a retained old executor in all four funded cases, including coordinator restarts.

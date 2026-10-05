@@ -262,3 +262,48 @@ python3 scripts/test-separated-controller.py \
 ```
 
 No StartOS reinstall is required for this disposable-image validation.
+
+## Old-controller revocation fixture
+
+`--owner-fence` extends the packaged lost-journal recovery test. Before returning
+from the first submission crash, the node-side fixture administrator revokes the
+original execution rune on each coordinator using `blacklistrune`. The controller
+never receives administrative RPC access. Both node identities and credential
+bindings are checked before revocation, and replacement recovery waits for both
+revocations to be verified.
+
+The fixture retains the original executable journal under `old-owner/jobs/swap`,
+with its original credentials, launch record and permit. It has no local restore
+barrier. Both coordinators subsequently restart, and the fixture verifies their
+blacklists again. Original and derived credentials must receive HTTP 401/403;
+network errors or parameter-validation errors do not count. An unrelated read-only
+credential and the separate recovery credential must still work on each node.
+
+Before each replacement recovery step, the old packaged executor is run again.
+It must fail without changing its payment state, intent, credentials, permit,
+launch record or RPC audit. The replacement then uses the packaged resolution-only
+command. Existing lost-reply, balance, single-attempt and restore-barrier assertions
+remain in force. The active execution directory is removed as before, but the
+retained old copy makes this explicitly a surviving-old-journal test.
+
+This checks revocation of these known credentials only. It does not cancel RPCs
+accepted before revocation, establish a distributed ownership lease, or cover
+unknown independent credentials. The fixture deliberately pauses after submission
+before revocation. It is not a production takeover procedure. If a revocation or
+verification fails, the run stops without authorizing the replacement; it does
+not undo an already completed revocation on the other node.
+
+On the packaging VM, reuse the controller image built for patch 0009:
+
+```sh
+python3 tests/test_owner_fence.py -v &&
+python3 tests/test_container_boundary.py -v &&
+python3 tests/test_packaged_recovery.py -v &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker \
+  --lost-journal --drop-resolution-reply --packaged-recovery --owner-fence
+```
+
+No image rebuild, StartOS installation or live credential change is involved.

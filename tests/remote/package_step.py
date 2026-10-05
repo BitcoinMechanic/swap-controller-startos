@@ -21,6 +21,9 @@ def recover_lost(external, direction):
     assert not (parent/'execution').exists(), 'original journal was recreated'
     marker=private_load(parent/'lost-journal.json')
     assert marker['direction']==direction and marker['filename']==external.name
+    if os.environ.get('OWNER_FENCE_TEST') == '1':
+        from old_owner import check_old_owner
+        check_old_owner(parent)
     root=parent/'stale-prepared'/'jobs'/'swap'
     before={name:(root/name).read_bytes() for name in ('intent.json','state.json','remote.json','permit.json')}
     assert lifecycle.tick(root.parent.parent)=={}
@@ -110,6 +113,8 @@ def main():
         assert private_load(root/'state.json')['phase']=='outgoing_started'
         token=executor.digest(private_load(root/'intent.json'))
         save(external.parent/'lost-journal.json',dict(digest=token,direction=direction,filename=external.name))
+        if os.environ.get('OWNER_FENCE_TEST') == '1':
+            shutil.copytree(manager,external.parent/'old-owner')
         shutil.rmtree(manager)
         assert not manager.exists()
     if stale_test and flags and result.returncode == 88:

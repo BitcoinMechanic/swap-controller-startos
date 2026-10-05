@@ -30,6 +30,15 @@ class BoundaryTests(unittest.TestCase):
         self.assertFalse(any('/controller-assets' in str(v) for v in command))
         self.assertFalse(any('dst=/pinned' in str(v) for v in command))
 
+    def test_owner_fence_requires_packaged_recovery_and_keeps_node_access_out(self):
+        with self.assertRaisesRegex(ValueError,'owner_fence_requires_packaged_recovery'):
+            driver.controller_command(ROOT,Path('/shared'),'image','network','test',self.job(),owner_fence=True)
+        command=driver.controller_command(ROOT,Path('/shared'),'image','network','test',self.job(),
+            packaged=True,lifecycle=True,lost=True,packaged_recovery=True,owner_fence=True)
+        self.assertIn('OWNER_FENCE_TEST=1',command)
+        for forbidden in ('dst=/controller-assets','dst=/results','docker.sock','lightning-rpc'):
+            self.assertFalse(any(forbidden in str(v) for v in command))
+
     def test_fixed_job_schema_rejects_path_and_command_injection(self):
         for field, value in [('filename', '../../wallet'), ('direction', 'shell'),
                              ('flags', ['--entrypoint=sh']), ('phase', 'unknown'),

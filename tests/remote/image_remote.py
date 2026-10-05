@@ -22,6 +22,8 @@ class RemoteLab(PairLab):
         self.rest = {}
         self.connections = {}
         self.recovery_connections = {}
+        self.fence_nodes = {}
+        self.rune_ids = {}
 
     def start(self, args, logfile, new_session=False):
         if str(args[0]).endswith('/bin/lightningd'):
@@ -44,11 +46,13 @@ class RemoteLab(PairLab):
         if name not in self.connections:
             token = self.rpc([*node['cli'], '-k'], 'createrune',
                              'restrictions='+json.dumps(restrictions(network)))
+            self.rune_ids[name] = int(token['unique_id'])
             self.connections[name] = dict(cli=node['cli'], network=network, node_id=node['id'],
                 url='https://'+os.environ.get('COORDINATOR_IP', '127.0.0.1')+':'+str(port), rune=token['rune'], ca_pem=ca.read_text())
         config = self.connections[name]
         assert config['node_id'] == node['id'] and config['ca_pem'] == ca.read_text()
-        remote = Remote(config)
+        fenced = os.environ.get('OWNER_FENCE_TEST') == '1' and Path('/exchange/control/owner-fence.json').exists()
+        remote = Remote(self.recovery_connections[name] if fenced else config)
         def ready():
             try:
                 return remote.call('getinfo')['id'] == node['id']
@@ -88,6 +92,27 @@ class RemoteLab(PairLab):
                     assert exc.code in (401,403)
                     exc.close()
             save(Path('/exchange/control/remote-recovery.json'), list(self.recovery_connections.values()))
+        if os.environ.get('OWNER_FENCE_TEST') == '1':
+            from owner_fence import check_node
+            if name not in self.fence_nodes:
+                derived=self.rpc([*node['cli'],'-k'],'createrune',
+                    'rune='+config['rune'],'restrictions='+json.dumps([['method=getinfo','method=sendpay']]))
+                unrelated=self.rpc([*node['cli'],'-k'],'createrune',
+                    'restrictions='+json.dumps([['method=getinfo']]))
+                assert int(derived['unique_id'])==self.rune_ids[name]
+                assert int(unrelated['unique_id'])!=self.rune_ids[name]
+                self.fence_nodes[name]=dict(original=config,unique_id=self.rune_ids[name],
+                    derived_rune=derived['rune'],recovery=self.recovery_connections[name],
+                    unrelated=dict(config,rune=unrelated['rune']))
+                assert Remote(dict(config,rune=derived['rune'])).call('getinfo')['id']==node['id']
+                assert Remote(dict(config,rune=unrelated['rune'])).call('getinfo')['id']==node['id']
+                save(Path('/exchange/control/fence-nodes.json'),list(self.fence_nodes.values()))
+            if fenced:
+                check_node(self.fence_nodes[name])
+                report_path=Path('/exchange/control/fence-restarts.json')
+                from controller import private_load
+                networks=private_load(report_path)['networks'] if report_path.exists() else []
+                save(report_path,dict(networks=sorted(set(networks)|{network})))
         save(self.root/'remote.json', list(self.connections.values()))
         if os.environ.get('SEPARATE_CONTROLLER') == '1':
             save(Path('/exchange/control/remote.json'), list(self.connections.values()))
