@@ -14,6 +14,9 @@ from https_rpc import Remote
 def main():
     if os.environ.get('BTC_XBT_DISPOSABLE_CONTAINER') != '1':
         raise ValueError('disposable_container_required')
+    if os.environ.get('SEPARATE_CONTROLLER') == '1':
+        from partition_check import isolation
+        isolation()
     direction = sys.argv[1]
     if direction not in ('forward', 'reverse'):
         raise ValueError('invalid_direction')
@@ -43,14 +46,15 @@ def main():
             os._exit(88)
         return result
 
-    sys.path.insert(0, str(root/'modules'))
+    modules = Path(os.environ.get('REMOTE_MODULES_DIR', str(root/'modules')))
+    sys.path.insert(0, str(modules))
     import swap_rpc
     swap_rpc.RPC.call = staticmethod(call)
     def no_local_commands(*args, **kwargs):
         raise RuntimeError('controller_local_process_execution_forbidden')
     subprocess.run = no_local_commands
     subprocess.Popen = no_local_commands
-    script = root/'modules'/('swap_controller.py' if direction == 'forward' else 'reverse_controller.py')
+    script = modules/('swap_controller.py' if direction == 'forward' else 'reverse_controller.py')
     sys.argv = [str(script), *sys.argv[2:]]
     runpy.run_path(str(script), run_name='__main__')
 

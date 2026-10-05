@@ -69,3 +69,26 @@ bash scripts/test-remote-controller.sh \
 
 No package rebuild or installation is required. Successful tests establish
 regtest transport compatibility, not readiness for live swaps.
+# Developer test: separate controller container
+
+The eight HTTPS regtest scenarios have passed. Next, run the controller in its
+own container, with no node wallets, RPC sockets or Lightning binaries mounted.
+The test also removes its networking during one pending recovery, checks that
+the saved payment state is unchanged, then resumes with connectivity restored.
+
+On the packaging VM:
+
+```bash
+python3 tests/test_container_boundary.py -v &&
+docker buildx build --builder startos-builder --load -t swap-controller:regtest . &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all --disconnect-recovery
+```
+
+The small controller image is built from the existing Dockerfile. No CLN image
+rebuild is needed. Temporary containers use a private internal Docker network
+without published ports. Both coordinators remain together in the node-test
+container; the controller is separate and communicates with them over HTTPS.
+The launcher removes its containers and network on exit and retains disposable
+logs in the printed directory. Leave the installed StartOS packages as they are.

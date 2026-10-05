@@ -136,3 +136,58 @@ volumes are mounted. Both chains run within one isolated container: this does
 not yet prove inter-box partitions, live timing, routed payments, controller
 backup of active swaps, or production remote execution. No s9pk rebuild or
 live credential change is needed for these tests.
+# Separate controller container fixture
+
+All eight same-container HTTPS scenarios passed on the packaging VM, including
+discarded submission replies. `scripts/test-separated-controller.py` adds an
+execution-container boundary around those same controller algorithms.
+
+Build the small existing controller image (no CLN rebuild), then run:
+
+```bash
+docker buildx build --builder startos-builder --load -t swap-controller:regtest . &&
+python3 tests/test_container_boundary.py -v &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all --disconnect-recovery
+```
+
+The host driver creates a temporary **internal** Docker network, with no
+published ports, and one node-fixture container holding the two chains, the
+coordinators and the payer/receiver nodes. Each controller step runs in a fresh
+separate container using the controller image's Python runtime. The regtest
+runner and pinned source are read-only test mounts, not installed execution
+features of the production image. Node images are resolved to image IDs before
+the test begins. Generated CLNRest certificates include the node container's
+private interface IP, retaining full hostname verification.
+
+Controller mounts contain only its private journal/credentials and read-only
+Python source. It receives no node data directories, HSM keys, node databases,
+RPC sockets, CLN binaries, Bitcoin binaries or Docker socket. Its root
+filesystem is read-only, all Linux capabilities are dropped, and privilege
+escalation is disabled. Runtime assertions check for unexpected binaries and
+node paths. Only the host launches containers; no nested Docker is used.
+
+The original harness still launches local CLIs for node setup and independent
+balance/HTLC assertions. A private host mailbox replaces its controller child
+invocations. It transfers only one controller journal, serializes calls and
+refuses copying results over a concurrently changed original journal. A child
+crash still copies back its persisted submission intent before the next
+recovery step. This copying is a test adapter, not a production multi-writer
+or distributed locking design.
+
+With `--disconnect-recovery`, the first pending recovery runs in a controller
+container with `--network none`. It must fail without altering its journal or
+RPC audit. A new container on the internal network then resumes from that
+same state. All original settlement/refund and one-attempt assertions remain.
+This models all coordinator connectivity being unavailable during recovery;
+it does not simulate a one-way partition during an in-flight HTTP mutation.
+The earlier discarded-reply scenarios cover the separate submission-boundary
+uncertainty. `partition.log` records disposable diagnostics if the outage
+check fails. Logs and test data remain under the printed temporary directory;
+some fixture files are owned by the container user.
+
+No StartOS installation, live credential rotation, or mainnet RPC is involved.
+This checks execution isolation and regtest recovery across a private Docker
+network; it does not yet run each coordinator on a separate host or enable
+the installed monitor to execute swaps.
