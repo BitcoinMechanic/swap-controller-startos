@@ -147,3 +147,27 @@ python3 scripts/test-separated-controller.py \
 After these pass, build the s9pk and verify Worker Status, restart, backup and
 restore on StartOS. A restored worker should report execution blocked while
 read-only pairing remains available.
+
+
+### Stale-record inspection test
+
+The optional `--stale-restore` regtest uses two synthetic copies of an old job,
+from before and after its payment submission. It checks that each copy can
+observe the original payment through restricted HTTPS while remaining blocked
+from execution. Only the retained original journal settles the swap.
+
+These copies are not StartOS backups. This is not yet a way to resume swaps after
+losing their current journal. Re-pairing still restores read-only monitoring only;
+no restore block is removed. No s9pk rebuild or installation is needed for this
+test-only change.
+
+On the packaging VM:
+
+```bash
+python3 tests/test_stale_restore.py -v &&
+python3 tests/test_container_boundary.py -v &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker --stale-restore
+```

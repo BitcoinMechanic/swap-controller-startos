@@ -9,8 +9,10 @@
 - [x] Run both directions in an isolated controller container, including unavailable networking during pending recovery.
 
 - [x] Run all four isolated-container scenarios using the packaged regtest executor.
-- [ ] Validate lifecycle worker recovery with all four funded regtest scenarios.
-- [ ] Build/install 0.1.0:1 and verify dormant worker, restart, backup and restore barrier.
+- [x] Validate lifecycle worker recovery with all four funded regtest scenarios.
+- [x] Build/install 0.1.0:1 and verify dormant worker, restart, backup and restore barrier.
 
 The installed service remains read-only. Packaged execution is regtest-only and
 registered through a dormant lifecycle daemon; there is no live execution or quote API.
+
+- [ ] Run all four synthetic stale-journal inspections alongside the retained original executor; do not clear restore barriers.

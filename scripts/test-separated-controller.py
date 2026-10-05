@@ -46,7 +46,7 @@ def validate_job(job):
     return job
 
 
-def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False, lifecycle=False):
+def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False, lifecycle=False, stale=False):
     validate_job(job)
     command = ['docker', 'run', '--rm', '--name', name, '--network', network,
                '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
@@ -56,6 +56,7 @@ def controller_command(repo, shared, image, network, name, job, partition=False,
                '-e', 'REMOTE_MODULES_DIR=/pinned',
                '-e', 'PACKAGED_EXECUTOR='+('1' if packaged else '0'),
                '-e', 'LIFECYCLE_WORKER='+('1' if lifecycle else '0'),
+               '-e', 'STALE_RESTORE_TEST='+('1' if stale else '0'),
                *mount(shared/'control', '/controller-state'),
                *([] if packaged else [*mount(shared/'modules', '/pinned', True),
                *mount(repo/'assets', '/controller-assets', True)]),
@@ -75,7 +76,7 @@ def respond(path, result):
     temporary.replace(path)
 
 
-def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False, lifecycle=False):
+def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False, lifecycle=False, stale=False):
     work = results/mode
     work.mkdir()
     shared = work/'exchange'; shared.mkdir()
@@ -126,14 +127,14 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
                         continue  # The atomic writer has not yet set metadata permissions.
                     jobs_seen.add(request.name)
                     if disconnect and not partition_done and job['phase'] == 'outgoing_started':
-                        blocked = subprocess.run(controller_command(repo, shared, controller, 'none', child, job, True, packaged, lifecycle),
+                        blocked = subprocess.run(controller_command(repo, shared, controller, 'none', child, job, True, packaged, lifecycle, stale),
                             capture_output=True, text=True, timeout=25)
                         (work/'partition.log').write_text(blocked.stdout+blocked.stderr)
                         if blocked.returncode or blocked.stdout.strip() != '{"partition_preserved":true}':
                             raise RuntimeError('isolated_recovery_check_failed; inspect disposable container setup')
                         partition_done = True
                         print('PASS: controller network unavailable while payment pending; journal and RPC audit unchanged', flush=True)
-                    result = subprocess.run(controller_command(repo, shared, controller, network, child, job, packaged=packaged, lifecycle=lifecycle),
+                    result = subprocess.run(controller_command(repo, shared, controller, network, child, job, packaged=packaged, lifecycle=lifecycle, stale=stale),
                         capture_output=True, text=True, timeout=30)
                     respond(request.with_suffix('.response'), result)
                 time.sleep(0.05)
@@ -142,6 +143,16 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
             raise RuntimeError('separate_controller_fixture_failed; inspect '+str(log))
         if disconnect and not partition_done:
             raise RuntimeError('missing_partition_check')
+        if stale:
+            report = json.loads(docker('run', '--rm', '--network', 'none',
+                *mount(shared/'control', '/controller-state', True), '--entrypoint', 'python3', controller,
+                '-c', "from pathlib import Path; print(Path('/controller-state/stale-inspection.json').read_text())"))
+            expected = 'failed' if mode.endswith('failure') else 'complete'
+            assert set(report['observed_statuses']) == {'pending', expected}
+            report = report['reports']
+            assert len(report) == 2 and {r['stale_phase'] for r in report} == {'prepared', 'outgoing_started'}
+            assert all(r['outgoing_status'] == expected and r['restored_block'] and not r['execution_authorized'] for r in report)
+            print('PASS: stale prepared and submitted snapshots inspected original outcome; both remained blocked; original journal alone settled', flush=True)
         print('Separate controller container OK ('+mode+('; recovery outage' if disconnect else '')+')', flush=True)
     finally:
         for name in (child, node):
@@ -162,7 +173,9 @@ def main():
     parser.add_argument('--disconnect-recovery', action='store_true')
     parser.add_argument('--packaged-executor', action='store_true')
     parser.add_argument('--lifecycle-worker', action='store_true')
+    parser.add_argument('--stale-restore', action='store_true')
     args = parser.parse_args()
+    if args.stale_restore and not args.lifecycle_worker: parser.error('--stale-restore requires --lifecycle-worker')
     if args.lifecycle_worker and not args.packaged_executor: parser.error('--lifecycle-worker requires --packaged-executor')
     os.umask(0o077)
     repo = Path(__file__).resolve().parents[1]
@@ -181,7 +194,7 @@ def main():
         try: docker('cp', container+':/usr/local/.', str(prefix)+'/')
         finally: docker('rm', container)
         for mode in MODES if args.mode == 'all' else (args.mode,):
-            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor, args.lifecycle_worker)
+            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor, args.lifecycle_worker, args.stale_restore)
 
 
 if __name__ == '__main__': main()

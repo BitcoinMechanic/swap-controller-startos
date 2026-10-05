@@ -286,3 +286,45 @@ The fixture uses explicit crash flags for fault injection; normal recovery steps
 run the lifecycle cycle in fresh controller containers. It exercises the same
 cycle as the long-running daemon, not a real StartOS container restart. Actual
 StartOS restart and backup/restore validation follows a successful funded test.
+
+
+## Synthetic stale-journal inspection (regtest only)
+
+`--stale-restore` adds two deliberately stale copies: an authorized `prepared`
+journal captured before launch and an `outgoing_started` journal captured after
+submission. These are fault-injection snapshots containing disposable credentials,
+NOT StartOS backups. Package backups still exclude jobs and reject active jobs.
+Both copies receive the real lifecycle restore barrier. Direct execution,
+recovery-only execution and worker cycles must all leave them blocked, including
+when the stale prepared copy still has its original authorization.
+
+A test-only observer checks both coordinator identities over verified HTTPS,
+the decoded outgoing invoice, original gate hash/binding, reverse gate terms,
+exact single outgoing record, amount, destination and applicable invoice binding.
+Held gates must retain the original committed incoming HTLC. Missing, duplicate,
+changed or inconsistent evidence is refused. Completion requires the matching
+preimage, which is never returned in the filtered report. The observer has a
+read-method allowlist and never rewrites the stale journal, grants authority,
+resolves a gate, or clears a restore barrier.
+
+The retained ORIGINAL journal alone proceeds through the existing executor.
+The fixture requires stale copies to observe both pending and terminal outcomes,
+and retains the existing one-submission, one-resolution and final-balance checks.
+It does not demonstrate recovery after loss of the only current journal, active
+backup support, cross-host ownership transfer, or mainnet restore recovery.
+The installed service and package version remain unchanged.
+
+Run on the packaging VM (the current lifecycle image already contains everything
+needed; the new observer is mounted from the test directory):
+
+```bash
+python3 tests/test_stale_restore.py -v &&
+python3 tests/test_container_boundary.py -v &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker --stale-restore
+```
+
+The test writes only disposable regtest files; do not supply live pairing files
+or copy a real active journal into this harness.

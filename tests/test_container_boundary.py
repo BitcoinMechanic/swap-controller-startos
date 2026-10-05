@@ -59,6 +59,15 @@ class BoundaryTests(unittest.TestCase):
         self.assertFalse(any('dst=/pinned' in m or 'dst=/controller-assets' in m for m in mounts))
         self.assertIn('/remote-tests/package_step.py', command)
 
+    def test_stale_restore_optin_keeps_container_boundaries(self):
+        command = driver.controller_command(ROOT, Path('/shared'), 'image', 'none', 'child', self.job(),
+                                            partition=True, packaged=True, lifecycle=True, stale=True)
+        self.assertIn('STALE_RESTORE_TEST=1', command)
+        self.assertIn('/remote-tests/partition_check.py', command)
+        mounts = [command[i+1] for i,v in enumerate(command) if v == '--mount']
+        self.assertEqual(len(mounts),2)
+        self.assertFalse(any('/nodes' in m or 'docker.sock' in m for m in mounts))
+
     def test_partition_uses_network_none_and_no_crash_flag(self):
         command = driver.controller_command(Path('/repo'), Path('/shared'), 'image', 'none', 'child', self.job(), True)
         self.assertEqual(command[command.index('--network')+1], 'none')
