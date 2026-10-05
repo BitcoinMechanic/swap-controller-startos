@@ -32,19 +32,21 @@ def check(parent,direction,filename,recover=package_step.recover_lost):
 
 
 def packaged_check(parent):
-    import recovery_workflow as workflow
+    import recovery_actions as actions
     root=parent/'stale-prepared'/'jobs'/'swap'
     token=private_load(parent/'lost-journal.json')['digest']
     connections=private_load(parent/'remote-recovery.json')
     records=private_load(parent/'fence-nodes.json')
     first,second=[r['original']['network'] for r in records]
-    workflow.confirm(root,token,connections,first,True)
+    credentials={c['network']:c['rune'] for c in connections}
+    request=dict(job='swap',expectedDigest=token,btcRune=credentials['regtest'],xbtRune=credentials['xbt-regtest'],confirmed=True)
+    actions.action(root.parent.parent,'confirm',dict(request,network=first))
     before=snapshot(parent)
-    try:workflow.confirm(root,token,connections,second,True)
+    try:actions.action(root.parent.parent,'confirm',dict(request,network=second))
     except Exception:pass
     else:raise AssertionError('offline_second_confirmation_accepted')
     for _ in range(2):
-        try:workflow.admit(root,token,connections)
+        try:actions.action(root.parent.parent,'recover',request)
         except ValueError as exc:require(str(exc)=='both_revocations_required','unexpected_admission_failure')
         else:raise AssertionError('partial_admission_accepted')
         require(snapshot(parent)==before,'partial_admission_changed_records')

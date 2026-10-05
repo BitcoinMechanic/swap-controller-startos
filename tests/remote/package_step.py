@@ -37,12 +37,17 @@ def recover_lost(external, direction):
         if os.environ.get('OWNER_FENCE_TEST')=='1':
             # Admin-side fencing has completed. Each explicit confirmation is
             # independently checked and saved by the packaged workflow.
+            credentials={c['network']:c['rune'] for c in private_load(parent/'remote-recovery.json')}
+            request=dict(job='swap',expectedDigest=marker['digest'],btcRune=credentials['regtest'],
+                         xbtRune=credentials['xbt-regtest'],confirmed=True)
             for network in ('regtest','xbt-regtest'):
-                confirmed=subprocess.run([sys.executable,'/app/recovery_workflow.py','confirm',
-                    *options,'--network',network],capture_output=True,text=True)
+                confirmed=subprocess.run([sys.executable,'/app/recovery_actions.py',str(root.parent.parent),'confirm'],
+                    input=json.dumps(dict(request,network=network)),capture_output=True,text=True)
                 if confirmed.returncode:return confirmed.returncode
-            program=[sys.executable,'/app/recovery_workflow.py','run']
-        child=subprocess.run([*program,*options],capture_output=True,text=True)
+            child=subprocess.run([sys.executable,'/app/recovery_actions.py',str(root.parent.parent),'recover'],
+                input=json.dumps(request),capture_output=True,text=True)
+        else:
+            child=subprocess.run([*program,*options],capture_output=True,text=True)
         # The packaged resolver keeps its own audit; merge only newly recorded
         # mutations into the fixture audit, including a discarded reply.
         audit=root.parent.parent/'recovery-audit.jsonl'

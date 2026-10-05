@@ -1,3 +1,4 @@
+import { recoveryStatus, confirmRecovery, recoverOnce } from './recovery'
 import { T } from '@start9labs/start-sdk'
 import { sdk } from '../sdk'
 import { mounts, rootDir } from '../utils'
@@ -38,4 +39,4 @@ const workerStatus = sdk.Action.withInput('worker-status', async () => ({
       result: { type: 'group' as const, value: Object.entries(report).map(([name, value]) => ({ name, description: null,
         type: 'single' as const, value: typeof value === 'object' ? JSON.stringify(value) : String(value), masked: false, copyable: false, qr: false })) } }
   }))
-export const actions = sdk.Actions.of().addAction(pair).addAction(status).addAction(workerStatus)
+export const actions = sdk.Actions.of().addAction(pair).addAction(status).addAction(workerStatus).addAction(recoveryStatus).addAction(confirmRecovery).addAction(recoverOnce)

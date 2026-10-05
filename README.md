@@ -636,3 +636,59 @@ python3 scripts/test-separated-controller.py \
 
 This changes the disposable test image only. No StartOS installation, live
 execution, automatic revocation or new StartOS action is introduced here.
+
+## StartOS recovery actions (0.1.0:2)
+
+Three Recovery actions now use the packaged recovery boundary:
+
+- **Recovery Status** inspects local jobs and shows the job ID, immutable digest,
+  saved coordinator confirmations and reconciliation stage. It makes no node RPC
+  calls. Saved confirmations never imply current authorization or readiness.
+- **Confirm Recovery Revocation (Regtest)** verifies and records one coordinator
+  for an existing disposable job. Supply the reviewed digest and both separately
+  issued resolution-only runes. Both rune fields are masked and have no saved
+  prefill. Reuse the identical replacement credential pair across confirmations.
+- **Recover Existing Swap (Regtest)** runs one reviewed step only after both
+  confirmations and fresh access checks. Pending or uncertain outcomes never
+  authorize a new outgoing attempt, automatic refund or removal of the restore
+  barrier.
+
+The normal StartOS installation supports status inspection only. The two
+execution actions return an explicit regtest-only message before job lookup,
+record changes or RPC. There is no UI switch that enables execution. No live rune
+needs to be entered to validate this release. An empty jobs list is expected on
+the installed read-only monitor; these actions do not import or create jobs.
+
+Requests go to a fixed Python entry point as JSON on standard input, never as
+shell commands or credential-bearing command arguments. The backend constrains
+job IDs and paths, checks the reviewed digest, and takes endpoints and identities
+from the existing immutable record. Submitted runes stay in memory; the action
+does not persist them or change read-only pairing. Execution jobs remain excluded
+from backups, and restore still blocks automatic execution.
+
+The funded owner-fence tests now invoke `/app/recovery_actions.py` in fresh
+containers, using the same JSON protocol as the StartOS handlers. Partial-outage
+checks also enter through this action boundary. TypeScript tests verify the form
+masking, default confirmations, fixed command and private stdin. Python tests
+cover local status filtering, path and input rejection, production refusal,
+partial admission and settlement through the action handler.
+
+Validate and rebuild the disposable image before packaging:
+
+```bash
+python3 tests/test_recovery_actions.py -v
+python3 tests/test_recovery_workflow.py -v
+python3 tests/test_packaged_recovery.py -v
+npm run check && npm run build && node scripts/check-bundle.cjs
+docker buildx build --builder startos-builder --load -t swap-controller:regtest .
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker \
+  --lost-journal --drop-resolution-reply --packaged-recovery \
+  --owner-fence --drop-submission-reply --partial-fence
+```
+
+After the funded tests pass, build/install 0.1.0:2 and inspect Recovery Status,
+Connection Status and Worker Status. Pairing and the restore barrier must persist
+across upgrade and restart. No new live payment or recovery permission is added.

@@ -190,7 +190,7 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
                                     (work/'partial-recovery.log').write_text(blocked.stdout+blocked.stderr)
                                     if blocked.returncode or blocked.stdout.strip()!='{"partial_recovery_blocked":true}':
                                         raise RuntimeError('partial_recovery_not_blocked; inspect '+str(work))
-                            print('PASS: first rune revoked while second admin socket unavailable; fresh replacement refused twice; packaged admission retained first confirmation and blocked recovery',flush=True)
+                            print('PASS: first rune revoked while second admin socket unavailable; fresh replacement refused twice; recovery action retained first confirmation and blocked recovery',flush=True)
                         fenced=subprocess.run(['docker','exec',node,'/usr/bin/python3','/remote-tests/owner_fence.py'],
                             capture_output=True,text=True,timeout=25)
                         (work/'owner-fence.log').write_text(fenced.stdout+fenced.stderr)
@@ -235,7 +235,7 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
             assert proof['restarts']=={'networks':['regtest','xbt-regtest']}
             assert proof['old']['checks']>=3 and proof['old']['retained_journal_blocked'] is True
             print('PASS: revocations survived both restarts; retained old executor refused before RPC mutation; unrelated credentials still work',flush=True)
-        if packaged_recovery: print('PASS: packaged recovery ran in a fresh process; restore barrier retained',flush=True)
+        if packaged_recovery: print('PASS: packaged recovery action ran in a fresh process; restore barrier retained',flush=True)
         print('Separate controller container OK ('+mode+('; recovery outage' if disconnect else '')+')', flush=True)
     finally:
         for name in (child, node):

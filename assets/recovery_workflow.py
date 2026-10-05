@@ -83,6 +83,10 @@ def command(root,digest,credential_file,mode,network=None,confirmed=False):
     connections=private_load(credential_file)
     if mode=='confirm':return confirm(root,digest,connections,network,True)
     require(mode=='run','invalid_recovery_mode')
+    return run(root,digest,connections)
+
+
+def run(root,digest,connections):
     admit(root,digest,connections)
     mirror,result=recovery.resolve(root,digest,connections,root.parent.parent/'recovery-audit.jsonl')
     save(root/'recovery-result.json',dict(mirror=mirror,result=result))
