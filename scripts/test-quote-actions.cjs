@@ -21,7 +21,7 @@ module.exports = async function () {
     if (name === '../utils') return { mounts: {}, rootDir: '/data' }
     throw new Error('Unexpected module')
   } })
-  const ids = ['quote-status', 'review-swap-quote', 'prepare-swap-quote', 'approve-swap-quote']
+  const ids = ['quote-status', 'review-swap-quote', 'prepare-swap-quote', 'approve-swap-quote', 'prepare-reverse-swap-quote']
   assert.deepEqual(Object.keys(registered), ids)
   assert.deepEqual(Object.keys(registered[ids[0]].spec), [])
   assert.deepEqual(Object.keys(registered[ids[1]].spec), ['job'])
@@ -30,6 +30,11 @@ module.exports = async function () {
   assert.equal(registered[ids[2]].spec.btcSats.integer, true)
   assert.equal(registered[ids[2]].spec.btcSats.default, null)
   assert.equal(registered[ids[3]].spec.confirmed.default, false)
+  assert.deepEqual(Object.keys(registered[ids[4]].spec), ['job', 'btcInvoice', 'xbtSats'])
+  assert.equal(registered[ids[4]].spec.btcInvoice.masked, true)
+  assert.equal(registered[ids[4]].spec.xbtSats.default, null)
+  assert.equal(registered[ids[4]].spec.xbtSats.min, 200000)
+  assert.equal(registered[ids[4]].spec.xbtSats.max, 200000)
   const input = { job: 'swap', xbtInvoice: 'PRIVATE-INVOICE', btcSats: 100000, expectedDigest: 'a'.repeat(64), confirmed: true }
   for (const [index, id] of ids.entries()) {
     const action = registered[id]
@@ -37,7 +42,7 @@ module.exports = async function () {
     assert.equal(await action.prefill(), undefined)
     const report = await action.handler({ effects: {}, input })
     assert.equal(JSON.stringify(report).includes('PRIVATE'), false)
-    assert.deepEqual(Array.from(calls[index].command), ['python3', '/app/quote_actions.py', '/data/execution', ['status', 'review', 'prepare', 'approve'][index]])
+    assert.deepEqual(Array.from(calls[index].command), ['python3', '/app/quote_actions.py', '/data/execution', ['status', 'review', 'prepare', 'approve', 'prepare-reverse'][index]])
     assert.equal(JSON.stringify(calls[index].command).includes('PRIVATE'), false)
     assert.equal(JSON.stringify(calls[index].options).includes('BTC_XBT_DISPOSABLE_CONTAINER'), false)
     assert.deepEqual(Object.keys(calls[index].options), ['input'])
@@ -48,6 +53,10 @@ module.exports = async function () {
   const report = await registered[ids[3]].handler({ effects: {}, input })
   const invoice = report.result.value.find(row => row.name === 'BTC regtest invoice')
   assert.equal(invoice.masked, true); assert.equal(invoice.copyable, true); assert.equal(invoice.qr, true)
+  result = { exitCode: 0, stdout: '{"xbt_invoice":"lnxbtrt1test","direction":"reverse"}' }
+  const reverseReport = await registered[ids[3]].handler({ effects: {}, input })
+  const xbtInvoice = reverseReport.result.value.find(row => row.name === 'XBT regtest invoice')
+  assert.equal(xbtInvoice.masked, true); assert.equal(xbtInvoice.copyable, true); assert.equal(xbtInvoice.qr, true)
   result = { exitCode: 1, stdout: '{"reason":"regtest_only","details":"PRIVATE"}' }
   await assert.rejects(registered[ids[2]].handler({ effects: {}, input }), /regtest-only/)
   result = { exitCode: 1, stdout: '{"reason":"PRIVATE"}' }

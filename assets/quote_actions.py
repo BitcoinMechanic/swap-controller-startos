@@ -12,7 +12,7 @@ JOB = r'[a-z0-9][a-z0-9-]{0,63}'
 DIGEST = r'[0-9a-f]{64}'
 PAIR_FILE = 'regtest-quote-nodes.json'
 PHASES = {'review_required','approved','waiting_for_btc','prepared','outgoing_started',
-          'xbt_paid','xbt_failed','btc_failed','btc_released'}
+          'xbt_paid','xbt_failed','btc_failed','btc_released','waiting_for_xbt','btc_paid','xbt_released'}
 
 
 def name(value):
@@ -35,16 +35,18 @@ def existing(manager,job):
 
 def filtered(value):
     """Allow only reviewed scalar fields, never arbitrary saved/private data."""
-    require(value.get('phase') in PHASES and value.get('direction')=='forward', 'invalid_quote_report')
+    require(value.get('phase') in PHASES and value.get('direction') in ('forward','reverse'), 'invalid_quote_report')
     require(isinstance(value.get('review_digest'),str) and re.fullmatch(DIGEST,value['review_digest']), 'invalid_digest')
     require(isinstance(value.get('recipient'),str) and re.fullmatch('0[23][0-9a-f]{64}',value['recipient']), 'invalid_recipient')
-    for key,maximum in (('btc_price_sats',1000000),('xbt_amount_msat',1000000000),('expires_at',2**63-1)):
+    reverse=value['direction']=='reverse'
+    price,amount,fee=('xbt_price_sats','btc_amount_msat','xbt_payer_routing_fee_included') if reverse else ('btc_price_sats','xbt_amount_msat','btc_payer_routing_fee_included')
+    for key,maximum in ((price,1000000),(amount,1000000000),('expires_at',2**63-1)):
         require(type(value.get(key)) is int and 0 < value[key] <= maximum, 'invalid_quote_amount_or_expiry')
     require(type(value.get('quote_expired')) is bool and value.get('outgoing_route_fee_msat')==0 and
-            value.get('btc_payer_routing_fee_included') is False and value.get('pricing')=='operator_supplied_regtest',
+            value.get(fee) is False and value.get('pricing')=='operator_supplied_regtest',
             'invalid_quote_policy')
-    return {k:value[k] for k in ('phase','direction','review_digest','recipient','btc_price_sats','xbt_amount_msat',
-            'expires_at','quote_expired','outgoing_route_fee_msat','btc_payer_routing_fee_included','pricing')}
+    return {k:value[k] for k in ('phase','direction','review_digest','recipient',price,amount,
+            'expires_at','quote_expired','outgoing_route_fee_msat',fee,'pricing')}
 
 
 def local_review(manager,job):
@@ -80,7 +82,7 @@ def status(manager):
 
 
 def action(manager,mode,request):
-    require(mode in ('status','review','prepare','approve'),'invalid_action')
+    require(mode in ('status','review','prepare','prepare-reverse','approve'),'invalid_action')
     require(isinstance(request,dict),'invalid_request')
     if mode=='status':
         require(request=={},'status_takes_no_parameters')
@@ -91,6 +93,13 @@ def action(manager,mode,request):
     # No UI field or pairing file can opt into execution. On installed live
     # services this fails before node lookup, record creation or any RPC.
     executor.guard()
+    if mode=='prepare-reverse':
+        require(set(request)=={'job','btcInvoice','xbtSats'},'invalid_prepare_request')
+        name(request['job']);directory(manager)
+        from reverse_quote_workflow import prepare
+        result=prepare(manager,request['job'],dict(connections=private_load(manager/PAIR_FILE),
+                       btc_invoice=request['btcInvoice'],xbt_sats=request['xbtSats']))
+        return dict(filtered(result),job=request['job'],regtest_only=True,live_payment_enabled=False)
     if mode=='prepare':
         require(set(request)=={'job','xbtInvoice','btcSats'},'invalid_prepare_request')
         name(request['job']);directory(manager)
@@ -108,10 +117,11 @@ def action(manager,mode,request):
     require(isinstance(request['expectedDigest'],str) and re.fullmatch(DIGEST,request['expectedDigest']),'invalid_digest')
     existing(manager,request['job'])
     result=workflow.approve(manager,request['job'],request['expectedDigest'],True)
-    invoice=result.get('btc_invoice')
-    require(isinstance(invoice,str) and 0<len(invoice)<=65536 and invoice.startswith('lnbcrt') and
+    key,prefix=('xbt_invoice','lnxbtrt') if result['direction']=='reverse' else ('btc_invoice','lnbcrt')
+    invoice=result.get(key)
+    require(isinstance(invoice,str) and 0<len(invoice)<=65536 and invoice.startswith(prefix) and
             invoice.isascii() and not any(c.isspace() for c in invoice),'invalid_btc_invoice')
-    return dict(filtered(result),job=request['job'],regtest_only=True,live_payment_enabled=False,btc_invoice=invoice)
+    return dict(filtered(result),job=request['job'],regtest_only=True,live_payment_enabled=False,**{key:invoice})
 
 
 def main(argv=None):
@@ -122,7 +132,7 @@ def main(argv=None):
         raw=sys.stdin.buffer.read(131073);require(len(raw)<=131072,'request_too_large')
         result=action(Path(argv[0]),argv[1],json.loads(raw or b'{}'))
     except Exception:
-        reason='regtest_only' if len(argv)==2 and argv[1] in ('prepare','approve') and os.environ.get('BTC_XBT_DISPOSABLE_CONTAINER')!='1' else 'inspection_required'
+        reason='regtest_only' if len(argv)==2 and argv[1] in ('prepare','prepare-reverse','approve') and os.environ.get('BTC_XBT_DISPOSABLE_CONTAINER')!='1' else 'inspection_required'
         print(json.dumps(dict(event='quote_action_blocked',reason=reason,details='withheld')));return 1
     print(json.dumps(result));return 0
 

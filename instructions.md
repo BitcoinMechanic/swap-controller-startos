@@ -644,3 +644,58 @@ four Quotes actions are present and Connection Status remains ready. Do not ente
 live invoices or credentials into the regtest forms. A restart should preserve
 pairing and the restore barrier; another backup/restore cycle is not needed for
 this action-only installation check.
+
+## Reverse quote actions (0.1.0:5)
+
+`Prepare XBT to BTC Quote (Regtest)` accepts a new quote ID, a recipient BTC
+regtest invoice, and an explicit XBT price. The pinned reverse gate currently
+requires exactly 100,000 BTC recipient sats and 200,000 XBT payer sats. These
+are disposable test amounts, not an exchange rate. Other amounts are refused.
+The price field has no default; there is no automatic pricing.
+
+Preparation verifies both coordinator identities over HTTPS, the BTC invoice,
+its expiry and CLTV, the direct outgoing channel and liquidity, and the single
+incoming XBT channel. It saves immutable terms without registering a gate,
+signing an incoming invoice, or sending a payment. Quotes are limited to 15
+minutes and expire at least 60 seconds before the recipient invoice.
+
+Use `Review Saved Quote` to inspect the direction, recipient, XBT price, BTC
+recipient amount, expiry and review code. The shared approval action is now
+named `Approve and Publish Swap Invoice (Regtest)`. Its unchecked confirmation
+and exact review code are required in both directions. Reverse approval
+registers the saved terms and returns a verified XBT invoice; repeating it
+returns the saved invoice without another registration or signature. Payer
+routing fees are additional. Publication interrupted before saving its result
+requires another explicit approval of the same terms; the worker cannot publish.
+
+The worker waits for the exact committed XBT HTLC and validates the durable
+reverse gate, original terms, expiry and channel binding before handing off
+to the existing reverse executor. The executor pays BTC once and resolves XBT
+with the same preimage. Local Quote Status and Review Saved Quote omit invoices,
+credentials and preimages. The explicit approval result masks the incoming
+invoice and offers copy/QR output.
+
+This release remains regtest-only. The installed read-only pairing does not
+provide execution authority. Live preparation/approval remain blocked before
+RPC, and restore barriers and backup exclusions remain in place. Controlled
+regtest block margins are not a live cross-chain timing policy.
+
+Validation on the packaging VM, after building `swap-controller:regtest`:
+
+```bash
+python3 scripts/test-quote-flow.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind reverse
+```
+
+The driver runs both quote policy suites and action tests against the pinned
+modules in the image, then funds one reverse scenario through the packaged
+actions. It checks repeated preparation/approval, no spending before approval
+and committed incoming payment, all four balances, matching preimages, no
+pending HTLCs, and a terminal worker repeat without another mutation.
+The optional final direction defaults to `forward` for existing commands.
+
+After the funded test passes, build/install 0.1.0:5. Verify the new reverse
+preparation form and renamed shared approval action, local quote status, and
+unchanged pairing and restore-barrier state. An intentionally unpaired service
+may remain unpaired.

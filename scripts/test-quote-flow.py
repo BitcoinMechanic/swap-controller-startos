@@ -26,7 +26,7 @@ def command(repo,shared,image,network,name,stage):
         '--entrypoint','python3',image,'/remote-tests/quote_step.py',stage]
 
 
-def run(repo,results,prefix,backend,btc,controller):
+def run(repo,results,prefix,backend,btc,controller,direction):
     shared=results/'exchange';shared.mkdir()
     for folder in ('control','jobs'):(shared/folder).mkdir()
     nodes=results/'nodes';nodes.mkdir()
@@ -46,7 +46,7 @@ def run(repo,results,prefix,backend,btc,controller):
         log=results/'fixture.log';seen=set()
         with log.open('w') as output,log.open() as reader:
             fixture=subprocess.Popen(['docker','exec','-e','COORDINATOR_IP='+address,node,
-                '/usr/bin/python3','/remote-tests/image_quote.py'],stdout=output,stderr=subprocess.STDOUT)
+                '/usr/bin/python3','/remote-tests/image_quote.py',direction],stdout=output,stderr=subprocess.STDOUT)
             end=time.monotonic()+1200
             while fixture.poll() is None:
                 sys.stdout.write(reader.read());sys.stdout.flush()
@@ -77,13 +77,14 @@ def run(repo,results,prefix,backend,btc,controller):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('btc_image');p.add_argument('xbt_image');p.add_argument('controller_image');p.add_argument('bitcoind',type=Path)
+    p.add_argument('direction',choices=('forward','reverse'),nargs='?',default='forward')
     args=p.parse_args();os.umask(0o077)
     repo=Path(__file__).resolve().parents[1];backend=args.bitcoind.resolve()
     if not backend.is_file() or not os.access(backend,os.X_OK):p.error('executable regtest bitcoind required')
     if not (repo.parent/'btc-cln-startos/tests/image_pair.py').is_file():p.error('BTC packaging sibling required')
     btc,xbt,controller=[base.image_id(n) for n in (args.btc_image,args.xbt_image,args.controller_image)]
     # Run the policy tests against exactly the module pin baked into this image.
-    for test in ('test_quote_workflow.py','test_quote_actions.py'):
+    for test in ('test_quote_workflow.py','test_quote_actions.py','test_reverse_quote_workflow.py'):
         subprocess.run(['docker','run','--rm','--network','none','--read-only','--cap-drop=ALL',
         '--tmpfs','/tmp:rw,nosuid,nodev,size=16m','-e','PYTHONPATH=/app',
         *base.mount(repo/'tests','/quote-tests',True),'--entrypoint','python3',controller,
@@ -95,7 +96,7 @@ def main():
         prefix=Path(temporary);container=base.docker('create','--network','none',xbt)
         try:base.docker('cp',container+':/usr/local/.',str(prefix)+'/')
         finally:base.docker('rm',container)
-        run(repo,results,prefix,backend,btc,controller)
+        run(repo,results,prefix,backend,btc,controller,args.direction)
 
 
 if __name__=='__main__':main()

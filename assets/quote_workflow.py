@@ -19,17 +19,20 @@ import lifecycle
 from execution_rpc import Remote
 
 READS = {'getinfo': (), 'decode': ('string',), 'listpeerchannels': (), 'listsendpays': (),
-         'xbt-quote-status': ('payment_hash',), 'xbt-spend-info': ('payment_hash',)}
-WRITES = {'xbt-register': ('quote',), 'signinvoice': ('invstring',)}
+         'xbt-quote-status': ('payment_hash',), 'xbt-spend-info': ('payment_hash',),
+         'reverse-status': ('payment_hash',), 'xbt-held': ()}
+WRITES = {'xbt-register': ('quote',), 'signinvoice': ('invstring',), 'reverse-register': ('quote',)}
 
 
 class QuoteRemote(Remote):
+    publication_network = 'regtest'
     def call(self, method, *args, named=False):
-        schema = {**READS, **(WRITES if self.network == 'regtest' else {})}
+        schema = {**READS, **(WRITES if self.network == self.publication_network else {})}
         require(method in schema and not named and len(args) == len(schema[method]), 'quote_method_refused')
-        require(self.network == 'regtest' or not method.startswith('xbt-'), 'quote_target_refused')
+        require(method not in ('xbt-register','xbt-quote-status','xbt-spend-info') or self.network=='regtest', 'quote_target_refused')
+        require(method not in ('reverse-register','reverse-status','xbt-held') or self.network=='xbt-regtest', 'quote_target_refused')
         params = dict(zip(schema[method], args))
-        if method == 'xbt-register': params['quote'] = json.loads(params['quote'])
+        if method in ('xbt-register','reverse-register'): params['quote'] = json.loads(params['quote'])
         info = self._request('getinfo', {})
         require(info.get('id') == self.node_id and info.get('network') == self.network, 'operator_identity_mismatch')
         return info if method == 'getinfo' else self._request(method, params)
@@ -83,7 +86,9 @@ def review(root):
     record = private_load(root/'review.json')
     require(record.get('schema') == 1 and record.get('source_commit') == executor.PIN, 'invalid_review')
     data = private_load(root/'proposal'/'quote.json')
-    original = {k:v for k,v in data.items() if k != 'btc_invoice'}
+    direction=record.get('direction','forward')
+    require(direction in ('forward','reverse'),'invalid_direction')
+    original = {k:v for k,v in data.items() if k != ('xbt_invoice' if direction=='reverse' else 'btc_invoice')}
     require(original == record['quote'], 'quote_binding_changed')
     return record, data, executor.digest(record)
 
@@ -91,15 +96,21 @@ def review(root):
 def report(root):
     record, data, token = review(root)
     terms = data['terms']
+    reverse=record.get('direction')=='reverse'
     phase = 'review_required'
     if (root/'approval.json').exists(): phase = 'approved'
-    if 'btc_invoice' in data: phase = 'waiting_for_btc'
+    if ('xbt_invoice' if reverse else 'btc_invoice') in data: phase = 'waiting_for_xbt' if reverse else 'waiting_for_btc'
     if (root/'intent.json').exists(): phase = executor.records(root)[1]['phase']
-    return dict(regtest_only=True,live_payment_enabled=False,direction='forward',review_digest=token,
+    result = dict(regtest_only=True,live_payment_enabled=False,direction='reverse' if reverse else 'forward',review_digest=token,
                 phase=phase,btc_price_sats=terms['btc_amount_msat']//1000,xbt_amount_msat=terms['xbt_amount_msat'],
                 expires_at=terms['expires_at'],quote_expired=terms['expires_at'] <= int(time.time()),
                 outgoing_route_fee_msat=0,btc_payer_routing_fee_included=False,
                 pricing='operator_supplied_regtest',recipient=data['controller']['route'][0]['id'])
+    if reverse:
+        result.pop('btc_price_sats');result.pop('btc_payer_routing_fee_included');result.pop('xbt_amount_msat')
+        result.update(xbt_price_sats=terms['xbt_amount_msat']//1000,btc_amount_msat=terms['btc_amount_msat'],
+                      xbt_payer_routing_fee_included=False)
+    return result
 
 
 def preflight(data, rpc):
@@ -169,7 +180,11 @@ def prepare(manager, name, request, core=None, factory=QuoteRemote):
 def approve(manager,name,token,confirmed=False,core=None,factory=QuoteRemote):
     executor.guard()
     require(confirmed is True, 'confirmation_required')
-    root=job(manager,name); core=service() if core is None else core
+    root=job(manager,name)
+    if review(root)[0].get('direction')=='reverse':
+        from reverse_quote_workflow import approve as reverse_approve, ReverseRemote
+        return reverse_approve(manager,name,token,confirmed,core,ReverseRemote if factory is QuoteRemote else factory)
+    core=service() if core is None else core
     with executor.lock(root):
         executor.execution_allowed(root)
         record,data,expected=review(root)
@@ -192,6 +207,9 @@ def approve(manager,name,token,confirmed=False,core=None,factory=QuoteRemote):
 def advance(root,core=None,factory=QuoteRemote):
     """One worker cycle: bind the committed HTLC, then run/recover the executor."""
     executor.guard()
+    if review(root)[0].get('direction')=='reverse':
+        from reverse_quote_workflow import advance as reverse_advance, ReverseRemote
+        return reverse_advance(root,core,ReverseRemote if factory is QuoteRemote else factory)
     core=service() if core is None else core
     handoff=None
     with executor.lock(root):

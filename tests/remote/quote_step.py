@@ -28,7 +28,9 @@ def main():
         config=manager/'regtest-quote-nodes.json'
         if config.exists():assert private_load(config)==raw['connections']
         else:save(config,raw['connections'])
-        mode='prepare';request=dict(job='swap',xbtInvoice=raw['xbt_invoice'],btcSats=raw['btc_sats'])
+        if 'btc_invoice' in raw:
+            mode='prepare-reverse';request=dict(job='swap',btcInvoice=raw['btc_invoice'],xbtSats=raw['xbt_sats'])
+        else:mode='prepare';request=dict(job='swap',xbtInvoice=raw['xbt_invoice'],btcSats=raw['btc_sats'])
     elif stage=='approve':
         raw=private_load(root/'quote-input.json')
         mode='approve';request=dict(job='swap',expectedDigest=raw['digest'],confirmed=raw['confirmed'])
