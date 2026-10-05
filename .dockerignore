@@ -1,0 +1,5 @@
+*
+!Dockerfile
+!assets/
+!assets/controller.py
+!assets/read_only_rpc.py
