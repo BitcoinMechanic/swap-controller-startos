@@ -6,3 +6,4 @@
 !assets/executor.py
 !assets/execution_child.py
 !assets/execution_rpc.py
+!assets/lifecycle.py

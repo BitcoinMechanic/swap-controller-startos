@@ -46,7 +46,7 @@ def validate_job(job):
     return job
 
 
-def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False):
+def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False, lifecycle=False):
     validate_job(job)
     command = ['docker', 'run', '--rm', '--name', name, '--network', network,
                '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
@@ -55,6 +55,7 @@ def controller_command(repo, shared, image, network, name, job, partition=False,
                '-e', 'SEPARATE_CONTROLLER=1', '-e', 'REMOTE_TEST_ROOT=/controller-state',
                '-e', 'REMOTE_MODULES_DIR=/pinned',
                '-e', 'PACKAGED_EXECUTOR='+('1' if packaged else '0'),
+               '-e', 'LIFECYCLE_WORKER='+('1' if lifecycle else '0'),
                *mount(shared/'control', '/controller-state'),
                *([] if packaged else [*mount(shared/'modules', '/pinned', True),
                *mount(repo/'assets', '/controller-assets', True)]),
@@ -74,7 +75,7 @@ def respond(path, result):
     temporary.replace(path)
 
 
-def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False):
+def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False, lifecycle=False):
     work = results/mode
     work.mkdir()
     shared = work/'exchange'; shared.mkdir()
@@ -125,14 +126,14 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
                         continue  # The atomic writer has not yet set metadata permissions.
                     jobs_seen.add(request.name)
                     if disconnect and not partition_done and job['phase'] == 'outgoing_started':
-                        blocked = subprocess.run(controller_command(repo, shared, controller, 'none', child, job, True, packaged),
+                        blocked = subprocess.run(controller_command(repo, shared, controller, 'none', child, job, True, packaged, lifecycle),
                             capture_output=True, text=True, timeout=25)
                         (work/'partition.log').write_text(blocked.stdout+blocked.stderr)
                         if blocked.returncode or blocked.stdout.strip() != '{"partition_preserved":true}':
                             raise RuntimeError('isolated_recovery_check_failed; inspect disposable container setup')
                         partition_done = True
                         print('PASS: controller network unavailable while payment pending; journal and RPC audit unchanged', flush=True)
-                    result = subprocess.run(controller_command(repo, shared, controller, network, child, job, packaged=packaged),
+                    result = subprocess.run(controller_command(repo, shared, controller, network, child, job, packaged=packaged, lifecycle=lifecycle),
                         capture_output=True, text=True, timeout=30)
                     respond(request.with_suffix('.response'), result)
                 time.sleep(0.05)
@@ -160,7 +161,9 @@ def main():
     parser.add_argument('mode', nargs='?', default='all', choices=('all', *MODES))
     parser.add_argument('--disconnect-recovery', action='store_true')
     parser.add_argument('--packaged-executor', action='store_true')
+    parser.add_argument('--lifecycle-worker', action='store_true')
     args = parser.parse_args()
+    if args.lifecycle_worker and not args.packaged_executor: parser.error('--lifecycle-worker requires --packaged-executor')
     os.umask(0o077)
     repo = Path(__file__).resolve().parents[1]
     if not (repo.parent/'btc-cln-startos/tests/image_pair.py').is_file():
@@ -178,7 +181,7 @@ def main():
         try: docker('cp', container+':/usr/local/.', str(prefix)+'/')
         finally: docker('rm', container)
         for mode in MODES if args.mode == 'all' else (args.mode,):
-            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor)
+            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor, args.lifecycle_worker)
 
 
 if __name__ == '__main__': main()

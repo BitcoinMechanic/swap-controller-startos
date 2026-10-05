@@ -1,6 +1,6 @@
 # Swap Controller — read-only pairing pilot
 
-StartOS 0.4 package, SDK 2.0.9, package ID `swap-controller`, version 0.1.0:0.
+StartOS 0.4 package, SDK 2.0.9, package ID `swap-controller`, version 0.1.0:1.
 This initial package verifies BTC and XBT coordinator connections. It is not
 a swap executor: it has no wallet, signing keys, quote API or inbound listener.
 The intended packaging repository is BitcoinMechanic/swap-controller-startos;
@@ -196,8 +196,8 @@ the installed monitor to execute swaps.
 
 The image now includes `/app/executor.py`, a separate regtest-only execution
 component, and `/opt/swap` from immutable source commit
-`81ba4099a63e5a0e83f55cead53c54f2a1b3c1fe`. The default command and StartOS daemon
-remain the read-only pairing monitor. There is no live execution action or new
+`81ba4099a63e5a0e83f55cead53c54f2a1b3c1fe`. The default image command remains the read-only pairing monitor. StartOS also
+runs a dormant lifecycle worker, without the disposable-regtest opt-in. There is no live execution action or new
 network listener. No upgrade installation is required for this test.
 
 An execution directory holds a private initial intent, exact HTTPS connections,
@@ -238,5 +238,51 @@ executor's durable journal. The original harness mode remains available.
 
 The CLI additionally provides `run` to poll execution subdirectories every five
 seconds. Only individually authorized prepared records can start; begun records
-recover without new permission. Errors are isolated per job. This loop is not yet
-registered as a StartOS daemon and must not be enabled on the live installation.
+recover without new permission. Errors are isolated per job. The lifecycle wrapper now has its own StartOS daemon. It is dormant on the live
+installation; only the disposable fixture opts into regtest execution.
+
+## Worker lifecycle, version 0.1.0:1
+
+StartOS registers an independent worker daemon alongside the read-only monitor.
+It polls `/data/execution/jobs`, but has no disposable-regtest environment opt-in,
+so it never executes those jobs on the installed service. The new Worker Status
+action reports a freshness-checked heartbeat and filtered per-job phases. Neither
+status nor backup history exposes connection credentials, invoices or preimages.
+The monitor's pairing and generation checks remain unchanged.
+
+In regtest, the same lifecycle cycle calls the packaged executor. Jobs retain
+individual authorization and journals across worker restarts. A shared lifecycle
+lock spans each managed job step, including its child process; backup and restore
+hooks cannot run across an active step. Missing or invalid records remain visible
+for inspection, and one bad job does not stop the worker loop.
+
+Backup refuses prepared, pending, uncertain or unreadable jobs. A successful
+backup contains only filtered terminal history, excluding `execution/jobs` and
+heartbeat/lock files. The pre-backup hook sets a pause barrier, and the post-backup
+hook removes it. An interrupted backup can leave the worker paused; this is not
+a reason to reset a payment record. The post-restore hook writes a permanent
+restore barrier before invalidating read-only pairing. There is deliberately no
+"resume restored swaps" action in this version. Even a restored authorized
+prepared record cannot start. Re-pairing does not clear that barrier.
+
+This does not implement recovery of active swaps from stale backups. Such backups
+are refused. Execution remains regtest-only, and live network credentials are
+still rejected by its transport. Pairing credentials remain read-only.
+
+Validate before installing:
+
+```bash
+python3 tests/test_lifecycle.py -v &&
+python3 tests/test_executor.py -v &&
+npm run check && npm run build && node scripts/check-bundle.cjs &&
+docker buildx build --builder startos-builder --load -t swap-controller:regtest . &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker
+```
+
+The fixture uses explicit crash flags for fault injection; normal recovery steps
+run the lifecycle cycle in fresh controller containers. It exercises the same
+cycle as the long-running daemon, not a real StartOS container restart. Actual
+StartOS restart and backup/restore validation follows a successful funded test.

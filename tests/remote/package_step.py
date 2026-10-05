@@ -1,4 +1,7 @@
 """Regtest adapter only: exercises executor code and controllers baked into image."""
+import contextlib
+import io
+import subprocess
 import json
 import os
 from pathlib import Path
@@ -7,6 +10,7 @@ import time
 sys.path.insert(0, '/app')
 from controller import private_load, save
 import executor
+import lifecycle
 from partition_check import isolation
 
 
@@ -15,7 +19,11 @@ def main():
     direction, flag, filename, *flags = sys.argv[1:]
     assert flag == '--state'
     external = Path(filename)
-    root = external.parent/'execution'
+    manager = external.parent/'execution'
+    use_worker = os.environ.get('LIFECYCLE_WORKER') == '1'
+    if use_worker:
+        lifecycle.setup(manager)
+    root = manager/'jobs'/'swap' if use_worker else manager
     root.mkdir(mode=0o700, exist_ok=True)
     if not (root/'intent.json').exists():
         digest = executor.prepare(root, direction, private_load(external), private_load(external.parent/'remote.json'))
@@ -28,7 +36,12 @@ def main():
     else:
         assert private_load(external) == private_load(root/'state.json'), 'fixture cannot replace durable executor state'
     try:
-        result = executor.step(root, flags=flags)
+        if use_worker and not flags:
+            with contextlib.redirect_stdout(io.StringIO()):
+                outcomes=lifecycle.tick(manager)
+            result=outcomes.get('swap') or subprocess.CompletedProcess([], 1, '', '')
+        else:
+            result = executor.step(root, flags=flags)
     finally:
         # These mirrors are solely for the original node-fixture assertions.
         # The executable journal and credential binding stay in execution/.

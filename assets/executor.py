@@ -30,12 +30,28 @@ def guard():
 @contextlib.contextmanager
 def lock(root):
     require(root.is_dir() and not root.is_symlink(), 'invalid_execution_directory')
-    fd = os.open(root/'executor.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    lifecycle_fd = None
+    if root.parent.name == 'jobs':
+        lifecycle_fd = os.open(root.parent.parent/'lifecycle.lock', os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW, 0o600)
+        try: fcntl.flock(lifecycle_fd, fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BaseException:
+            os.close(lifecycle_fd)
+            raise
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        yield
+        fd = os.open(root/'executor.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            yield
+        finally: os.close(fd)
     finally:
-        os.close(fd)
+        if lifecycle_fd is not None: os.close(lifecycle_fd)
+
+
+def execution_allowed(root):
+    if root.parent.name == 'jobs':
+        parent=root.parent.parent
+        require(not os.path.lexists(parent/'restored.json'), 'restored_execution_blocked')
+        require(not os.path.lexists(parent/'backup-paused.json'), 'backup_in_progress')
 
 
 def validate(direction, state, connections):
@@ -60,6 +76,7 @@ def prepare(root, direction, state, connections):
     validate(direction, state, connections)
     initial = dict(schema=1, source_commit=PIN, direction=direction, state=state, connections=connections)
     with lock(root):
+        execution_allowed(root)
         if (root/'intent.json').exists():
             require(private_load(root/'intent.json') == initial, 'existing_intent_changed')
             return digest(initial)
@@ -94,6 +111,7 @@ def authorize(root, expected_digest, expires_at, confirmed=False, now=None):
     require(confirmed is True, 'confirmation_required')
     require(type(expires_at) is int and now < expires_at <= now+3600, 'invalid_authorization_expiry')
     with lock(root):
+        execution_allowed(root)
         initial, state = records(root)
         require(state['phase'] == 'prepared' and not (root/'launched.json').exists(), 'already_started')
         require(digest(initial) == expected_digest, 'authorization_digest_mismatch')
@@ -123,6 +141,7 @@ def step(root, recover_only=False, flags=(), runner=child, now=None):
     guard()
     require(len(flags) <= 1 and all(f in FLAGS for f in flags), 'invalid_fixture_flags')
     with lock(root):
+        execution_allowed(root)
         initial, state = records(root)
         direction = initial['direction']
         if state['phase'] != 'prepared':

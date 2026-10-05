@@ -116,3 +116,34 @@ container restarts. Recovery-only must refuse to start an unsubmitted swap.
 After submission, network outages must preserve the journal; reconnecting must
 settle or fail the original attempt without resending. These are disposable
 regtest payments. Live execution and active-swap backup/restore remain disabled.
+
+### Worker lifecycle (0.1.0:1)
+
+This version adds **Worker Status** and an **Execution Worker** health check.
+On your live installation the worker is running but execution remains disabled.
+The existing read-only coordinator connections are unchanged.
+
+A restore permanently blocks execution in this version, including any old
+prepared authorization. You may re-pair the read-only monitor, but this does not
+remove the execution block. No action enables live payments.
+
+Backups refuse unresolved execution records. Only filtered terminal history is
+backed up; execution credentials and authorizations are excluded. An interrupted
+backup may leave execution paused and require inspection.
+
+First run the lifecycle tests on the packaging VM:
+
+```bash
+python3 tests/test_lifecycle.py -v &&
+python3 tests/test_executor.py -v &&
+npm run check && npm run build && node scripts/check-bundle.cjs &&
+docker buildx build --builder startos-builder --load -t swap-controller:regtest . &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker
+```
+
+After these pass, build the s9pk and verify Worker Status, restart, backup and
+restore on StartOS. A restored worker should report execution blocked while
+read-only pairing remains available.

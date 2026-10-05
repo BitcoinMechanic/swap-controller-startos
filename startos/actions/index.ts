@@ -25,4 +25,17 @@ const pair = sdk.Action.withInput('pair-nodes', meta('Pair Coordinator Nodes'), 
     xbt: { url: i.xbtUrl.trim(), node_id: i.xbtId.trim(), rune: i.xbtRune.trim(), ca_pem: i.xbtCa.trim() } },
 }))
 const status = sdk.Action.withInput('connection-status', meta('Connection Status'), sdk.InputSpec.of({}), async () => {}, async ({ effects }) => invoke(effects, 'status'))
-export const actions = sdk.Actions.of().addAction(pair).addAction(status)
+const workerStatus = sdk.Action.withInput('worker-status', async () => ({
+  name: 'Worker Status', description: 'Inspect execution lifecycle and filtered per-swap status. Live execution remains disabled.',
+  warning: null, allowedStatuses: 'only-running' as const, group: 'Execution', visibility: 'enabled' as const,
+}), sdk.InputSpec.of({}), async () => {}, async ({ effects }) =>
+  sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'worker-status', async sub => {
+    const res = await sub.exec(['python3', '/app/lifecycle.py', rootDir + '/execution', 'status'])
+    if (res.exitCode !== 0) throw new Error('Worker status unavailable; private details withheld.')
+    let report: any
+    try { report = JSON.parse(String(res.stdout)) } catch { throw new Error('Worker status unavailable.') }
+    return { version: '1' as const, title: 'Execution Worker', message: 'Live payments are disabled. Restored execution records cannot run automatically.',
+      result: { type: 'group' as const, value: Object.entries(report).map(([name, value]) => ({ name, description: null,
+        type: 'single' as const, value: typeof value === 'object' ? JSON.stringify(value) : String(value), masked: false, copyable: false, qr: false })) } }
+  }))
+export const actions = sdk.Actions.of().addAction(pair).addAction(status).addAction(workerStatus)

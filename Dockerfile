@@ -13,6 +13,6 @@ WORKDIR /app
 COPY assets/controller.py assets/read_only_rpc.py /app/
 COPY --from=source /src/tools/blake2b/ /opt/swap/
 COPY --from=source /src/LICENSE /opt/swap/LICENSE
-COPY assets/executor.py assets/execution_child.py assets/execution_rpc.py /app/
+COPY assets/executor.py assets/execution_child.py assets/execution_rpc.py assets/lifecycle.py /app/
 RUN python3 -m py_compile /app/controller.py /app/read_only_rpc.py
 CMD ["python3", "/app/controller.py", "/data", "run"]
