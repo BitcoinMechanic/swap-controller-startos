@@ -29,7 +29,8 @@ def main():
     before_audit = audit.read_bytes() if audit.exists() else b''
     if json.loads(before)['phase'] != 'outgoing_started':
         raise ValueError('pending_journal_required')
-    result = subprocess.run([sys.executable, '/remote-tests/run_controller.py', direction,
+    runner = '/remote-tests/package_step.py' if os.environ.get('PACKAGED_EXECUTOR') == '1' else '/remote-tests/run_controller.py'
+    result = subprocess.run([sys.executable, runner, direction,
                              '--state', str(state)], capture_output=True, timeout=20)
     if result.returncode != 1 or state.read_bytes() != before:
         raise RuntimeError('partition_mutated_journal_or_was_not_detected')

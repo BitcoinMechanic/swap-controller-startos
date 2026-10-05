@@ -92,3 +92,27 @@ without published ports. Both coordinators remain together in the node-test
 container; the controller is separate and communicates with them over HTTPS.
 The launcher removes its containers and network on exit and retains disposable
 logs in the printed directory. Leave the installed StartOS packages as they are.
+
+### Packaged executor validation
+
+The next development test puts the executor and its pinned swap logic inside the
+controller image. Your installed StartOS controller continues monitoring only.
+Do not install an update or enter new credentials for this test.
+
+On the packaging VM:
+
+```bash
+python3 tests/test_executor.py -v &&
+docker buildx build --builder startos-builder --load \
+  -t swap-controller:regtest . &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor
+```
+
+The fixture authorizes one exact swap and retains its execution record across
+container restarts. Recovery-only must refuse to start an unsubmitted swap.
+After submission, network outages must preserve the journal; reconnecting must
+settle or fail the original attempt without resending. These are disposable
+regtest payments. Live execution and active-swap backup/restore remain disabled.

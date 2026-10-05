@@ -46,7 +46,7 @@ def validate_job(job):
     return job
 
 
-def controller_command(repo, shared, image, network, name, job, partition=False):
+def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False):
     validate_job(job)
     command = ['docker', 'run', '--rm', '--name', name, '--network', network,
                '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
@@ -54,14 +54,15 @@ def controller_command(repo, shared, image, network, name, job, partition=False)
                '-e', 'BTC_XBT_DISPOSABLE_CONTAINER=1', '-e', 'PYTHONDONTWRITEBYTECODE=1',
                '-e', 'SEPARATE_CONTROLLER=1', '-e', 'REMOTE_TEST_ROOT=/controller-state',
                '-e', 'REMOTE_MODULES_DIR=/pinned',
+               '-e', 'PACKAGED_EXECUTOR='+('1' if packaged else '0'),
                *mount(shared/'control', '/controller-state'),
-               *mount(shared/'modules', '/pinned', True),
-               *mount(repo/'assets', '/controller-assets', True),
+               *([] if packaged else [*mount(shared/'modules', '/pinned', True),
+               *mount(repo/'assets', '/controller-assets', True)]),
                *mount(repo/'tests/remote', '/remote-tests', True),
                '--entrypoint', 'python3', image]
     if partition:
         return [*command, '/remote-tests/partition_check.py', job['direction'], job['filename']]
-    return [*command, '/remote-tests/run_controller.py', job['direction'],
+    return [*command, '/remote-tests/'+('package_step.py' if packaged else 'run_controller.py'), job['direction'],
             '--state', '/controller-state/'+job['filename'], *job['flags']]
 
 
@@ -73,7 +74,7 @@ def respond(path, result):
     temporary.replace(path)
 
 
-def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect):
+def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False):
     work = results/mode
     work.mkdir()
     shared = work/'exchange'; shared.mkdir()
@@ -124,14 +125,14 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
                         continue  # The atomic writer has not yet set metadata permissions.
                     jobs_seen.add(request.name)
                     if disconnect and not partition_done and job['phase'] == 'outgoing_started':
-                        blocked = subprocess.run(controller_command(repo, shared, controller, 'none', child, job, True),
+                        blocked = subprocess.run(controller_command(repo, shared, controller, 'none', child, job, True, packaged),
                             capture_output=True, text=True, timeout=25)
                         (work/'partition.log').write_text(blocked.stdout+blocked.stderr)
                         if blocked.returncode or blocked.stdout.strip() != '{"partition_preserved":true}':
                             raise RuntimeError('isolated_recovery_check_failed; inspect disposable container setup')
                         partition_done = True
                         print('PASS: controller network unavailable while payment pending; journal and RPC audit unchanged', flush=True)
-                    result = subprocess.run(controller_command(repo, shared, controller, network, child, job),
+                    result = subprocess.run(controller_command(repo, shared, controller, network, child, job, packaged=packaged),
                         capture_output=True, text=True, timeout=30)
                     respond(request.with_suffix('.response'), result)
                 time.sleep(0.05)
@@ -158,6 +159,7 @@ def main():
     parser.add_argument('controller_image'); parser.add_argument('bitcoind', type=Path)
     parser.add_argument('mode', nargs='?', default='all', choices=('all', *MODES))
     parser.add_argument('--disconnect-recovery', action='store_true')
+    parser.add_argument('--packaged-executor', action='store_true')
     args = parser.parse_args()
     os.umask(0o077)
     repo = Path(__file__).resolve().parents[1]
@@ -176,7 +178,7 @@ def main():
         try: docker('cp', container+':/usr/local/.', str(prefix)+'/')
         finally: docker('rm', container)
         for mode in MODES if args.mode == 'all' else (args.mode,):
-            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery)
+            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor)
 
 
 if __name__ == '__main__': main()

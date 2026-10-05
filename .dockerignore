@@ -3,3 +3,6 @@
 !assets/
 !assets/controller.py
 !assets/read_only_rpc.py
+!assets/executor.py
+!assets/execution_child.py
+!assets/execution_rpc.py

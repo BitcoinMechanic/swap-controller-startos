@@ -51,6 +51,14 @@ class BoundaryTests(unittest.TestCase):
         self.assertIn('--security-opt=no-new-privileges', command)
         self.assertEqual(command[command.index('--network')+1], 'test-net')
 
+    def test_packaged_executor_has_no_source_or_pinned_module_mount(self):
+        command = driver.controller_command(ROOT, Path('/tmp/exchange'), 'image', 'network', 'worker', self.job(), packaged=True)
+        mounts = [command[i+1] for i, v in enumerate(command) if v == '--mount']
+        self.assertEqual(len(mounts), 2)
+        self.assertTrue(any('dst=/controller-state' in m for m in mounts))
+        self.assertFalse(any('dst=/pinned' in m or 'dst=/controller-assets' in m for m in mounts))
+        self.assertIn('/remote-tests/package_step.py', command)
+
     def test_partition_uses_network_none_and_no_crash_flag(self):
         command = driver.controller_command(Path('/repo'), Path('/shared'), 'image', 'none', 'child', self.job(), True)
         self.assertEqual(command[command.index('--network')+1], 'none')

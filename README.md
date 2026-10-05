@@ -191,3 +191,52 @@ No StartOS installation, live credential rotation, or mainnet RPC is involved.
 This checks execution isolation and regtest recovery across a private Docker
 network; it does not yet run each coordinator on a separate host or enable
 the installed monitor to execute swaps.
+
+## Packaged regtest executor (not enabled by StartOS)
+
+The image now includes `/app/executor.py`, a separate regtest-only execution
+component, and `/opt/swap` from immutable source commit
+`81ba4099a63e5a0e83f55cead53c54f2a1b3c1fe`. The default command and StartOS daemon
+remain the read-only pairing monitor. There is no live execution action or new
+network listener. No upgrade installation is required for this test.
+
+An execution directory holds a private initial intent, exact HTTPS connections,
+controller journal, expiring per-swap permit, and launch record. Preparation has
+no RPC mutations. Authorization requires confirmation and the SHA256 digest of
+the whole initial intent (including connections and source pin). The worker
+persists launch intent before spawning the pinned controller. If it dies before
+the controller leaves `prepared`, it refuses another launch and requires
+inspection. Once submission is recorded, recovery does not depend on an unexpired
+permit; it retains the original connections and journal. Locks serialize all
+steps for one execution directory. Terminal repeats do not contact nodes.
+
+This component deliberately supports the current direct-channel regtest fixtures.
+It is not a generic importer of live swap journals or an on-chain/deadline worker.
+Live network names are rejected before transport, even if the disposable opt-in
+is set. The read-only probe client is unchanged. Backing up, migrating and
+restoring active execution directories is not implemented; do not place them in
+the installed monitor's data volume. The harness creates disposable directories.
+
+The separate-container harness can now test the packaged implementation:
+
+```bash
+python3 tests/test_executor.py -v &&
+docker buildx build --builder startos-builder --load \
+  -t swap-controller:regtest . &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor
+```
+
+In this mode the execution container mounts only its private state directory and
+a small test adapter; executor code, HTTPS transport and pinned controllers come
+from the image. The adapter prepares/authorizes the initial fixture once, proves
+that recovery-only cannot originate it, and copies journals back solely for the
+existing balance assertions. Subsequent adapter invocations cannot overwrite the
+executor's durable journal. The original harness mode remains available.
+
+The CLI additionally provides `run` to poll execution subdirectories every five
+seconds. Only individually authorized prepared records can start; begun records
+recover without new permission. Errors are isolated per job. This loop is not yet
+registered as a StartOS daemon and must not be enabled on the live installation.

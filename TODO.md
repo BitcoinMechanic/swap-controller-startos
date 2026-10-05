@@ -6,6 +6,10 @@
 - [x] Create the packaging repository before publishing a release.
 - [x] Run all four restricted HTTPS controller recovery scenarios against packaged nodes.
 - [x] Repeat both directions with the send acknowledgement discarded before controller receipt.
-- [ ] Run both directions in an isolated controller container, including unavailable networking during pending recovery.
+- [x] Run both directions in an isolated controller container, including unavailable networking during pending recovery.
 
-This initial version intentionally has no swap execution or quote API.
+- [ ] Run all four isolated-container scenarios using the packaged regtest executor.
+- [ ] Integrate durable execution with StartOS lifecycle and restore policy after regtest validation.
+
+The installed service remains read-only. Packaged execution is regtest-only and
+not registered as a daemon; there is no live execution or quote API.
