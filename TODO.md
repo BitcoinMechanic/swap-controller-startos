@@ -25,4 +25,6 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 
 - [x] Verify coordinator rune revocation fences a retained old executor in all four funded cases, including coordinator restarts.
 
-- [ ] Repeat fenced recovery with the original sendpay reply discarded before reaching the controller algorithm.
+- [x] Repeat fenced recovery with the original sendpay reply discarded before reaching the controller algorithm.
+
+- [ ] Verify partial coordinator revocation blocks a fresh replacement until the second administration endpoint returns and both revocations are confirmed.

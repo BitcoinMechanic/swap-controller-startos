@@ -547,3 +547,44 @@ python3 scripts/test-separated-controller.py \
 ```
 
 No StartOS installation or live credential change is required.
+
+## Partial coordinator revocation (disposable fixture)
+
+`--partial-fence` requires `--owner-fence`. The node-side fixture validates both
+coordinator identities, revokes the first original credential, then temporarily
+renames the second coordinator's Unix administration socket before trying its
+revocation. The actual CLI request must fail. Lightning and HTTPS keep running;
+this is loss of the administration endpoint, not a complete node/network outage.
+The first credential must remain revoked and the second original credential must
+still work over HTTPS. No completed fence receipt is published.
+
+A fresh controller container then invokes the replacement adapter twice. Both
+calls must stop at the missing two-coordinator fence receipt before any recovery
+RPC. Journals, credentials, restore state and RPC audits must remain byte-for-byte
+unchanged. A missing unrelated file or an arbitrary failure is not accepted as
+proof that the intended barrier worked.
+
+Only after that check does the node fixture restore the same socket inode. It
+checks that exactly the first original rune is revoked, then runs the normal full
+revocation verification. Both coordinators subsequently restart and the existing
+four recovery scenarios continue, including discarded submission and resolution
+replies. No payment is resubmitted. The socket manipulation is confined to the
+regtest node directories under `/results` inside the disposable node container.
+
+This is test orchestration, not a production takeover action. A production
+protocol for partial revocation and requests already in flight is still needed.
+Reuse the disposable image built for patch 0011:
+
+```sh
+python3 tests/test_partial_fence.py -v &&
+python3 tests/test_owner_fence.py -v &&
+python3 tests/test_container_boundary.py -v &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker \
+  --lost-journal --drop-resolution-reply --packaged-recovery \
+  --owner-fence --drop-submission-reply --partial-fence
+```
+
+No image rebuild, StartOS installation or live credential change is required.

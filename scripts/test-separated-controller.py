@@ -46,8 +46,9 @@ def validate_job(job):
     return job
 
 
-def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False, lifecycle=False, stale=False, lost=False, drop_resolution_reply=False, reply_check=None, packaged_recovery=False, owner_fence=False, drop_submission_reply=False):
+def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False, lifecycle=False, stale=False, lost=False, drop_resolution_reply=False, reply_check=None, packaged_recovery=False, owner_fence=False, drop_submission_reply=False, partial_fence=False):
     validate_job(job)
+    if partial_fence and not owner_fence: raise ValueError('partial_fence_requires_owner_fence')
     if drop_submission_reply and not owner_fence: raise ValueError('submission_reply_test_requires_owner_fence')
     if owner_fence and not (packaged and lifecycle and lost and packaged_recovery):
         raise ValueError('owner_fence_requires_packaged_recovery')
@@ -71,6 +72,8 @@ def controller_command(repo, shared, image, network, name, job, partition=False,
                *mount(repo/'assets', '/controller-assets', True)]),
                *mount(repo/'tests/remote', '/remote-tests', True),
                '--entrypoint', 'python3', image]
+    if partial_fence:
+        return [*command, '/remote-tests/partial_fence_check.py',job['direction'],job['filename']]
     if reply_check:
         return [*command, '/remote-tests/resolution_reply_check.py',job['direction'],job['filename'],reply_check]
     if partition:
@@ -87,7 +90,7 @@ def respond(path, result):
     temporary.replace(path)
 
 
-def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False, lifecycle=False, stale=False, lost=False, drop_resolution_reply=False, packaged_recovery=False, owner_fence=False, drop_submission_reply=False):
+def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False, lifecycle=False, stale=False, lost=False, drop_resolution_reply=False, packaged_recovery=False, owner_fence=False, drop_submission_reply=False, partial_fence=False):
     work = results/mode
     work.mkdir()
     shared = work/'exchange'; shared.mkdir()
@@ -102,6 +105,7 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
     created_network = False
     partition_done = False
     resolution_reply_done = False
+    partial_fence_done = False
     jobs_seen = set()
     try:
         docker('network', 'create', '--internal', network)
@@ -172,11 +176,27 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
                         resolution_reply_done=True
                         print('PASS: resolution reply discarded by process exit; fresh container reconciled terminal gate; audit unchanged; no repeated resolution',flush=True)
                     if owner_fence and result.returncode==88:
+                        if partial_fence:
+                            for stage in ('begin','resume'):
+                                partial=subprocess.run(['docker','exec',node,'/usr/bin/python3','/remote-tests/partial_fence.py',stage],
+                                    capture_output=True,text=True,timeout=15)
+                                (work/('partial-fence-'+stage+'.log')).write_text(partial.stdout+partial.stderr)
+                                if partial.returncode or partial.stdout.strip()!='{"partial_fence_stage_verified":true}':
+                                    raise RuntimeError('partial_fence_stage_failed; inspect '+str(work))
+                                if stage=='begin':
+                                    blocked=subprocess.run(controller_command(repo,shared,controller,network,child,job,
+                                        packaged=True,lifecycle=True,lost=True,packaged_recovery=True,owner_fence=True,partial_fence=True),
+                                        capture_output=True,text=True,timeout=10)
+                                    (work/'partial-recovery.log').write_text(blocked.stdout+blocked.stderr)
+                                    if blocked.returncode or blocked.stdout.strip()!='{"partial_recovery_blocked":true}':
+                                        raise RuntimeError('partial_recovery_not_blocked; inspect '+str(work))
+                            print('PASS: first rune revoked while second admin socket unavailable; fresh replacement refused twice without journal or RPC audit changes',flush=True)
                         fenced=subprocess.run(['docker','exec',node,'/usr/bin/python3','/remote-tests/owner_fence.py'],
                             capture_output=True,text=True,timeout=25)
                         (work/'owner-fence.log').write_text(fenced.stdout+fenced.stderr)
                         if fenced.returncode or fenced.stdout.strip()!='{"coordinator_fence_verified":true}':
                             raise RuntimeError('coordinator_fence_failed; inspect '+str(work))
+                        if partial_fence: partial_fence_done=True
                         if drop_submission_reply:
                             print('PASS: sendpay accepted but reply withheld from original controller before both coordinator revocations',flush=True)
                         print('PASS: both coordinators revoked original and derived runes before replacement recovery',flush=True)
@@ -189,6 +209,8 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
             raise RuntimeError('missing_partition_check')
         if drop_resolution_reply and not resolution_reply_done:
             raise RuntimeError('resolution_reply_crash_not_exercised')
+        if partial_fence and not partial_fence_done:
+            raise RuntimeError('partial_fence_not_exercised')
         if stale:
             report = json.loads(docker('run', '--rm', '--network', 'none',
                 *mount(shared/'control', '/controller-state', True), '--entrypoint', 'python3', controller,
@@ -240,7 +262,9 @@ def main():
     parser.add_argument('--packaged-recovery', action='store_true')
     parser.add_argument('--owner-fence', action='store_true')
     parser.add_argument('--drop-submission-reply', action='store_true')
+    parser.add_argument('--partial-fence', action='store_true')
     args = parser.parse_args()
+    if args.partial_fence and not args.owner_fence: parser.error('--partial-fence requires --owner-fence')
     if args.drop_submission_reply and not args.owner_fence: parser.error('--drop-submission-reply requires --owner-fence')
     if args.owner_fence and not args.packaged_recovery: parser.error('--owner-fence requires --packaged-recovery')
     if args.packaged_recovery and not args.lost_journal: parser.error('--packaged-recovery requires --lost-journal')
@@ -265,7 +289,7 @@ def main():
         try: docker('cp', container+':/usr/local/.', str(prefix)+'/')
         finally: docker('rm', container)
         for mode in MODES if args.mode == 'all' else (args.mode,):
-            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor, args.lifecycle_worker, args.stale_restore, args.lost_journal, args.drop_resolution_reply, args.packaged_recovery, args.owner_fence, args.drop_submission_reply)
+            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor, args.lifecycle_worker, args.stale_restore, args.lost_journal, args.drop_resolution_reply, args.packaged_recovery, args.owner_fence, args.drop_submission_reply, args.partial_fence)
 
 
 if __name__ == '__main__': main()

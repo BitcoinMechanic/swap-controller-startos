@@ -46,6 +46,14 @@ class BoundaryTests(unittest.TestCase):
             packaged=True,lifecycle=True,lost=True,packaged_recovery=True,owner_fence=True,drop_submission_reply=True)
         self.assertIn('DROP_SUBMISSION_REPLY_TEST=1',command)
 
+    def test_partial_fence_checker_runs_fresh_without_node_mounts(self):
+        with self.assertRaisesRegex(ValueError,'partial_fence_requires_owner_fence'):
+            driver.controller_command(ROOT,Path('/shared'),'image','network','test',self.job(),partial_fence=True)
+        command=driver.controller_command(ROOT,Path('/shared'),'image','network','test',self.job(),
+            packaged=True,lifecycle=True,lost=True,packaged_recovery=True,owner_fence=True,partial_fence=True)
+        self.assertEqual(command[-3:],['/remote-tests/partial_fence_check.py','forward','swap-state.json'])
+        self.assertFalse(any('dst=/results' in str(v) or 'docker.sock' in str(v) for v in command))
+
     def test_fixed_job_schema_rejects_path_and_command_injection(self):
         for field, value in [('filename', '../../wallet'), ('direction', 'shell'),
                              ('flags', ['--entrypoint=sh']), ('phase', 'unknown'),
