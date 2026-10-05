@@ -46,8 +46,9 @@ def validate_job(job):
     return job
 
 
-def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False, lifecycle=False, stale=False, lost=False, drop_resolution_reply=False, reply_check=None, packaged_recovery=False, owner_fence=False):
+def controller_command(repo, shared, image, network, name, job, partition=False, packaged=False, lifecycle=False, stale=False, lost=False, drop_resolution_reply=False, reply_check=None, packaged_recovery=False, owner_fence=False, drop_submission_reply=False):
     validate_job(job)
+    if drop_submission_reply and not owner_fence: raise ValueError('submission_reply_test_requires_owner_fence')
     if owner_fence and not (packaged and lifecycle and lost and packaged_recovery):
         raise ValueError('owner_fence_requires_packaged_recovery')
     if reply_check not in (None,'before','after'): raise ValueError('invalid_reply_check')
@@ -57,7 +58,8 @@ def controller_command(repo, shared, image, network, name, job, partition=False,
                '-e', 'BTC_XBT_DISPOSABLE_CONTAINER=1', '-e', 'PYTHONDONTWRITEBYTECODE=1',
                '-e', 'SEPARATE_CONTROLLER=1', '-e', 'REMOTE_TEST_ROOT=/controller-state',
                '-e', 'REMOTE_MODULES_DIR=/pinned',
-               '-e', 'OWNER_FENCE_TEST='+('1' if owner_fence else '0'),
+               '-e', 'DROP_SUBMISSION_REPLY_TEST='+('1' if drop_submission_reply else '0'),
+            '-e', 'OWNER_FENCE_TEST='+('1' if owner_fence else '0'),
                '-e', 'PACKAGED_RECOVERY='+('1' if packaged_recovery else '0'),
                '-e', 'PACKAGED_EXECUTOR='+('1' if packaged else '0'),
                '-e', 'LIFECYCLE_WORKER='+('1' if lifecycle else '0'),
@@ -85,7 +87,7 @@ def respond(path, result):
     temporary.replace(path)
 
 
-def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False, lifecycle=False, stale=False, lost=False, drop_resolution_reply=False, packaged_recovery=False, owner_fence=False):
+def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconnect, packaged=False, lifecycle=False, stale=False, lost=False, drop_resolution_reply=False, packaged_recovery=False, owner_fence=False, drop_submission_reply=False):
     work = results/mode
     work.mkdir()
     shared = work/'exchange'; shared.mkdir()
@@ -107,6 +109,7 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
         docker('run', '-d', '--name', node, '--network', network, '--init',
             '-e', 'BTC_XBT_DISPOSABLE_CONTAINER=1', '-e', 'PYTHONDONTWRITEBYTECODE=1',
             '-e', 'LOST_JOURNAL_TEST='+('1' if lost else '0'),
+            '-e', 'DROP_SUBMISSION_REPLY_TEST='+('1' if drop_submission_reply else '0'),
             '-e', 'OWNER_FENCE_TEST='+('1' if owner_fence else '0'),
             '-e', 'RECOVERY_DIRECTION='+('forward' if mode.startswith('forward') else 'reverse'),
             *mount(backend, '/test-bitcoind', True), *mount(prefix, '/opt/xbt', True),
@@ -140,21 +143,21 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
                         continue  # The atomic writer has not yet set metadata permissions.
                     jobs_seen.add(request.name)
                     if disconnect and not partition_done and job['phase'] == 'outgoing_started':
-                        blocked = subprocess.run(controller_command(repo, shared, controller, 'none', child, job, True, packaged, lifecycle, stale, lost, packaged_recovery=packaged_recovery, owner_fence=owner_fence),
+                        blocked = subprocess.run(controller_command(repo, shared, controller, 'none', child, job, True, packaged, lifecycle, stale, lost, packaged_recovery=packaged_recovery, owner_fence=owner_fence, drop_submission_reply=drop_submission_reply),
                             capture_output=True, text=True, timeout=25)
                         (work/'partition.log').write_text(blocked.stdout+blocked.stderr)
                         if blocked.returncode or blocked.stdout.strip() != '{"partition_preserved":true}':
                             raise RuntimeError('isolated_recovery_check_failed; inspect disposable container setup')
                         partition_done = True
                         print('PASS: controller network unavailable while payment pending; journal and RPC audit unchanged', flush=True)
-                    result = subprocess.run(controller_command(repo, shared, controller, network, child, job, packaged=packaged, lifecycle=lifecycle, stale=stale, lost=lost, drop_resolution_reply=drop_resolution_reply, packaged_recovery=packaged_recovery, owner_fence=owner_fence),
+                    result = subprocess.run(controller_command(repo, shared, controller, network, child, job, packaged=packaged, lifecycle=lifecycle, stale=stale, lost=lost, drop_resolution_reply=drop_resolution_reply, packaged_recovery=packaged_recovery, owner_fence=owner_fence, drop_submission_reply=drop_submission_reply),
                         capture_output=True, text=True, timeout=30)
                     if drop_resolution_reply and result.returncode==89:
                         if resolution_reply_done or job['flags'] or job['phase']!='outgoing_started':
                             raise RuntimeError('unexpected_resolution_crash')
                         for stage in ('before','after'):
                             checked=subprocess.run(controller_command(repo,shared,controller,'none',child,job,
-                                packaged=True,lifecycle=True,lost=True,reply_check=stage,packaged_recovery=packaged_recovery, owner_fence=owner_fence),
+                                packaged=True,lifecycle=True,lost=True,reply_check=stage,packaged_recovery=packaged_recovery, owner_fence=owner_fence, drop_submission_reply=drop_submission_reply),
                                 capture_output=True,text=True,timeout=15)
                             (work/('resolution-reply-'+stage+'.log')).write_text(checked.stdout+checked.stderr)
                             if checked.returncode or checked.stdout.strip()!='{"lost_resolution_reply_verified":true}':
@@ -162,7 +165,7 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
                             if stage=='before':
                                 # A distinct container/process starts with the intent receipt.
                                 result=subprocess.run(controller_command(repo,shared,controller,network,child,job,
-                                    packaged=True,lifecycle=True,lost=True,packaged_recovery=packaged_recovery, owner_fence=owner_fence),capture_output=True,text=True,timeout=30)
+                                    packaged=True,lifecycle=True,lost=True,packaged_recovery=packaged_recovery, owner_fence=owner_fence, drop_submission_reply=drop_submission_reply),capture_output=True,text=True,timeout=30)
                                 if result.returncode:
                                     (work/'resolution-recovery.log').write_text(result.stdout+result.stderr)
                                     raise RuntimeError('fresh_resolution_recovery_failed; inspect '+str(work))
@@ -174,6 +177,8 @@ def run_scenario(repo, results, prefix, backend, btc, controller, mode, disconne
                         (work/'owner-fence.log').write_text(fenced.stdout+fenced.stderr)
                         if fenced.returncode or fenced.stdout.strip()!='{"coordinator_fence_verified":true}':
                             raise RuntimeError('coordinator_fence_failed; inspect '+str(work))
+                        if drop_submission_reply:
+                            print('PASS: sendpay accepted but reply withheld from original controller before both coordinator revocations',flush=True)
                         print('PASS: both coordinators revoked original and derived runes before replacement recovery',flush=True)
                     respond(request.with_suffix('.response'), result)
                 time.sleep(0.05)
@@ -234,7 +239,9 @@ def main():
     parser.add_argument('--drop-resolution-reply', action='store_true')
     parser.add_argument('--packaged-recovery', action='store_true')
     parser.add_argument('--owner-fence', action='store_true')
+    parser.add_argument('--drop-submission-reply', action='store_true')
     args = parser.parse_args()
+    if args.drop_submission_reply and not args.owner_fence: parser.error('--drop-submission-reply requires --owner-fence')
     if args.owner_fence and not args.packaged_recovery: parser.error('--owner-fence requires --packaged-recovery')
     if args.packaged_recovery and not args.lost_journal: parser.error('--packaged-recovery requires --lost-journal')
     if args.drop_resolution_reply and not args.lost_journal: parser.error('--drop-resolution-reply requires --lost-journal')
@@ -258,7 +265,7 @@ def main():
         try: docker('cp', container+':/usr/local/.', str(prefix)+'/')
         finally: docker('rm', container)
         for mode in MODES if args.mode == 'all' else (args.mode,):
-            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor, args.lifecycle_worker, args.stale_restore, args.lost_journal, args.drop_resolution_reply, args.packaged_recovery, args.owner_fence)
+            run_scenario(repo, results, prefix, backend, btc, controller, mode, args.disconnect_recovery, args.packaged_executor, args.lifecycle_worker, args.stale_restore, args.lost_journal, args.drop_resolution_reply, args.packaged_recovery, args.owner_fence, args.drop_submission_reply)
 
 
 if __name__ == '__main__': main()

@@ -113,6 +113,10 @@ def main():
         assert private_load(root/'state.json')['phase']=='outgoing_started'
         token=executor.digest(private_load(root/'intent.json'))
         save(external.parent/'lost-journal.json',dict(digest=token,direction=direction,filename=external.name))
+        if os.environ.get('DROP_SUBMISSION_REPLY_TEST') == '1':
+            expected_network='xbt-regtest' if direction=='forward' else 'regtest'
+            assert private_load(root/'submission-reply-lost.json')==dict(network=expected_network,method='sendpay',reply_discarded=True)
+            assert 'preimage' not in private_load(root/'state.json')
         if os.environ.get('OWNER_FENCE_TEST') == '1':
             shutil.copytree(manager,external.parent/'old-owner')
         shutil.rmtree(manager)

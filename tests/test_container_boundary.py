@@ -39,6 +39,13 @@ class BoundaryTests(unittest.TestCase):
         for forbidden in ('dst=/controller-assets','dst=/results','docker.sock','lightning-rpc'):
             self.assertFalse(any(forbidden in str(v) for v in command))
 
+    def test_submission_reply_fault_requires_fencing(self):
+        with self.assertRaisesRegex(ValueError,'submission_reply_test_requires_owner_fence'):
+            driver.controller_command(ROOT,Path('/shared'),'image','network','test',self.job(),drop_submission_reply=True)
+        command=driver.controller_command(ROOT,Path('/shared'),'image','network','test',self.job(),
+            packaged=True,lifecycle=True,lost=True,packaged_recovery=True,owner_fence=True,drop_submission_reply=True)
+        self.assertIn('DROP_SUBMISSION_REPLY_TEST=1',command)
+
     def test_fixed_job_schema_rejects_path_and_command_injection(self):
         for field, value in [('filename', '../../wallet'), ('direction', 'shell'),
                              ('flags', ['--entrypoint=sh']), ('phase', 'unknown'),

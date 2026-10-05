@@ -307,3 +307,42 @@ python3 scripts/test-separated-controller.py \
 ```
 
 No image rebuild, StartOS installation or live credential change is involved.
+
+## Accepted submission with lost reply before revocation
+
+`--drop-submission-reply` requires `--owner-fence`. With both disposable-fixture
+opt-ins enabled, the packaged executor enables a one-shot fault only for the
+initial `--crash-after-sendpay` invocation. After the HTTPS adapter receives the
+coordinator's successful sendpay response and fsyncs its mutation audit, it writes
+`submission-reply-lost.json` and exits 88 before returning to the controller
+algorithm. The original journal remains `outgoing_started` without a preimage.
+The ordinary acknowledged-submission crash cannot satisfy the marker assertion.
+
+The node-side administrator verifies this marker in the retained old journal
+before revoking credentials. Both coordinators then restart. Recovery must find
+the one accepted outgoing attempt using separate resolution-only credentials,
+while the old executable journal and revoked credentials remain available but
+are refused. The existing dropped final-resolution reply test can run in the
+same scenario. Original attempt, channel balances, no remaining HTLCs, one gate
+resolution and retained restore barriers are still checked.
+
+This models a response discarded inside the adapter after coordinator acceptance,
+not arbitrary packet loss or an HTTP request still executing during revocation.
+It does not enable live execution or provide a production ownership handoff.
+
+Rebuild the disposable image because the packaged executor and adapter changed:
+
+```sh
+python3 tests/test_submission_reply.py -v &&
+python3 tests/test_executor.py -v &&
+python3 tests/test_container_boundary.py -v &&
+docker buildx build --builder startos-builder --load -t swap-controller:regtest . &&
+python3 scripts/test-separated-controller.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:regtest ../bitcoind all \
+  --disconnect-recovery --packaged-executor --lifecycle-worker \
+  --lost-journal --drop-resolution-reply --packaged-recovery \
+  --owner-fence --drop-submission-reply
+```
+
+No StartOS installation or live credential change is required.

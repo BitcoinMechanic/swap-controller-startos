@@ -23,4 +23,6 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 
 - [x] Repeat those four cases through the packaged, explicitly confirmed regtest recovery command.
 
-- [ ] Verify coordinator rune revocation fences a retained old executor in all four funded cases, including coordinator restarts.
+- [x] Verify coordinator rune revocation fences a retained old executor in all four funded cases, including coordinator restarts.
+
+- [ ] Repeat fenced recovery with the original sendpay reply discarded before reaching the controller algorithm.

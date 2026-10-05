@@ -82,6 +82,14 @@ def fence(records, local=rpc, reject=refused, factory=Remote):
 def main():
     guard()
     root=Path('/exchange/control')
+    if os.environ.get('DROP_SUBMISSION_REPLY_TEST')=='1':
+        original=root/'old-owner'/'jobs'/'swap'
+        state=private_load(original/'state.json')
+        intent=private_load(original/'intent.json')
+        expected='xbt-regtest' if intent['direction']=='forward' else 'regtest'
+        require(private_load(original/'submission-reply-lost.json')==dict(network=expected,method='sendpay',reply_discarded=True),
+                'discarded_submission_reply_required')
+        require(state['phase']=='outgoing_started' and 'preimage' not in state,'original_submission_checkpoint_required')
     report=fence(private_load(root/'fence-nodes.json'))
     save(root/'owner-fence.json',report)
     print('{"coordinator_fence_verified":true}')

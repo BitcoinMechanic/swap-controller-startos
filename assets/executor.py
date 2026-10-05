@@ -126,6 +126,10 @@ def child(root, direction, flags):
     require(Path('/opt/swap/SOURCE_COMMIT').read_text().strip() == PIN, 'source_pin_mismatch')
     env = dict(os.environ, REMOTE_TEST_ROOT=str(root), PYTHONDONTWRITEBYTECODE='1')
     env.pop('REMOTE_DROP_SEND_REPLY', None)
+    if os.environ.get('DROP_SUBMISSION_REPLY_TEST') == '1' and '--crash-after-sendpay' in flags:
+        guard()
+        require(os.environ.get('OWNER_FENCE_TEST') == '1', 'owner_fence_fixture_required')
+        env['REMOTE_DROP_SEND_REPLY'] = '1'
     return subprocess.run([sys.executable, '/app/execution_child.py', direction, '--state', str(root/'state.json'), *flags],
                           env=env, capture_output=True, text=True, timeout=25)
 

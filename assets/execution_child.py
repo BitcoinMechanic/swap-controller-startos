@@ -7,8 +7,20 @@ import subprocess
 import sys
 
 sys.path.insert(0, '/app')
-from controller import private_load
+from controller import private_load, require, save
 from execution_rpc import Remote
+
+
+
+def discard_submission_reply(root, network, method):
+    if method != 'sendpay' or os.environ.get('REMOTE_DROP_SEND_REPLY') != '1':
+        return
+    require(os.environ.get('BTC_XBT_DISPOSABLE_CONTAINER') == '1', 'disposable_container_required')
+    require(network in ('regtest','xbt-regtest'), 'regtest_network_required')
+    # Called only after the remote response and mutation audit are durable,
+    # before returning the response to the pinned controller algorithm.
+    save(root/'submission-reply-lost.json',dict(network=network,method='sendpay',reply_discarded=True))
+    os._exit(88)
 
 
 def main():
@@ -37,10 +49,7 @@ def main():
             stream.write(json.dumps({'network': clients[key].network, 'method': method})+'\n')
             stream.flush()
             os.fsync(stream.fileno())
-        if method == 'sendpay' and os.environ.get('REMOTE_DROP_SEND_REPLY') == '1':
-            # Remote accepted submission, but the controller never receives the
-            # reply. Its pre-submission checkpoint must prevent a second send.
-            os._exit(88)
+        discard_submission_reply(root, clients[key].network, method)
         return result
 
     modules = Path('/opt/swap')
