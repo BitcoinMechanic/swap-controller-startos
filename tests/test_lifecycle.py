@@ -90,6 +90,49 @@ class LifecycleTests(unittest.TestCase):
         self.assertNotIn('rune',json.dumps(report));self.assertNotIn('payment_hash',json.dumps(report))
         self.assertFalse(l.snapshot(self.root,now=99)['worker_fresh'])
 
+    def test_legacy_pause_after_restore_is_reported_without_removing_guards(self):
+        path=self.job();l.restored(self.root)
+        save(self.root/'backup-paused.json',{'paused':True})
+        before=(self.root/'backup-paused.json').read_bytes()
+        for _ in range(2):
+            l.tick(self.root);report=l.snapshot(self.root)
+            self.assertFalse(report['backup_paused'])
+            self.assertEqual(report['backup_pause_state'],'legacy_restored_marker')
+            self.assertTrue(report['restored_block']);self.assertEqual(report['worker_mode'],'restored')
+            with self.assertRaisesRegex(ValueError,'restored_execution_blocked'):e.step(path)
+        self.assertEqual(before,(self.root/'backup-paused.json').read_bytes())
+
+    def test_new_backup_after_restore_still_reports_paused(self):
+        l.restored(self.root);l.backup_begin(self.root)
+        report=l.snapshot(self.root)
+        self.assertTrue(report['backup_paused']);self.assertEqual(report['backup_pause_state'],'paused')
+        self.assertEqual(private_load(self.root/'backup-paused.json'),{'schema':1,'paused':True})
+        l.backup_end(self.root)
+        self.assertEqual(l.snapshot(self.root)['backup_pause_state'],'none')
+        self.assertTrue(private_load(self.root/'restored.json')['blocked'])
+
+    def test_restore_clears_snapshot_pause_only_after_barrier_saved(self):
+        l.backup_begin(self.root)
+        original=l.save
+        def fail_barrier(path,data):
+            if path.name=='restored.json':raise OSError('simulated disk failure')
+            original(path,data)
+        with patch.object(l,'save',side_effect=fail_barrier):
+            with self.assertRaises(OSError):l.restored(self.root)
+        self.assertTrue((self.root/'backup-paused.json').exists())
+        l.restored(self.root)
+        self.assertFalse((self.root/'backup-paused.json').exists())
+        self.assertTrue(private_load(self.root/'restored.json')['blocked'])
+
+    def test_legacy_unrestored_and_unreadable_markers_remain_paused(self):
+        save(self.root/'backup-paused.json',{'paused':True})
+        self.assertTrue(l.snapshot(self.root)['backup_paused'])
+        l.restored(self.root)
+        (self.root/'backup-paused.json').write_text('PRIVATE-BAD-MARKER')
+        report=l.snapshot(self.root)
+        self.assertTrue(report['backup_paused']);self.assertEqual(report['backup_pause_state'],'unreadable')
+        self.assertNotIn('PRIVATE',json.dumps(report))
+
     def test_real_dormant_process_restart_preserves_restore_barrier(self):
         l.restored(self.root)
         script=Path(l.__file__)

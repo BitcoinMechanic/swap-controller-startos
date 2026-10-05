@@ -491,3 +491,38 @@ python3 scripts/test-separated-controller.py \
 After the funded tests pass, build/install 0.1.0:2 and inspect Recovery Status,
 Connection Status and Worker Status. Pairing and the restore barrier must persist
 across upgrade and restart. No new live payment or recovery permission is added.
+
+## Backup pause reporting (0.1.0:3)
+
+Old backups included `execution/backup-paused.json`, which could leave Worker
+Status reporting a pause after restoration had finished. This release excludes
+that transient marker from new backups. Restore commits `restored.json` first,
+then removes any inherited pause marker from the restored snapshot.
+
+For an already-restored installation upgraded from an older release, the status
+reader recognizes the legacy marker and reports `backup_paused: false` with
+`backup_pause_state: legacy_restored_marker`. This means the old marker is not
+evidence of a currently running backup. It is not deleted during status checks
+or normal startup. Both marker-existence execution guards and the restore barrier
+are preserved. No permissions or pairing settings change on upgrade.
+
+New backup operations write a versioned pause marker and report
+`backup_paused: true` / `backup_pause_state: paused`, including when the restore
+barrier exists. Completion removes that marker. Unreadable or unknown marker
+contents continue to report paused. Ordinary status with no pause marker reports
+`backup_pause_state: none`.
+
+Validate this narrow lifecycle change with:
+
+```bash
+python3 tests/test_lifecycle.py -v
+python3 tests/test_recovery_actions.py -v
+npm run check && npm run build && node scripts/check-bundle.cjs
+BUILDX_BUILDER=startos-builder make x86
+```
+
+After installing 0.1.0:3, Worker Status should show `restored_block: true`,
+`worker_mode: restored`, and a fresh worker. For an existing inherited marker,
+expect `backup_paused: false` and `backup_pause_state: legacy_restored_marker`.
+Recovery Status remains blocked and pairing remains ready. No new restore or
+funded swap test is needed to check this reporting correction.

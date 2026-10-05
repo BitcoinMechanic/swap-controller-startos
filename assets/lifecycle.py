@@ -48,14 +48,29 @@ def inventory(root):
     return reports
 
 
+
+def backup_status(root, restored):
+    path=root/'backup-paused.json'
+    if not os.path.lexists(path):return False,'none'
+    try: marker=private_load(path)
+    except Exception:return True,'unreadable'
+    if marker=={'paused':True} and restored:
+        # Old snapshots included this marker. Do not report it as proof that
+        # a backup is currently running. Leave it on disk; execution guards
+        # still use marker existence and the independent restore barrier.
+        return False,'legacy_restored_marker'
+    if marker in ({'paused':True},{'schema':1,'paused':True}):return True,'paused'
+    return True,'unreadable'
+
+
 def snapshot(root, now=None):
     with locked(root):
         now=int(time.time()) if now is None else now
         restored=os.path.lexists(root/'restored.json')
-        paused=os.path.lexists(root/'backup-paused.json')
+        paused,pause_state=backup_status(root,restored)
         reports=inventory(root)
         result=dict(live_payment_enabled=False, regtest_only=True, restored_block=restored,
-                    backup_paused=paused, jobs=reports, worker_fresh=False)
+                    backup_paused=paused, backup_pause_state=pause_state, jobs=reports, worker_fresh=False)
         try:
             heartbeat=private_load(root/'heartbeat.json')
             result['worker_fresh']=0<=now-heartbeat['checked_at']<=30
@@ -89,7 +104,7 @@ def backup_begin(root):
     with locked(root):
         reports=inventory(root)
         require(all(r['outcome']=='terminal' for r in reports), 'backup_refused_unresolved_execution')
-        save(root/'backup-paused.json', dict(paused=True))
+        save(root/'backup-paused.json', dict(schema=1,paused=True))
         # Only this filtered history is included; jobs contain credentials and
         # permits and are excluded wholesale from the package backup.
         save(root/'history.json', dict(jobs=reports))
@@ -105,6 +120,9 @@ def restored(root):
         # Commit barrier first. Never remove it automatically or clear it when
         # pairing read-only credentials. Also covers backups predating workers.
         save(root/'restored.json', dict(blocked=True))
+        # The restored snapshot's pause belongs to the old backup operation.
+        # Commit the independent restore barrier before removing that marker.
+        (root/'backup-paused.json').unlink(missing_ok=True)
         (root/'heartbeat.json').unlink(missing_ok=True)
 
 

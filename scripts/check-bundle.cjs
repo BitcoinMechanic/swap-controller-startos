@@ -9,7 +9,7 @@ for (const name of ['recovery.py','recovery_inspection.py','recovery_workflow.py
 }
 const { manifest, actions } = require('../javascript/index.js')
 assert.equal(manifest.id, 'swap-controller')
-assert.equal(manifest.version, '0.1.0:2')
+assert.equal(manifest.version, '0.1.0:3')
 assert.deepEqual(Object.keys(manifest.images), ['controller'])
 assert.deepEqual(manifest.volumes, ['main'])
 assert.deepEqual(Object.keys(actions.actions), ['pair-nodes', 'connection-status', 'worker-status', 'recovery-status', 'confirm-recovery-revocation', 'recover-existing-swap'])
@@ -46,7 +46,7 @@ async function run() {
  // setupBackups invokes the provided callback in the real runtime.
  load('startos/backups.ts',{'./sdk':{sdk:{...backupSdk,setupBackups:fn=>{fn();return {}}}},'fs/promises':{unlink:async p=>removed.push(p)},'./utils':{mounts:{},rootDir:'/data'}})
  assert.ok(options.exclude.includes('pairing.json'));assert.ok(options.exclude.includes('status.json'))
- assert.ok(options.exclude.includes('execution/jobs'))
+ assert.ok(options.exclude.includes('execution/backup-paused.json'));assert.ok(options.exclude.includes('execution/jobs'))
  await preBackup({});await postBackup({});await restore({});assert.deepEqual(hooks,['backup-begin','backup-end','restored'])
  assert.deepEqual(removed,['/volume/pairing.json','/volume/status.json'])
  console.log('Controller bundle, daemon health, no inbound interfaces and restore invalidation OK')

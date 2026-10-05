@@ -30,4 +30,6 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 - [x] Verify partial coordinator revocation blocks a fresh replacement until the second administration endpoint returns and both revocations are confirmed.
 
 - [x] Run all four funded scenarios through packaged recovery admission, including durable partial confirmation and fresh access verification.
-- [ ] Validate the StartOS action boundary with all four funded scenarios and install 0.1.0:2 for local recovery status, restart and unchanged pairing/barrier checks.
+- [x] Validate the StartOS action boundary with all four funded scenarios and install 0.1.0:2 for local recovery status, restart and unchanged pairing/barrier checks.
+
+- [ ] Install 0.1.0:3 and verify inherited pause reporting with the restore barrier intact.

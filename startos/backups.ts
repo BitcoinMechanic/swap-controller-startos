@@ -12,7 +12,7 @@ async function workerHook(effects: T.Effects, mode: string) {
 export const { createBackup, restoreInit } = sdk.setupBackups(async () =>
   sdk.Backups.ofVolumes('main')
     .setOptions({ exclude: ['pairing.json', 'status.json', 'pairing.lock', '.controller-*',
-      'execution/jobs', 'execution/heartbeat.json', 'execution/lifecycle.lock'] })
+      'execution/jobs', 'execution/heartbeat.json', 'execution/lifecycle.lock', 'execution/backup-paused.json'] })
     .setPreBackup(async (effects) => workerHook(effects, 'backup-begin'))
     .setPostBackup(async (effects) => workerHook(effects, 'backup-end'))
     .setPostRestore(async (effects) => {
