@@ -38,4 +38,6 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 
 - [x] Run the funded quote flow through the packaged StartOS action handler, then install 0.1.0:4 and verify local quote status, forms, pairing and preserved restore barrier.
 
-- [ ] Run the reverse quote flow through packaged actions, then install 0.1.0:5 and verify the reverse form, shared approval, local status and preserved pairing/barriers.
+- [x] Run the reverse quote flow through packaged actions, then install 0.1.0:5 and verify the reverse form, shared approval, local status and preserved pairing/barriers.
+
+- [ ] Install 0.1.0:6 and verify Live Swap Readiness with the existing pairing state; confirm live requirements and restore barrier remain explicit.

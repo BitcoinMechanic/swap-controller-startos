@@ -900,3 +900,39 @@ After the funded test passes, build/install 0.1.0:5. Verify the new reverse
 preparation form and renamed shared approval action, local quote status, and
 unchanged pairing and restore-barrier state. An intentionally unpaired service
 may remain unpaired.
+
+## Live Swap Readiness (0.1.0:6)
+
+The `Live Swap Readiness` action reports fresh, read-only observations from the
+existing HTTPS pairing. It accepts no inputs and does not create or replace
+credentials, save status files, enable gates, authorize execution, or alter
+restore barriers. If unpaired, it reports `pair_nodes_first` without RPC.
+
+With pairing configured, both node identities and expected live networks must
+match before either node's channels are read. The action uses only `getinfo`
+and `listpeerchannels`, with the existing dedicated read-only credentials,
+certificate verification, no proxy, no redirect and no retry transport.
+It reports warnings, normal/connected channel counts and pending HTLC counts.
+Pairing changes during a check, a backward clock change or a check exceeding
+120 seconds invalidate the observations. No endpoints, runes, certificates,
+node IDs, channel details, HTLC hashes or raw errors are included in the report.
+
+`Node connections verified` describes successful identity/channel observations
+without node warnings. It does not establish routes, liquidity, timing safety
+or spending authority. `Ready for live swaps` and `Live payments enabled`
+remain false in this release, even when both node connections are healthy.
+
+The current credentials cannot inspect swap gate activation. The action reports
+that requirement as `not_verified_with_read_only_credentials`; it does not
+claim that a remote gate is absent or disabled. Dedicated execution credential
+configuration, live amount/fee/expiry policy, cross-chain timing policy and
+live execution are not supported by this controller release. These are package
+limitations, not findings about the remote nodes. Regtest configuration and
+arbitrary files cannot satisfy these requirements.
+
+Build/install 0.1.0:6 and run `Live Swap Readiness`. An intentionally unpaired
+installation should report `pair_nodes_first`, outstanding live requirements,
+and its existing restore barrier. To inspect the nodes, pair through the
+existing read-only `Pair Coordinator Nodes` action and rerun readiness.
+Re-pairing does not clear the restore barrier. No funded swap test is required
+for this read-only addition.
