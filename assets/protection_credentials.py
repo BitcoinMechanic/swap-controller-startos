@@ -1,7 +1,6 @@
 """Server-side rune restrictions for disposable regtest protection.
 
-No issuance or live authority. Forward release lacks a payment_hash parameter;
-this module deliberately cannot create a bound forward release credential.
+No issuance or live authority. Forward recovery requires the packaged bound RPC.
 """
 import re
 from controller import require
@@ -10,8 +9,9 @@ from controller import require
 def restrictions(network, purpose, target):
     require(network in ('regtest', 'xbt-regtest'), 'regtest_network_required')
     require(type(target) is str and re.fullmatch('[0-9a-f]{64}', target), 'invalid_credential_target')
-    require(purpose in ('close', 'reverse-release'), 'unsupported_credential_purpose')
+    require(purpose in ('close', 'reverse-release', 'xbt-release-bound'), 'unsupported_credential_purpose')
     require(purpose != 'reverse-release' or network == 'xbt-regtest', 'reverse_network_required')
+    require(purpose != 'xbt-release-bound' or network == 'regtest', 'forward_network_required')
     reads = ['getinfo', 'listpeerchannels', 'listsendpays']
     reads += ['xbt-quote-status', 'xbt-spend-info'] if network == 'regtest' else ['reverse-status']
     rules = [['method=' + method for method in reads + [purpose]]]
@@ -22,6 +22,6 @@ def restrictions(network, purpose, target):
                   ['method/close', 'pnameid=' + target],
                   ['method/close', 'pnameunilateraltimeout=1']]
     else:
-        rules += [['method/reverse-release', 'pnum=3'],
-                  ['method/reverse-release', 'pnamepayment_hash=' + target]]
+        rules += [['method/'+purpose, 'pnum='+('2' if purpose=='xbt-release-bound' else '3')],
+                  ['method/'+purpose, 'pnamepayment_hash=' + target]]
     return rules

@@ -108,6 +108,22 @@ class ClaimTests(unittest.TestCase):
             for method in ('close','sendpay','xbt-fail','reverse-fail','withdraw'):
                 with self.assertRaises(ValueError):client.call(method)
             request.assert_not_called()
+    def test_forward_transport_uses_only_bound_release(self):
+        self.fixture()
+        client=r.ClaimRemote.__new__(r.ClaimRemote)
+        client.network='regtest';client.node_id=self.spec['node_ids']['btc']
+        client.incoming_network='regtest';client.release='xbt-release';client.payment_hash=self.hash;client.binding=['1x1x1',7]
+        calls=[]
+        def request(method,params):
+            calls.append((method,params))
+            return dict(id=client.node_id,network='regtest') if method=='getinfo' else dict(released=1)
+        with patch.object(client,'_request',side_effect=request):
+            client.call('xbt-release',self.preimage)
+            self.assertEqual(calls[-1],('xbt-release-bound',dict(payment_hash=self.hash,preimage=self.preimage)))
+            self.assertNotIn('xbt-release',[m for m,p in calls])
+            before=list(calls)
+            with self.assertRaises(ValueError):client.call('xbt-release','00'*32)
+            self.assertEqual(calls,before)
     def test_live_network_refused(self):
         with self.assertRaises(ValueError):r.ClaimRemote({'network':'bitcoin'},'forward','a'*64,['1x1x1',1])
 

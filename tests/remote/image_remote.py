@@ -37,6 +37,14 @@ class RemoteLab(PairLab):
         return super().start(args, logfile, new_session)
 
     def lightning(self, name, network, backend, expect_success=True, plugins=()):
+        if getattr(self,'bound_forward_gate',False) and network=='regtest':
+            for plugin in plugins:
+                if Path(plugin).name=='quote_plugin.py':
+                    Path(plugin).write_text('#!/usr/bin/python3\nimport sys\nfrom pathlib import Path\n'
+                        'sys.path.insert(0,"/usr/local/libexec/btc-controller")\n'
+                        'from bound_release import run\n'
+                        'run("/usr/local/libexec/cln-swap/quote_plugin.py",Path(__file__))\n')
+                    Path(plugin).chmod(0o700)
         node = super().lightning(name, network, backend, expect_success, plugins)
         if name not in self.rest:
             return node

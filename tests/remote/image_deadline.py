@@ -52,24 +52,25 @@ def scoped_connections(lab,incoming_node,outgoing_node,reverse=False,recovery=Fa
         methods=['getinfo','listpeerchannels','listsendpays']
         if node is incoming_node:
             methods+=(['reverse-status'] if reverse else ['xbt-quote-status','xbt-spend-info'])
-            methods+=[('reverse-release' if reverse else 'xbt-release') if recovery else 'close']
+            methods+=[('reverse-release' if reverse else 'xbt-release-bound') if recovery else 'close']
         if inspection:methods=['getinfo']+(['listtransactions','listfunds'] if node is incoming_node else ['listsendpays'])
         rules=[['method='+m for m in methods]]
         if node is incoming_node and not inspection:
             from protection_credentials import restrictions
             if not recovery:rules=restrictions(network,'close',channel_id)
-            elif reverse:rules=restrictions(network,'reverse-release',payment_hash)
+            else:rules=restrictions(network,'reverse-release' if reverse else 'xbt-release-bound',payment_hash)
         token=lab.rpc([*node['cli'],'-k'],'createrune',
                       'restrictions='+json.dumps(rules))
         config={k:v for k,v in lab.connections[node['data'].name].items() if k!='cli'}
         config['rune']=token['rune'];connections.append(config)
         remote=Remote(config)
-        if node is incoming_node and not inspection and (not recovery or reverse):
+        if node is incoming_node and not inspection :
             # Ask CLN's authorization checker, never invoke close/release with
             # deliberately wrong parameters. Positive permission is checked too.
-            method='reverse-release' if recovery else 'close'
+            method=('reverse-release' if reverse else 'xbt-release-bound') if recovery else 'close'
             good=(dict(payment_hash=payment_hash,binding=['1x1x1',0],preimage='00'*32)
                   if recovery else dict(id=channel_id,unilateraltimeout=1))
+            if recovery and not reverse:good.pop('binding')
             def permitted(params):
                 try:
                     reply=lab.rpc([*node['cli'],'-k'],'checkrune','rune='+token['rune'],
@@ -86,7 +87,7 @@ def scoped_connections(lab,incoming_node,outgoing_node,reverse=False,recovery=Fa
             if not recovery:
                 assert not permitted(dict(good,unilateraltimeout=0)),'bound rune accepted changed timeout'
             print('PASS: CLN authorization enforces exact '+method+' target and parameter shape',flush=True)
-        forbidden=['sendpay','pay','withdraw','createrune']
+        forbidden=['sendpay','pay','withdraw','createrune','xbt-release']
         if node is incoming_node:
             forbidden+=([('reverse-fail' if reverse else 'xbt-fail'),'close'] if recovery else
                          (['reverse-release','reverse-fail'] if reverse else ['xbt-release','xbt-fail']))
@@ -205,7 +206,7 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
         audit=[json.loads(line) for line in (ROOT/'deadline-audit.jsonl').read_text().splitlines()]
         closes=[row for row in audit if row['method']=='close']
         assert len(closes)==1 and closes[0]['network']==('xbt-regtest' if reverse else 'regtest')
-        assert not {row['method'] for row in audit}&{'sendpay','xbt-release','xbt-fail','reverse-release','reverse-fail','pay','withdraw'}
+        assert not {row['method'] for row in audit}&{'sendpay','xbt-release-bound','xbt-release','xbt-fail','reverse-release','reverse-fail','pay','withdraw'}
         assert plugin.with_suffix('.quotes.json').read_bytes()==quote_before
     pending();pending()
     print('PASS: one original-channel close at '+str(close_margin)+' blocks'+(' after controller downtime' if downtime else '')+'; fresh containers reconcile '+('lost reply' if drop else 'saved reply')+' without a second close',flush=True)
@@ -231,8 +232,8 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
         terminal=receipt.read_bytes()
         assert bridge(recover=True)['phase']=='gate_resolved' and receipt.read_bytes()==terminal
         audit=[json.loads(line) for line in (ROOT/'claim-audit.jsonl').read_text().splitlines()]
-        releases=[row for row in audit if row['method'] in ('xbt-release','reverse-release')]
-        assert releases==[dict(network='xbt-regtest' if reverse else 'regtest',method='reverse-release' if reverse else 'xbt-release')]
+        releases=[row for row in audit if row['method'] in ('xbt-release-bound','reverse-release')]
+        assert releases==[dict(network='xbt-regtest' if reverse else 'regtest',method='reverse-release' if reverse else 'xbt-release-bound')]
         assert not {row['method'] for row in audit}&{'sendpay','close','xbt-fail','reverse-fail','pay','withdraw'}
         assert journal.read_bytes()==before
         completed=rpc(outgoing_node,'waitsendpay',payment_hash,10,attempt.get('partid',0),attempt['groupid'])
@@ -271,7 +272,7 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
     assert (ROOT/'deadline-job/claim-receipt.json').read_bytes()==terminal
     print('PASS: fresh read-only verifier linked funding, preimage claim and mature wallet sweep; fixture transaction IDs agree',flush=True)
     releases=[json.loads(line) for line in (ROOT/'claim-audit.jsonl').read_text().splitlines()
-              if json.loads(line)['method'] in ('xbt-release','reverse-release')]
+              if json.loads(line)['method'] in ('xbt-release-bound','reverse-release')]
     assert len(releases)==1
     # Fixture-only chain administration: the verifier has read-only runes and
     # never receives backend credentials. Disconnect only the sweep block and
@@ -454,6 +455,7 @@ def main():
     btc_deadline.run_deadline=run_deadline
     reverse_onchain.exercise_onchain=run_reverse_deadline
     lab=image_remote.RemoteLab(root,'/test-bitcoind','/usr/bin/bitcoin-cli')
+    lab.bound_forward_gate=True
     try:
         if reverse:reverse_regtest.run(lab,recovery='gate-deadline')
         else:swap_regtest.run(lab,btc_deadline=True)

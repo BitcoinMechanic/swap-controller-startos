@@ -37,7 +37,7 @@ class AuditedClaim(ClaimRemote):
         with (ROOT/'claim-audit.jsonl').open('a') as out:
             out.write(json.dumps(dict(network=self.network,method=method))+'\n')
             out.flush();os.fsync(out.fileno())
-        if self.drop and method in ('xbt-release','reverse-release'):os._exit(89)
+        if self.drop and method in ('xbt-release-bound','reverse-release'):os._exit(89)
         return result
 
 

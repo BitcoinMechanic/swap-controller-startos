@@ -258,11 +258,11 @@ def run(lab,reverse=False):
             assert rpc(outgoing_chain,'getblockcount')==outgoing_height
             audit=[json.loads(line) for line in (manager/'supervisor-audit.jsonl').read_text().splitlines()]
             assert sum(r['method']=='close' for r in audit)==1
-            assert sum(r['method']==('reverse-release' if reverse else 'xbt-release') for r in audit)==1
+            assert sum(r['method']==('reverse-release' if reverse else 'xbt-release-bound') for r in audit)==1
             assert not {r['method'] for r in audit}&{'sendpay','xbt-fail','reverse-fail'}
             execution_audit=[json.loads(line) for line in (job/'remote-audit.jsonl').read_text().splitlines()]
             assert sum(r['method']=='sendpay' for r in execution_audit)==1
-            assert not {r['method'] for r in execution_audit}&{'close','xbt-release','reverse-release','xbt-fail','reverse-fail'}
+            assert not {r['method'] for r in execution_audit}&{'close','xbt-release-bound','xbt-release','reverse-release','xbt-fail','reverse-fail'}
             print('PASS: same packaged worker chose pending close, then post-close preimage recovery; repeated recovery retained close and claim records',flush=True)
             print('PASS: supervised quote recovered through confirmed HTLC-success and mature wallet sweep; isolated read-only verifier agrees with fixture transaction IDs',flush=True)
             print('PASS: payer settled with on-chain preimage; recipient paid; outgoing balances verified; one send, close and release retained',flush=True)
@@ -337,6 +337,7 @@ def main():
     root=Path(tempfile.mkdtemp(prefix='quote-flow-',dir='/results'))
     print('Test directory: '+str(root),flush=True)
     lab=image_remote.RemoteLab(root,'/test-bitcoind','/usr/bin/bitcoin-cli')
+    lab.bound_forward_gate=True
     direction=sys.argv[1] if len(sys.argv)>1 else 'forward'
     assert direction in ('forward','reverse')
     try:run(lab,direction=='reverse')

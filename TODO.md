@@ -71,5 +71,5 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 - [ ] Establish confirmation/reorg handling beyond paired-node observations before live protection.
 - [ ] Validate live deadline/on-chain protection, including controller downtime, before implementing live execution.
 
-- [ ] Validate server-side exact-channel close and reverse payment-hash restrictions through both funded supervised claim/sweep flows.
-- [ ] Add a payment-hash-bound forward release interface before issuing live recovery credentials.
+- [x] Validate server-side exact-channel close and reverse payment-hash restrictions through both funded supervised claim/sweep flows (94797d1).
+- [ ] Validate the packaged hash-bound forward release interface with supervised claims and lost-release-reply recovery before any live credential work.

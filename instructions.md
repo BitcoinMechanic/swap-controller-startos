@@ -1633,3 +1633,31 @@ python3 scripts/test-quote-flow.py \
   swap-controller:deadline-boundary ../bitcoind all \
   --pending-during-downtime --supervise
 ```
+
+
+## Forward post-close recovery through a bound release RPC
+
+Post-close forward ClaimRemote now sends xbt-release-bound with the original
+payment_hash and its verified preimage. It never falls back to xbt-release. The
+BTC image must include the new hash-checking adapter. A missing method or an old
+method-only recovery credential refuses recovery; it does not authorize a resend,
+refund, second close or automatic credential replacement. Retain the existing
+journal and use a reviewed recovery procedure for any old pending job.
+
+The dedicated forward recovery rune permits exactly two named parameters and
+only its assigned payment_hash. The legacy release method is excluded. As with
+reverse recovery, the controller separately verifies the original attempt, channel
+and gate binding. Ordinary quote settlement still uses its existing execution
+credential and legacy RPC; this change is specifically for post-close recovery.
+There are still no live execution credentials or live payments enabled.
+
+Both supervised quote and standalone deadline fixtures select the packaged BTC
+adapter while retaining the pinned source and original journal location. Their
+checkrune checks cover correct and incorrect target/parameter shapes, and HTTPS
+probes reject the legacy release method. Mutation audits and discarded-release
+reply injection now count the new RPC. Funded validation is pending.
+
+Rebuild btc-cln:swap-preparation in the BTC packaging repository and
+swap-controller:deadline-boundary in this repository. Then run the supervised
+pending quote flow in both directions, followed by the funded deadline harness
+for normal and lost-reply cases in both directions. No StartOS update is needed.

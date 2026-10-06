@@ -36,6 +36,9 @@ class ClaimRemote(DeadlineRemote):
             require(args[:2]==(self.payment_hash,json.dumps(self.binding)),'release_binding_changed')
             params.update(payment_hash=self.payment_hash,binding=self.binding)
         super().call('getinfo')  # HTTPS identity check immediately before mutation.
+        if method=='xbt-release':
+            params['payment_hash']=self.payment_hash
+            return self._request('xbt-release-bound',params)
         return self._request(method,params)
 
 

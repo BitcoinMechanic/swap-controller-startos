@@ -32,6 +32,10 @@ class CredentialTests(unittest.TestCase):
             self.assertFalse(any('release' in m or 'sendpay' == m.removeprefix('method=') for m in methods))
             rules.clear()
             self.assertTrue(restrictions(network,'close','11'*32))
+        forward=restrictions('regtest','xbt-release-bound','22'*32)[0]
+        self.assertIn('method=xbt-release-bound',forward)
+        self.assertNotIn('method=xbt-release',forward)
+        with self.assertRaises(Refused):restrictions('xbt-regtest','xbt-release-bound','22'*32)
         methods=restrictions('xbt-regtest','reverse-release','22'*32)[0]
         self.assertIn('method=reverse-release',methods)
         self.assertNotIn('method=close',methods)
