@@ -24,19 +24,19 @@ import image_remote
 ROOT=Path('/exchange/control')
 
 
-def bridge(drop=False,recover=False,verify=False):
+def bridge(drop=False,recover=False,verify=False,fault=None):
     request=Path('/exchange/jobs')/(uuid.uuid4().hex+'.request')
     stage=('drop-release-reply' if drop else 'recover') if recover else ('drop-close-reply' if drop else 'step')
     if verify:
-        assert not drop and not recover;stage='verify'
+        assert not drop and not recover and fault in (None,'outage','crash');stage='verify'+('-'+fault if fault else '')
     save(request,dict(stage=stage));request.chmod(0o644)
     response=request.with_suffix('.response');end=time.monotonic()+100
     while not response.exists():
         if time.monotonic()>end:raise RuntimeError('deadline_container_timeout')
         time.sleep(.05)
     result=private_load(response)
-    assert result['returncode']==(89 if drop else 0),'deadline step failed; inspect private logs'
-    return None if drop else private_load(ROOT/'deadline-output.json')
+    assert result['returncode']==(1 if fault=='outage' else 89 if drop or fault=='crash' else 0),'deadline step failed; inspect private logs'
+    return None if drop or fault else private_load(ROOT/'deadline-output.json')
 
 
 def scoped_connections(lab,incoming_node,outgoing_node,reverse=False,recovery=False,inspection=False):
@@ -218,6 +218,16 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
     protected=[journal,ROOT/'deadline-job/claim-receipt.json',
                ROOT/'deadline-audit.jsonl',ROOT/'claim-audit.jsonl',plugin.with_suffix('.quotes.json')]
     snapshots={path:path.read_bytes() for path in protected}
+    for fault,phase in (('outage','verification_unavailable'),('crash','verification_in_progress')):
+        bridge(verify=True,fault=fault)
+        assert not (ROOT/'deadline-output.json').exists()
+        stale=private_load(ROOT/'deadline-job/chain-verification.json')
+        assert stale['phase']==phase and stale['verified'] is False and 'proof' not in stale
+        assert all(path.read_bytes()==data for path,data in snapshots.items())
+        assert bridge(verify=True)==result
+        assert all(path.read_bytes()==data for path,data in snapshots.items())
+        assert rpc(outgoing_chain,'getblockcount')==outgoing_height
+    print('PASS: networkless and abruptly exited verifiers cleared prior success; fresh inspection recovered without close or release',flush=True)
     sweep_height=result['proof']['heights'][2]
     assert sweep_height>result['proof']['heights'][1]
     old_height=rpc(incoming_chain,'getblockcount')

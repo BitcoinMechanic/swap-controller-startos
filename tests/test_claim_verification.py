@@ -134,6 +134,51 @@ class VerificationTests(unittest.TestCase):
                 self.assertEqual(report,(root/'chain-verification.json').read_bytes())
                 self.assertNotIn(self.preimage.hex(),report.decode())
                 self.assertEqual(original,{name:(root/name).read_bytes() for name in original})
+                # Each failure starts from a successful report, and clears it.
+                incoming='btc' if direction=='forward' else 'xbt'
+                for method,evidence in (('getinfo',OSError('private endpoint rune details')),
+                                        ('getinfo',dict(id='wrong',network='regtest')),
+                                        ('listtransactions',dict(transactions=[dict(blockheight=100,rawtx='bad')]))):
+                    real=clients[incoming].call
+                    def fail(name,*args):
+                        pending=private_load(root/'chain-verification.json')
+                        self.assertEqual(pending['phase'],'verification_in_progress')
+                        self.assertFalse(pending['verified']);self.assertNotIn('proof',pending)
+                        if name==method:
+                            if isinstance(evidence,Exception):raise evidence
+                            return evidence
+                        return real(name,*args)
+                    with patch.object(clients[incoming],'call',side_effect=fail):
+                        with self.assertRaisesRegex(ValueError,'^verification_unavailable$'):
+                            v.inspect(root,self.spec,clients)
+                    stale=private_load(root/'chain-verification.json')
+                    self.assertEqual(stale['phase'],'verification_unavailable')
+                    self.assertFalse(stale['verified']);self.assertNotIn('proof',stale)
+                    self.assertNotIn('private',(root/'chain-verification.json').read_text())
+                    self.assertTrue(v.inspect(root,self.spec,clients)['verified'])
+                with self.assertRaisesRegex(ValueError,'verification_unavailable'):
+                    v.inspect(root,self.spec,clients,clock=iter([0,121]).__next__)
+                self.assertFalse(private_load(root/'chain-verification.json')['verified'])
+                self.assertTrue(v.inspect(root,self.spec,clients)['verified'])
+                # Invalid private input / client construction cannot retain proof.
+                for request in ({},dict(spec=self.spec,connections=[dict(network='bitcoin')]),
+                                dict(spec=self.spec,connections=[dict(network='regtest')])):
+                    with self.assertRaisesRegex(ValueError,'verification_unavailable'):
+                        v.inspect_config(root,lambda:request)
+                    self.assertFalse(private_load(root/'chain-verification.json')['verified'])
+                    self.assertTrue(v.inspect(root,self.spec,clients)['verified'])
+                # Actual process termination after durable invalidation; no finally.
+                pid=os.fork()
+                if pid==0:
+                    v.inspect_config(root,lambda:os._exit(89))
+                    os._exit(90)
+                _,status=os.waitpid(pid,0)
+                self.assertEqual(os.waitstatus_to_exitcode(status),89)
+                stale=private_load(root/'chain-verification.json')
+                self.assertEqual(stale['phase'],'verification_in_progress')
+                self.assertFalse(stale['verified']);self.assertNotIn('proof',stale)
+                self.assertTrue(v.inspect(root,self.spec,clients)['verified'])
+                self.assertEqual(original,{name:(root/name).read_bytes() for name in original})
                 # Prior success is not reused after a reported confirmation loss.
                 self.sweep['blockheight']=0
                 self.assertFalse(v.inspect(root,self.spec,clients)['verified'])

@@ -70,7 +70,7 @@ class FundedHarnessTests(unittest.TestCase):
                 with patch.object(runner,'ROOT',root),patch.object(runner,'isolation'), \
                      patch.dict(runner.os.environ,{'BTC_XBT_DISPOSABLE_CONTAINER':'1'}), \
                      patch.object(runner.sys,'argv',['deadline_step.py','verify']), \
-                     patch.object(runner,'ChainReader') as reader,patch.object(runner,'inspect') as inspect:
+                     patch.object(runner,'ChainReader') as reader,patch.object(runner,'inspect_config') as inspect:
                     with self.assertRaises(AssertionError):runner.main()
                     reader.assert_not_called();inspect.assert_not_called()
                 (root/name).unlink()
@@ -85,6 +85,8 @@ class FundedHarnessTests(unittest.TestCase):
         self.assertEqual(mounts,['type=bind,src=/exchange/control,dst=/controller-state',
                                 'type=bind,src=/repo/tests/remote,dst=/remote-tests,readonly'])
         self.assertIn('--read-only',command);self.assertIn('--cap-drop=ALL',command)
+        offline=module.command(Path('/repo'),Path('/exchange'),'image','internal-net','child','verify-outage')
+        self.assertEqual(offline[offline.index('--network')+1],'none')
         with self.assertRaises(ValueError):module.command(Path('/repo'),Path('/exchange'),'i','n','c','close')
 
 if __name__=='__main__':unittest.main()

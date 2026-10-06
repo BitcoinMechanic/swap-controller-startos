@@ -3,6 +3,7 @@
 Raw transaction links/witnesses are checked locally. Confirmation heights and
 wallet ownership are node-reported, not independent chain proofs. No mutations.
 """
+import contextlib
 import hashlib
 from pathlib import Path
 import re
@@ -141,31 +142,63 @@ def prove(spec,rows,funds,height):
     return dict(phase='claim_and_sweep_verified',verified=True,proof=sweeps[0])
 
 
+def report(result):
+    return dict(result,regtest_only=True,read_only=True,
+                confirmation_source='paired_cln',independent_chain_proof=False)
+
+
+@contextlib.contextmanager
+def inspection(root):
+    # Invalidate durably before configuration, validation or network work.
+    # Abrupt exit leaves in_progress, never an earlier success/proof.
+    guard()
+    with lock(root):
+        path=root/'chain-verification.json'
+        save(path,report(dict(phase='verification_in_progress',verified=False)))
+        try:yield
+        except Exception:
+            save(path,report(dict(phase='verification_unavailable',verified=False)))
+            raise ValueError('verification_unavailable') from None
+
+
+def inspect_config(root,load_request):
+    """Load private request and construct read-only clients after invalidation."""
+    with inspection(root):
+        request=load_request();clients={}
+        for config in request['connections']:
+            role={'regtest':'btc','xbt-regtest':'xbt'}[config['network']]
+            require(role not in clients,'duplicate_node')
+            clients[role]=ChainReader(config)
+        return _inspect(root,request['spec'],clients)
+
+
 def inspect(root,spec,clients,*,clock=time.monotonic):
-    guard();validate(spec)
+    with inspection(root):return _inspect(root,spec,clients,clock=clock)
+
+
+def _inspect(root,spec,clients,*,clock=time.monotonic):
+    validate(spec)
     incoming='btc' if spec['direction']=='forward' else 'xbt';outgoing='xbt' if incoming=='btc' else 'btc'
     require(set(clients)=={'btc','xbt'},'two_nodes_required')
-    with lock(root):
-        record=private_load(root/'deadline.json');receipt=private_load(root/'claim-receipt.json')
-        require(record['source_commit']==PIN and digest(record['spec'])==digest(spec) and
-                receipt.get('spec_digest')==digest(spec) and receipt.get('stage')=='gate_resolved','resolved_claim_record_required')
-        start=clock()
-        def call(role,method,*args):
-            require(0<=clock()-start<=120,'verification_expired');result=clients[role].call(method,*args)
-            require(0<=clock()-start<=120,'verification_expired');return result
-        infos={role:call(role,'getinfo') for role in ('btc','xbt')}
-        for role,network in (('btc','regtest'),('xbt','xbt-regtest')):
-            require(infos[role].get('id')==spec['node_ids'][role] and infos[role].get('network')==network
-                    and not any(k.startswith('warning') for k in infos[role]),'verification_identity_mismatch')
-        payments=call(outgoing,'listsendpays',spec['payment_hash'])['payments']
-        require(len(payments)==1,'original_attempt_required');p=dict(payments[0]);p.setdefault('partid',0)
-        require(receipt['attempt'].get('groupid')==spec['groupid'] and receipt['attempt'].get('partid')==spec['partid'],'attempt_binding_changed')
-        expected=dict(receipt['attempt'],payment_hash=spec['payment_hash'],amount_sent_msat=spec['outgoing_amount_msat'],status='complete')
-        require(all(p.get(k)==v and type(p.get(k)) is type(v) for k,v in expected.items()),'outgoing_attempt_changed')
-        rows=call(incoming,'listtransactions')['transactions'];funds=call(incoming,'listfunds')['outputs']
-        height=infos[incoming]['blockheight'];result=prove(spec,rows,funds,height)
-        fresh=call(incoming,'getinfo');require(fresh.get('blockheight')==height,'chain_advanced_retry_inspection')
-        report=dict(result,regtest_only=True,read_only=True,confirmation_source='paired_cln',independent_chain_proof=False)
-        path=root/'chain-verification.json'
-        if not path.exists() or private_load(path)!=report:save(path,report)
-        return report
+    record=private_load(root/'deadline.json');receipt=private_load(root/'claim-receipt.json')
+    require(record['source_commit']==PIN and digest(record['spec'])==digest(spec) and
+            receipt.get('spec_digest')==digest(spec) and receipt.get('stage')=='gate_resolved','resolved_claim_record_required')
+    start=clock()
+    def call(role,method,*args):
+        require(0<=clock()-start<=120,'verification_expired');result=clients[role].call(method,*args)
+        require(0<=clock()-start<=120,'verification_expired');return result
+    infos={role:call(role,'getinfo') for role in ('btc','xbt')}
+    for role,network in (('btc','regtest'),('xbt','xbt-regtest')):
+        require(infos[role].get('id')==spec['node_ids'][role] and infos[role].get('network')==network
+                and not any(k.startswith('warning') for k in infos[role]),'verification_identity_mismatch')
+    payments=call(outgoing,'listsendpays',spec['payment_hash'])['payments']
+    require(len(payments)==1,'original_attempt_required');p=dict(payments[0]);p.setdefault('partid',0)
+    require(receipt['attempt'].get('groupid')==spec['groupid'] and receipt['attempt'].get('partid')==spec['partid'],'attempt_binding_changed')
+    expected=dict(receipt['attempt'],payment_hash=spec['payment_hash'],amount_sent_msat=spec['outgoing_amount_msat'],status='complete')
+    require(all(p.get(k)==v and type(p.get(k)) is type(v) for k,v in expected.items()),'outgoing_attempt_changed')
+    rows=call(incoming,'listtransactions')['transactions'];funds=call(incoming,'listfunds')['outputs']
+    height=infos[incoming]['blockheight'];result=prove(spec,rows,funds,height)
+    fresh=call(incoming,'getinfo');require(fresh.get('blockheight')==height,'chain_advanced_retry_inspection')
+    result=report(result)
+    save(root/'chain-verification.json',result)
+    return result

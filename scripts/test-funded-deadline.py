@@ -14,12 +14,12 @@ import uuid
 
 spec=importlib.util.spec_from_file_location('separated',Path(__file__).with_name('test-separated-controller.py'))
 base=importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
-STAGES=('step','drop-close-reply','recover','drop-release-reply','verify')
+STAGES=('step','drop-close-reply','recover','drop-release-reply','verify','verify-outage','verify-crash')
 
 
 def command(repo,shared,image,network,name,stage):
     if stage not in STAGES:raise ValueError('invalid_deadline_stage')
-    return ['docker','run','--rm','--name',name,'--network',network,'--read-only','--cap-drop=ALL',
+    return ['docker','run','--rm','--name',name,'--network','none' if stage=='verify-outage' else network,'--read-only','--cap-drop=ALL',
         '--security-opt=no-new-privileges','--tmpfs','/tmp:rw,nosuid,nodev,size=16m',
         '-e','BTC_XBT_DISPOSABLE_CONTAINER=1','-e','PYTHONDONTWRITEBYTECODE=1',
         *base.mount(shared/'control','/controller-state'),*base.mount(repo/'tests/remote','/remote-tests',True),

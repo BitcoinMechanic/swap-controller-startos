@@ -1299,5 +1299,48 @@ conflicting commitment, revoked state, funding rollback or arbitrary-depth
 reorgs. Confirmation evidence remains paired-node data, not independent proofs.
 
 Run the existing four-case deadline harness with `all`. No Docker rebuild or
-StartOS installation is needed. Funded commitment rollback validation is pending;
-live execution remains disabled.
+StartOS installation is needed. All four funded commitment rollback cases passed
+at checkpoint fb291f5; live execution remains disabled.
+
+
+## Fresh verification failures clear earlier success
+
+Before a new admitted regtest inspection loads its private request or contacts
+CLN, the verifier holds the job lock and atomically replaces
+`chain-verification.json` with `verification_in_progress`, `verified: false`,
+and no proof. Request loading, credential construction, journal validation,
+identity checks, RPC failures, malformed evidence and expired observations are
+inside this boundary. Ordinary failures save `verification_unavailable` with
+no private error details; an abrupt process exit leaves the unverified
+in-progress record. A later successful inspection must rebuild the proof from
+fresh read-only evidence.
+
+The disposable runner removes its previous output before beginning inspection.
+The funded harness now starts one verifier with Docker networking disabled and
+another that exits after durable invalidation, then uses fresh containers to
+recover verification. Both faults must clear saved success without changing the
+original deadline/claim records, gate journal or close/release audits. Existing
+sweep, claim and commitment rollback checks still follow these cases.
+
+This is invalidation when an inspection starts, not a background freshness
+monitor or a time-to-live guarantee. A saved success is evidence from the last
+completed inspection, not a continuously current chain assertion. Failure to
+acquire the job lock or persist invalidation prevents inspection from proceeding;
+callers must treat a failed invocation as unavailable, not reuse an earlier file
+as fresh evidence. Read-only inspection does not clear restore barriers or
+provide spending, closing or gate-resolution authority. Live execution remains
+disabled; confirmation evidence still comes from the paired node.
+
+Rebuild the controller test image because packaged verifier code changed:
+
+```sh
+docker buildx build --builder startos-builder --load \
+  -t swap-controller:deadline-boundary . &&
+python3 scripts/test-funded-deadline.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind all
+```
+
+Local verification and harness tests pass, including abrupt child-process exit.
+The four funded outage/interruption cases remain pending packaging-VM validation.
+No StartOS installation is required for this regtest checkpoint.
