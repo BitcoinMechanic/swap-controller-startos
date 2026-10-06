@@ -40,6 +40,27 @@ class FundedHarnessTests(unittest.TestCase):
                 with self.assertRaises(ValueError):remote._request('close',{})
             self.assertEqual(list(root.iterdir()),[])
 
+    def test_only_incoming_role_receives_close_target(self):
+        for direction,incoming in (('forward','btc'),('reverse','xbt')):
+            with self.subTest(direction=direction),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)
+                request=dict(spec=dict(direction=direction,channel=dict(channel_id='a'*64)),
+                             connections=[dict(network='regtest'),dict(network='xbt-regtest')])
+                runner.save(root/'deadline-input.json',request)
+                created=[]
+                def client(config,target,drop):
+                    item=dict(config=config,target=target,drop=drop);created.append(item);return item
+                with patch.object(runner,'ROOT',root),patch.object(runner,'isolation'), \
+                     patch.dict(runner.os.environ,{'BTC_XBT_DISPOSABLE_CONTAINER':'1'}), \
+                     patch.object(runner.sys,'argv',['deadline_step.py','step']), \
+                     patch.object(runner,'Audited',side_effect=client), \
+                     patch.object(runner,'step',return_value={}) as step,patch('builtins.print'):
+                    runner.main()
+                clients=step.call_args.args[2]
+                self.assertEqual(clients[incoming]['target'],'a'*64)
+                self.assertIsNone(clients['xbt' if incoming=='btc' else 'btc']['target'])
+                self.assertEqual(len(created),2)
+
     def test_host_command_mounts_only_control_and_fixture_helpers(self):
         script=Path(__file__).resolve().parents[1]/'scripts/test-funded-deadline.py'
         if not script.exists():self.skipTest('host launcher is intentionally absent from service image')

@@ -1279,3 +1279,41 @@ The launcher checks the packaged adapter first, then runs both funded scenarios.
 An optional final `normal` or `lost-reply` selects one fixture for troubleshooting.
 Logs and private fixture evidence remain under the printed disposable directory.
 No StartOS version bump or installation is needed; live execution remains disabled.
+
+
+## Reverse funded packaged deadline fixture
+
+The funded deadline launcher now includes `reverse-normal` and
+`reverse-lost-reply`, or `reverse` to run both. The existing `all` selection
+runs all four directions/response cases. Forward normal and lost-reply runs
+passed at checkpoint `07eaa6d` with fixture-assisted claim verification.
+
+The reverse fixture uses the pinned durable reverse quote gate and an ordinary
+XBT payer invoice. It holds the original 100,000-sat BTC recipient payment
+pending while advancing only XBT. The packaged reverse guard must leave the
+bound XBT channel open at 31 blocks and close it at 30 blocks. Its durable
+intent must retain the full funding pin. Fresh containers reconcile both saved
+and deliberately discarded close responses without issuing another close.
+The adapter can close only the incoming role; the outgoing role's rune also
+rejects the close method at the server.
+
+After the XBT commitment confirms with the unresolved 200,000-sat HTLC, the
+fixture resumes the BTC recipient, obtains the original attempt's preimage,
+and resolves the original reverse gate binding. The pinned on-chain verifier
+checks the XBT HTLC-success witness, original payer settlement, CSV maturity and
+confirmed wallet sweep. BTC height must remain fixed, BTC balances must reflect
+the agreed amount, and the original outgoing attempt must remain unique.
+
+Run just the two new cases on the packaging VM, reusing the controller image
+built for the previous funded test:
+
+```bash
+python3 scripts/test-funded-deadline.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind reverse
+```
+
+This change is limited to mounted test helpers and documentation. No service
+image rebuild or StartOS installation is needed. Node-fixture RPC still performs
+submission, gate resolution and claim verification. Packaged claim recovery,
+controller-downtime protection and live execution are not enabled by this test.

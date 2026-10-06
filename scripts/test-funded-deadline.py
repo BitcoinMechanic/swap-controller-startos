@@ -1,4 +1,4 @@
-"""Host launcher for the funded forward deadline/claim fixture; no live endpoints."""
+"""Host launcher for the funded bidirectional deadline/claim fixture; no live endpoints."""
 import argparse
 import importlib.util
 import ipaddress
@@ -78,7 +78,7 @@ def run(repo,results,prefix,backend,btc,controller,direction):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('btc_image');p.add_argument('xbt_image');p.add_argument('controller_image');p.add_argument('bitcoind',type=Path)
-    p.add_argument('mode',choices=('all','normal','lost-reply'),nargs='?',default='all')
+    p.add_argument('mode',choices=('all','normal','lost-reply','reverse','reverse-normal','reverse-lost-reply'),nargs='?',default='all')
     args=p.parse_args();os.umask(0o077)
     repo=Path(__file__).resolve().parents[1];backend=args.bitcoind.resolve()
     if not backend.is_file() or not os.access(backend,os.X_OK):p.error('executable regtest bitcoind required')
@@ -97,7 +97,9 @@ def main():
         prefix=Path(temporary);container=base.docker('create','--network','none',xbt)
         try:base.docker('cp',container+':/usr/local/.',str(prefix)+'/')
         finally:base.docker('rm',container)
-        for mode in ('normal','lost-reply') if args.mode=='all' else (args.mode,):
+        modes={'all':('normal','lost-reply','reverse-normal','reverse-lost-reply'),
+               'reverse':('reverse-normal','reverse-lost-reply')}.get(args.mode,(args.mode,))
+        for mode in modes:
             run(repo,results,prefix,backend,btc,controller,mode)
 
 

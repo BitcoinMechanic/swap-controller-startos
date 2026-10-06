@@ -34,12 +34,13 @@ def main():
     assert not (ROOT/'remote.json').exists()
     (ROOT/'deadline-job').mkdir(mode=0o700,exist_ok=True)
     request=private_load(ROOT/'deadline-input.json');spec=request['spec']
-    assert spec['direction']=='forward'
+    assert spec['direction'] in ('forward','reverse')
+    incoming='xbt' if spec['direction']=='reverse' else 'btc'
     clients={}
     for config in request['connections']:
         role={'regtest':'btc','xbt-regtest':'xbt'}[config['network']]
         assert role not in clients
-        clients[role]=Audited(config,spec['channel']['channel_id'] if role=='btc' else None,
+        clients[role]=Audited(config,spec['channel']['channel_id'] if role==incoming else None,
                               sys.argv[1]=='drop-close-reply')
     result=step(ROOT/'deadline-job',spec,clients)
     save(ROOT/'deadline-output.json',result)

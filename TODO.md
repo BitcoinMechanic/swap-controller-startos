@@ -53,6 +53,7 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 - [x] Validate the read-only direct live candidate inspector on the packaging VM.
 - [x] Install dedicated restricted inspection credential actions and controller preflight actions; verify a real read-only inspection.
 - [x] Run packaged regtest deadline-boundary tests.
-- [ ] Run funded forward packaged HTTPS deadline close/reconciliation in normal and lost-reply cases, with fixture-assisted on-chain claim verification.
-- [ ] Add reverse funded deadlines and packaged claim recovery before live protection.
+- [x] Run funded forward packaged HTTPS deadline close/reconciliation in normal and lost-reply cases, with fixture-assisted on-chain claim verification.
+- [ ] Run reverse funded packaged HTTPS deadline close/reconciliation in normal and lost-reply cases, with fixture-assisted on-chain claim verification.
+- [ ] Add packaged claim recovery before live protection.
 - [ ] Validate live deadline/on-chain protection, including controller downtime, before implementing live execution.
