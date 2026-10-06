@@ -3,16 +3,16 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
-for (const name of ['recovery.py','recovery_inspection.py','recovery_workflow.py','recovery_actions.py','quote_workflow.py','quote_actions.py', 'reverse_quote_workflow.py','readiness.py']) {
+for (const name of ['recovery.py','recovery_inspection.py','recovery_workflow.py','recovery_actions.py','quote_workflow.py','quote_actions.py', 'reverse_quote_workflow.py','readiness.py','gate_observation.py']) {
  assert.ok(fs.readFileSync('Dockerfile','utf8').includes('assets/'+name))
  assert.ok(fs.readFileSync('.dockerignore','utf8').includes('!assets/'+name))
 }
 const { manifest, actions } = require('../javascript/index.js')
 assert.equal(manifest.id, 'swap-controller')
-assert.equal(manifest.version, '0.1.0:6')
+assert.equal(manifest.version, '0.1.0:7')
 assert.deepEqual(Object.keys(manifest.images), ['controller'])
 assert.deepEqual(manifest.volumes, ['main'])
-assert.deepEqual(Object.keys(actions.actions), ['pair-nodes', 'connection-status', 'worker-status', 'recovery-status', 'confirm-recovery-revocation', 'recover-existing-swap', 'quote-status', 'review-swap-quote', 'prepare-swap-quote', 'approve-swap-quote', 'prepare-reverse-swap-quote', 'live-readiness'])
+assert.deepEqual(Object.keys(actions.actions), ['pair-nodes', 'connection-status', 'worker-status', 'recovery-status', 'confirm-recovery-revocation', 'recover-existing-swap', 'quote-status', 'review-swap-quote', 'prepare-swap-quote', 'approve-swap-quote', 'prepare-reverse-swap-quote', 'live-readiness', 'pair-btc-gate-observation'])
 assert.equal(manifest.images.controller.source.dockerBuild.dockerfile, 'Dockerfile')
 const { Daemons } = require(path.join(path.dirname(require.resolve('@start9labs/start-sdk')), 'mainFn/Daemons.js'))
 function load(file, modules) {
@@ -23,6 +23,7 @@ async function run() {
  await require('./test-recovery-actions.cjs')()
  await require('./test-quote-actions.cjs')()
  await require('./test-readiness-action.cjs')()
+ await require('./test-gate-observation-action.cjs')()
  let reply={paired:false,ready:false}
  const sub={exec:async()=>({exitCode:0,stdout:JSON.stringify(reply)})}
  const sdk={setupMain:fn=>fn,SubContainer:{of:()=>sub},Daemons}
@@ -47,11 +48,12 @@ async function run() {
  const backupSdk={SubContainer:{withTemp:async(e,i,m,n,fn)=>fn({exec:async cmd=>{hooks.push(cmd.at(-1));return {exitCode:0}}})},setupBackups:fn=>({configure:fn}),Backups:{ofVolumes:()=>chain},volumes:{main:{subpath:n=>'/volume/'+n}}}
  // setupBackups invokes the provided callback in the real runtime.
  load('startos/backups.ts',{'./sdk':{sdk:{...backupSdk,setupBackups:fn=>{fn();return {}}}},'fs/promises':{unlink:async p=>removed.push(p)},'./utils':{mounts:{},rootDir:'/data'}})
+ assert.ok(options.exclude.includes('btc-gate-observation.json'));
  assert.ok(options.exclude.includes('pairing.json'));assert.ok(options.exclude.includes('status.json'))
  assert.ok(options.exclude.includes('execution/regtest-quote-nodes.json'));
  assert.ok(options.exclude.includes('execution/backup-paused.json'));assert.ok(options.exclude.includes('execution/jobs'))
  await preBackup({});await postBackup({});await restore({});assert.deepEqual(hooks,['backup-begin','backup-end','restored'])
- assert.deepEqual(removed,['/volume/pairing.json','/volume/status.json','/volume/execution/regtest-quote-nodes.json'])
+ assert.deepEqual(removed,['/volume/pairing.json','/volume/btc-gate-observation.json','/volume/status.json','/volume/execution/regtest-quote-nodes.json'])
  console.log('Controller bundle, daemon health, no inbound interfaces and restore invalidation OK')
 }
 run().catch(e=>{console.error(e);process.exit(1)})

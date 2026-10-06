@@ -2,6 +2,7 @@ import { sdk } from '../sdk'
 import { mounts, rootDir } from '../utils'
 
 const labels: Record<string, string> = {
+  btc_gate: 'BTC gate observation', xbt_gate: 'XBT gate observation',
   read_only: 'Read-only check', live_ready: 'Ready for live swaps',
   live_payment_enabled: 'Live payments enabled', paired: 'Nodes paired',
   connection_ready: 'Node connections verified', restore_barrier: 'Restore barrier',
@@ -22,7 +23,7 @@ export const liveReadiness = sdk.Action.withInput('live-readiness', async () => 
     catch { throw new Error('Readiness unavailable; private details withheld.') }
     if (res.exitCode !== 0) throw new Error('Readiness unavailable; private details withheld.')
     return { version: '1' as const, title: 'Live Swap Readiness',
-      message: 'Observation only. This release cannot execute live swaps. Gate activation is not verified by read-only credentials. Channel counts do not establish a route or sufficient liquidity. The restore barrier is unchanged.',
+      message: 'Observation only. This release cannot execute live swaps. BTC gate observation uses a separate restricted credential; XBT gate activation remains unverified. Channel counts do not establish a route or sufficient liquidity. The restore barrier is unchanged.',
       result: { type: 'group' as const, value: Object.entries(report).filter(([key]) => key in labels).map(([key, value]) => ({
         name: labels[key], description: null, type: 'single' as const,
         value: typeof value === 'object' ? JSON.stringify(value) : String(value),

@@ -936,3 +936,23 @@ and its existing restore barrier. To inspect the nodes, pair through the
 existing read-only `Pair Coordinator Nodes` action and rerun readiness.
 Re-pairing does not clear the restore barrier. No funded swap test is required
 for this read-only addition.
+
+## BTC gate observation credential
+
+The BTC package 26.6.8:9 adds **Create or Show BTC Gate Observation Credential**,
+**BTC Gate Credential Status**, and **Revoke BTC Gate Observation Credential**.
+This separate rune permits only parameterless `getinfo` and `xbt-pilot-info`.
+The existing monitor rune remains limited to `getinfo` and `listpeerchannels`.
+Creation requires coordinator preparation and an active BTC gate. Lost creation
+replies remain blocked; revocation targets only this rune and its derivatives.
+
+In Swap Controller 0.1.0:7, use **Pair BTC Gate Observation** and paste that rune.
+The saved BTC HTTPS endpoint and CA are reused; both paired node identities are
+verified before saving. The credential is bound to the pairing generation, omitted
+from controller backups and removed on restore. Replacing node pairing requires
+pairing gate observation again. Status never exports the rune or endpoint.
+
+**Live Swap Readiness** freshly verifies the BTC identity and `live-pilot-v1` gate
+profile/count. This reports BTC observation only: XBT gate activation remains
+unverified, live execution stays disabled, and restore barriers remain intact.
+A successful observation does not prove liquidity, fee or cross-chain timing policy.

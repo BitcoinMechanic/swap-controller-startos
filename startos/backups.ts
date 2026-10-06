@@ -11,13 +11,13 @@ async function workerHook(effects: T.Effects, mode: string) {
 // Execution credentials and authorizations are never portable in a backup.
 export const { createBackup, restoreInit } = sdk.setupBackups(async () =>
   sdk.Backups.ofVolumes('main')
-    .setOptions({ exclude: ['pairing.json', 'status.json', 'pairing.lock', '.controller-*',
+    .setOptions({ exclude: ['pairing.json', 'btc-gate-observation.json', 'status.json', 'pairing.lock', '.controller-*',
       'execution/jobs', 'execution/regtest-quote-nodes.json', 'execution/heartbeat.json', 'execution/lifecycle.lock', 'execution/backup-paused.json'] })
     .setPreBackup(async (effects) => workerHook(effects, 'backup-begin'))
     .setPostBackup(async (effects) => workerHook(effects, 'backup-end'))
     .setPostRestore(async (effects) => {
       await workerHook(effects, 'restored')
-      for (const name of ['pairing.json', 'status.json', 'execution/regtest-quote-nodes.json']) {
+      for (const name of ['pairing.json', 'btc-gate-observation.json', 'status.json', 'execution/regtest-quote-nodes.json']) {
         await unlink(sdk.volumes.main.subpath(name)).catch((error: NodeJS.ErrnoException) => {
           if (error.code !== 'ENOENT') throw error
         })

@@ -34,6 +34,7 @@ def endpoint(url):
 
 
 class Client:
+    methods = METHODS
     def __init__(self, url, rune, ca_file=None, ca_data=None):
         self.url = endpoint(url)
         if not isinstance(rune, str) or not re.fullmatch(r'[A-Za-z0-9_+=/-]{1,8192}', rune):
@@ -47,7 +48,7 @@ class Client:
             raise ProbeError('tls_configuration_failed') from None
 
     def call(self, method):
-        if method not in METHODS:
+        if method not in self.methods:
             raise ProbeError('method_not_allowed')
         request = urllib.request.Request(self.url+'/v1/'+method, data=b'{}',
             headers={'Content-Type': 'application/json', 'Rune': self.rune}, method='POST')

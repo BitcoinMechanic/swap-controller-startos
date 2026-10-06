@@ -40,4 +40,6 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 
 - [x] Run the reverse quote flow through packaged actions, then install 0.1.0:5 and verify the reverse form, shared approval, local status and preserved pairing/barriers.
 
-- [ ] Install 0.1.0:6 and verify Live Swap Readiness with the existing pairing state; confirm live requirements and restore barrier remain explicit.
+- [x] Install 0.1.0:6 and verify Live Swap Readiness with the existing pairing state; confirm live requirements and restore barrier remain explicit.
+
+- [ ] Install 0.1.0:7 and BTC 26.6.8:9; pair the separate gate observer and verify BTC-only readiness without changing live execution or restore barriers.

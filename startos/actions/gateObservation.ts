@@ -1,0 +1,17 @@
+import { sdk } from '../sdk'
+import { mounts, rootDir } from '../utils'
+export const pairBtcGate = sdk.Action.withInput('pair-btc-gate-observation', async () => ({
+  name: 'Pair BTC Gate Observation', group: 'Pairing',
+  description: 'Use the separate BTC gate observation rune with the saved BTC HTTPS endpoint and certificate.',
+  warning: null, allowedStatuses: 'only-running' as const, visibility: 'enabled' as const,
+}), sdk.InputSpec.of({
+  rune: sdk.Value.text({ name: 'BTC gate observation rune', masked: true, required: true, default: null, placeholder: null }),
+  confirmed: sdk.Value.toggle({ name: 'Save this verified read-only gate credential', default: false }),
+}), async () => {}, async ({ effects, input }) =>
+  sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'gate-observation', async sub => {
+    const res = await sub.exec(['python3', '/app/gate_observation.py', rootDir], { input: JSON.stringify({ rune: input.rune.trim(), confirmed: input.confirmed }) })
+    if (res.exitCode !== 0) throw new Error('Gate pairing failed. Check both node connections, the active BTC gate and its observation credential.')
+    return { version: '1' as const, title: 'BTC Gate Observation Paired',
+      message: 'Run Live Swap Readiness for a fresh observation. Live execution and the restore barrier are unchanged.',
+      result: { type: 'group' as const, value: [] } }
+  }))
