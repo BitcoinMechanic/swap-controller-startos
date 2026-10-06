@@ -62,6 +62,7 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 - [x] Disconnect and reconfirm the original commitment and descendants in all four funded cases without repeated controller mutations.
 - [x] Run all four funded cases with prior verification invalidated during network outage and abrupt verifier exit, then recover through fresh read-only inspection.
 - [x] Run all four funded cases with the controller absent as the incoming margin falls from 31 to 27 blocks, then resume exact-channel protection without duplicate mutations.
-- [ ] Run both packaged quote directions with the original outgoing attempt settling during controller absence, including interrupted release checkpoints and exact-once settlement.
+- [x] Run both packaged quote directions with the original outgoing attempt settling during controller absence, including interrupted release checkpoints and exact-once settlement.
+- [ ] Run both packaged quote directions with definitive outgoing failure during controller absence, exact-once incoming failure and restored balances.
 - [ ] Establish confirmation/reorg handling beyond paired-node observations before live protection.
 - [ ] Validate live deadline/on-chain protection, including controller downtime, before implementing live execution.

@@ -1418,10 +1418,41 @@ The `all` direction runs forward and reverse, each with ordinary recovery and
 interrupted release checkpoint recovery. Omit the flag for the existing quote
 happy path. This is fixture-only work; reuse the current controller image. No
 StartOS installation or image rebuild is required. Four local fault/boundary tests
-pass; funded settlement-during-downtime validation remains pending.
+pass; all four funded settlement-during-downtime cases passed at e212af5.
 
 The quote worker currently has no integrated deadline watcher. These cases test
 its terminal outcome recovery; the separate deadline harness covers closing when
 the outgoing attempt is still pending. They do not establish automatic dispatch
 between those paths, arbitrary outage tolerance or live execution readiness.
 Live execution remains disabled.
+
+
+## Packaged quote failure during controller absence
+
+The quote harness also accepts `--fail-during-downtime`, mutually exclusive with
+`--settle-during-downtime`. Both directions hold the original outgoing HTLC until
+the packaged worker exits. With its container absent, the fixture advances only
+the incoming chain to 27 blocks remaining and makes the recipient fail the held
+outgoing HTLC. The original attempt must report definitive failure without a
+preimage. Its identity and amount must match the saved pending attempt.
+
+Before recovery, the incoming payment must remain held on the original normal
+channel. Controller files and the gate journal remain unchanged. A fresh worker
+must fail that bound incoming HTLC once, without another send, release or close.
+The payer must report failure, the recipient invoice must remain unpaid, all four
+channel balances must return to their initial values, and no HTLCs may remain.
+Repeating the terminal worker must leave the RPC audit unchanged.
+
+```sh
+python3 scripts/test-quote-flow.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind all --fail-during-downtime
+```
+
+This runs two funded scenarios, one per direction. It does not inject an
+interrupted failure checkpoint or discarded failure response. The separate
+settlement scenarios retain their existing interruption coverage. This patch is
+fixture-only; reuse the current controller image without a StartOS installation.
+Local harness tests pass; funded failure-during-downtime validation is pending.
+The quote worker still has no integrated deadline watcher. Live execution remains
+disabled.

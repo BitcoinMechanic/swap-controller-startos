@@ -42,9 +42,18 @@ def bridge(stage,request=None):
     return private_load(root/'quote-output.json')
 
 
+def check_outcome(original,current,failure):
+    assert current['status']==('failed' if failure else 'complete')
+    assert all(current.get(k)==original.get(k) for k in ('id','groupid','partid','payment_hash','amount_sent_msat'))
+    if failure:assert not current.get('payment_preimage')
+    else:assert hashlib.sha256(bytes.fromhex(current['payment_preimage'])).hexdigest()==current['payment_hash']
+
+
 def run(lab,reverse=False):
     downtime=os.environ.get('QUOTE_SETTLED_DOWNTIME')=='1'
     interrupt=os.environ.get('QUOTE_INTERRUPT_RESOLUTION')=='1'
+    failure=os.environ.get('QUOTE_FAILED_DOWNTIME')=='1'
+    assert not failure or (downtime and not interrupt)
     assert not interrupt or downtime
     btc=lab.node('knots-btc',False);xbt=lab.node('knots-xbt',True)
     plugin=lab.root/('reverse_gate.py' if reverse else 'quote_plugin.py')
@@ -62,6 +71,7 @@ def run(lab,reverse=False):
     price,amount=(200000000,100000000) if reverse else (100000000,200000000)
     invoice_key='xbt_invoice' if reverse else 'btc_invoice'
     waiting,terminal=('waiting_for_xbt','xbt_released') if reverse else ('waiting_for_btc','btc_released')
+    if failure:terminal='xbt_failed' if reverse else 'btc_failed'
     status_method='reverse-status' if reverse else 'xbt-quote-status'
     def rpc(node,*args):return lab.rpc(node['cli'],*args)
     def channel(node):
@@ -144,11 +154,10 @@ def run(lab,reverse=False):
         mine(incoming_chain,(payer,incoming),count)
         assert bound['expiry']-rpc(incoming_chain,'getblockcount')==27
         assert channel(incoming)['state']=='CHANNELD_NORMAL'
-        assert rpc(receiver,'xbt-continue',payment_hash)['continued']==1
-        wait_until(lambda:len(attempts())==1 and attempts()[0]['status']=='complete',outgoing['proc'])
+        assert rpc(receiver,'xbt-fail' if failure else 'xbt-continue',payment_hash)['failed' if failure else 'continued']==1
+        wait_until(lambda:len(attempts())==1 and attempts()[0]['status']==('failed' if failure else 'complete'),outgoing['proc'])
         complete=attempts()[0]
-        assert all(complete.get(k)==original.get(k) for k in ('id','groupid','partid','payment_hash','amount_sent_msat'))
-        assert hashlib.sha256(bytes.fromhex(complete['payment_preimage'])).hexdigest()==payment_hash
+        check_outcome(original,complete,failure)
         assert payer_process.poll() is None and held()
         current=channel(incoming)
         assert current['state']=='CHANNELD_NORMAL' and all(current[k]==v for k,v in pin.items())
@@ -158,7 +167,7 @@ def run(lab,reverse=False):
         assert plugin.with_suffix('.quotes.json').read_bytes()==quote_before
         assert saved=={p:p.read_bytes() for p in control.rglob('*') if p.is_file()}
         bridge('assert-controller-absent')
-        print('PASS: original outgoing attempt settled with controller absent at 27 incoming blocks remaining; incoming HTLC stayed held; controller files and gate journal unchanged',flush=True)
+        print('PASS: original outgoing attempt '+('failed' if failure else 'settled')+' with controller absent at 27 incoming blocks remaining; incoming HTLC stayed held; controller files and gate journal unchanged',flush=True)
         if interrupt:
             interrupted=bridge('worker-interrupt-resolution')
             assert interrupted['phase']==('btc_paid' if reverse else 'xbt_paid')
@@ -169,28 +178,39 @@ def run(lab,reverse=False):
         assert channel(incoming)['state']=='CHANNELD_NORMAL'
         assert all(channel(incoming)[k]==v for k,v in pin.items())
         assert attempts()[0]['id']==original['id'] and len(attempts())==1
-        print('PASS: fresh packaged worker recovered original preimage and resolved incoming gate without channel close'+('; interrupted release checkpoint reconciled' if interrupt else ''),flush=True)
+        print('PASS: fresh packaged worker '+('failed bound incoming gate' if failure else 'recovered original preimage and resolved incoming gate')+' without channel close'+('; interrupted release checkpoint reconciled' if interrupt else ''),flush=True)
     end=time.monotonic()+90
     while status['phase']!=terminal:
         if time.monotonic()>end:raise RuntimeError('packaged_quote_did_not_settle')
         status=bridge('worker')
-    payer_process.wait(timeout=30);assert payer_process.returncode==0
-    paid=json.loads(paylog.read_text());received=rpc(receiver,'listinvoices','packaged-quote')['invoices'][0]
-    assert paid['status']=='complete' and received['status']=='paid' and received['amount_received_msat']==amount
-    assert hashlib.sha256(bytes.fromhex(paid['payment_preimage'])).hexdigest()==invoice['payment_hash']
+    payer_process.wait(timeout=30)
+    received=rpc(receiver,'listinvoices','packaged-quote')['invoices'][0]
+    if failure:
+        assert payer_process.returncode!=0 and received['status']=='unpaid'
+        assert rpc(incoming,status_method,invoice['payment_hash'])['phase']=='failed'
+        assert 'preimage' not in private_load(Path('/exchange/control/execution/jobs/swap/state.json'))
+    else:
+        assert payer_process.returncode==0
+        paid=json.loads(paylog.read_text())
+        assert paid['status']=='complete' and received['status']=='paid' and received['amount_received_msat']==amount
+        assert hashlib.sha256(bytes.fromhex(paid['payment_preimage'])).hexdigest()==invoice['payment_hash']
     for node,delta in ((payer,-price),(incoming,price),(outgoing,-amount),(receiver,amount)):
+        if failure:delta=0
         wait_until(lambda:channel(node)['state']=='CHANNELD_NORMAL' and not channel(node).get('htlcs') and channel(node)['to_us_msat']==initial[node['id']]+delta,node['proc'])
     journal=Path('/exchange/control/execution/jobs/swap')
     before=(journal/'remote-audit.jsonl').read_bytes()
     assert bridge('worker')['phase']==terminal
     assert (journal/'remote-audit.jsonl').read_bytes()==before
     outgoing=[p for p in rpc(outgoing,'listsendpays')['payments'] if p['payment_hash']==invoice['payment_hash']]
-    assert len(outgoing)==1 and outgoing[0]['status']=='complete'
-    assert outgoing[0]['payment_preimage']==paid['payment_preimage']
+    assert len(outgoing)==1 and outgoing[0]['status']==('failed' if failure else 'complete')
+    if failure:assert not outgoing[0].get('payment_preimage')
+    else:assert outgoing[0]['payment_preimage']==paid['payment_preimage']
     audit=[json.loads(line) for line in before.splitlines()]
-    assert not {r['method'] for r in audit}&{'close','xbt-fail','reverse-fail'}
-    assert sum(r['method']=='sendpay' for r in audit)==1 and sum(r['method']==('reverse-release' if reverse else 'xbt-release') for r in audit)==1
-    print('PASS: packaged worker bound the committed incoming HTLC, paid the recipient once, and released the incoming payment with the same preimage',flush=True)
+    resolution=('reverse-' if reverse else 'xbt-')+('fail' if failure else 'release')
+    forbidden={'close','xbt-fail','reverse-fail','xbt-release','reverse-release'}-{resolution}
+    assert not {r['method'] for r in audit}&forbidden
+    assert sum(r['method']=='sendpay' for r in audit)==1 and sum(r['method']==resolution for r in audit)==1
+    print('PASS: one original outgoing attempt and one bound incoming '+('failure; all four balances restored' if failure else 'release with the same preimage'),flush=True)
     print('PASS: all four balances verified; no pending HTLCs; a fresh worker repeated terminal status without another mutation',flush=True)
 
 
@@ -208,7 +228,7 @@ def main():
     assert direction in ('forward','reverse')
     try:run(lab,direction=='reverse')
     finally:lab.close()
-    print('Packaged StartOS '+direction+' quote -> approval -> invoice -> worker settlement OK ('+('settled during downtime; ' if os.environ.get('QUOTE_SETTLED_DOWNTIME')=='1' else '')+'isolated HTTPS; regtest only)',flush=True)
+    print('Packaged StartOS '+direction+' quote -> approval -> invoice -> worker settlement OK ('+('failed during downtime; ' if os.environ.get('QUOTE_FAILED_DOWNTIME')=='1' else 'settled during downtime; ' if os.environ.get('QUOTE_SETTLED_DOWNTIME')=='1' else '')+'isolated HTTPS; regtest only)',flush=True)
 
 
 if __name__=='__main__':main()

@@ -1,4 +1,6 @@
 """Test-only fault injection and host absence checks for packaged quote recovery."""
+import ast
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -40,6 +42,22 @@ class QuoteDowntimeTests(unittest.TestCase):
         with patch.object(lifecycle,'tick',return_value={}) as tick:
             quote_step.worker(Path('/manager'))
             tick.assert_called_once_with(Path('/manager'))
+
+    def test_definitive_failure_requires_original_attempt_without_preimage(self):
+        # Compile the pure assertion helper without importing node fixture modules.
+        source=Path(__file__).parent/'remote/image_quote.py'
+        tree=ast.parse(source.read_text())
+        helper=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='check_outcome')
+        scope={'hashlib':hashlib}
+        exec(compile(ast.Module(body=[helper],type_ignores=[]),str(source),'exec'),scope)
+        check=scope['check_outcome']
+        original=dict(id=1,groupid=2,partid=0,payment_hash='ab'*32,amount_sent_msat=2000,status='pending')
+        failed=dict(original,status='failed')
+        check(original,failed,True)
+        for changes in ({'status':'pending'},{'status':'complete'},{'payment_preimage':'00'*32},
+                        {'id':2},{'groupid':3},{'partid':1},{'payment_hash':'cd'*32},{'amount_sent_msat':2001}):
+            with self.subTest(changes=changes),self.assertRaises(AssertionError):
+                check(original,dict(failed,**changes),True)
 
     def test_host_absence_and_container_boundary(self):
         script=Path(__file__).resolve().parents[1]/'scripts/test-quote-flow.py'
