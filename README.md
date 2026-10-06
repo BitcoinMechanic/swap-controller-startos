@@ -1181,3 +1181,50 @@ This release adds a UI for the previously CLI-only inspector. Validate using
 `python3 tests/test_preflight_actions.py -v`, the existing preflight and policy
 tests, and `node scripts/test-preflight-actions.cjs`. Real-node verification is
 a separate installation check; mocked RPC tests do not establish live readiness.
+
+
+## Isolated deadline RPC boundary (development checkpoint)
+
+`deadline_boundary.py` adapts the pinned forward and reverse deadline guards to
+a separate, regtest-only HTTPS transport. It is not registered with the installed
+worker or exposed as an action. There is no live activation or version bump.
+The existing executor and monitor transports are unchanged.
+
+The adapter requires disposable-regtest opt-in, both expected regtest identities,
+and an immutable specification of the incoming funding output, channel, committed
+HTLC, payment hash, amount and expiry. It also requires a unique pending outgoing
+attempt matching its hash, group ID, part ID and amount sent. The only mutation
+permitted by this transport is `close` of that exact incoming channel with a
+one-second unilateral timeout. It cannot send, fail or release payments.
+
+The pinned guards' 30-block regtest threshold is used without changing the live
+72-BTC-block / 144-XBT-block policies. The adapter writes its own private
+`deadline.json` before close submission. A lost close reply is reconciled from
+CLN channel state; a closing/on-chain channel is not closed again. Changed
+funding/HTLC bindings, stale reads, restore barriers and live networks are refused.
+The bridge does not spawn a local CLI or require node volumes or sockets.
+
+Unit fixtures exercise both pinned guards through this adapter. They test
+intent-before-close persistence, crashes, lost replies, original funding and
+HTLC binding, pending-attempt checks and mutation refusal. These are injected
+RPC tests, not funded-channel or on-chain recovery tests. The result explicitly
+reports `onchain_claim_verified: false`.
+
+Force-closing alone is not proof of recovery. Packaging preimage claims,
+confirmations, fee management, terminal reconciliation and protection during
+controller/network outages remain necessary before live execution. In
+particular, a controller-polled guard cannot act while that controller is down.
+The pinned reverse state flag required by its guard is only a fixture input;
+it does not attest that the packaged service can claim funds on-chain.
+
+Validate the exact image contents with:
+
+```bash
+docker buildx build --builder startos-builder --load -t swap-controller:deadline-boundary .
+docker run --rm --network none --entrypoint python3 \
+  -v "$PWD/tests:/tests:ro" swap-controller:deadline-boundary \
+  /tests/test_deadline_boundary.py -v
+```
+
+This test mounts only read-only test source, creates disposable local journals,
+and does not contact nodes, close real channels or alter installed services.

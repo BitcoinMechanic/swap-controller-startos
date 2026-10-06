@@ -13,7 +13,7 @@ WORKDIR /app
 COPY assets/controller.py assets/read_only_rpc.py assets/readiness.py assets/gate_observation.py assets/live_policy.py assets/quote_policy.py assets/live_preflight.py assets/preflight_actions.py /app/
 COPY --from=source /src/tools/blake2b/ /opt/swap/
 COPY --from=source /src/LICENSE /opt/swap/LICENSE
-COPY assets/executor.py assets/execution_child.py assets/execution_rpc.py assets/lifecycle.py /app/
+COPY assets/executor.py assets/execution_child.py assets/execution_rpc.py assets/lifecycle.py assets/deadline_boundary.py /app/
 COPY assets/recovery.py assets/recovery_inspection.py assets/recovery_workflow.py assets/recovery_actions.py /app/
 COPY assets/quote_workflow.py assets/quote_actions.py assets/reverse_quote_workflow.py /app/
 RUN python3 -m py_compile /app/controller.py /app/read_only_rpc.py /app/recovery.py /app/recovery_inspection.py
