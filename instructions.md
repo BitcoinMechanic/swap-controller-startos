@@ -1596,3 +1596,40 @@ arming validation is pending. No StartOS installation is required.
 This binds protection before spending; it does not guarantee an online worker,
 a wall-clock recovery budget, or live cross-chain protection. Live execution
 remains disabled.
+
+
+## Server-side regtest protection credential targets
+
+Protection credentials now restrict close requests at CLN authorization to the
+original full channel ID and unilateraltimeout=1. Only the two named parameters
+are accepted; missing, positional and additional parameters are refused. Read
+methods remain available for identity and recovery inspection. Reverse recovery
+credentials additionally require the original payment_hash and exactly three
+parameters for reverse-release. The gate and packaged client still validate the
+HTLC binding and preimage; the rune does not encode that binding.
+
+The funded fixture uses checkrune to verify both permitted and rejected request
+shapes without submitting deliberately incorrect mutations. The real close and
+release paths then run over restricted HTTPS. Both supervised quote directions
+must still reach confirmed claims and mature wallet sweeps. Local tests cover
+invalid targets, restriction injection, role separation and live-network refusal.
+Funded validation of these new restrictions is pending.
+
+This is not a complete live execution credential design. The pinned forward
+xbt-release RPC takes only a preimage, so a rune created before the secret is
+known cannot restrict that release by payment hash. Forward recovery retains its
+existing method-only regtest rune and client-side binding checks. A hash-bound
+forward release interface is required before a corresponding live credential can
+be issued. No live credentials are issued by this module, no live limits are
+claimed enforced, and installed pairing/readiness/restore barriers are unchanged.
+
+On the packaging VM, rebuild the controller and run:
+
+```bash
+docker buildx build --builder startos-builder --load \
+  -t swap-controller:deadline-boundary . &&
+python3 scripts/test-quote-flow.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind all \
+  --pending-during-downtime --supervise
+```

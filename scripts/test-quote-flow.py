@@ -106,7 +106,7 @@ def main():
     if not (repo.parent/'btc-cln-startos/tests/image_pair.py').is_file():p.error('BTC packaging sibling required')
     btc,xbt,controller=[base.image_id(n) for n in (args.btc_image,args.xbt_image,args.controller_image)]
     # Run the policy tests against exactly the module pin baked into this image.
-    for test in ('test_live_policy.py','test_quote_workflow.py','test_quote_actions.py','test_reverse_quote_workflow.py','test_quote_policy.py','test_quote_downtime.py','test_regtest_supervisor.py','test_supervision_arming.py'):
+    for test in ('test_protection_credentials.py','test_live_policy.py','test_quote_workflow.py','test_quote_actions.py','test_reverse_quote_workflow.py','test_quote_policy.py','test_quote_downtime.py','test_regtest_supervisor.py','test_supervision_arming.py'):
         subprocess.run(['docker','run','--rm','--network','none','--read-only','--cap-drop=ALL',
         '--tmpfs','/tmp:rw,nosuid,nodev,size=16m','-e','PYTHONPATH=/app',
         *base.mount(repo/'tests','/quote-tests',True),'--entrypoint','python3',controller,

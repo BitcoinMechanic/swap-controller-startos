@@ -70,3 +70,6 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 - [ ] Retain explicit funded evidence for supervised complete outcomes, including interrupted release checkpoints.
 - [ ] Establish confirmation/reorg handling beyond paired-node observations before live protection.
 - [ ] Validate live deadline/on-chain protection, including controller downtime, before implementing live execution.
+
+- [ ] Validate server-side exact-channel close and reverse payment-hash restrictions through both funded supervised claim/sweep flows.
+- [ ] Add a payment-hash-bound forward release interface before issuing live recovery credentials.

@@ -149,8 +149,8 @@ def run(lab,reverse=False):
         plan=dict(spec=dict(direction='reverse' if reverse else 'forward',node_ids=dict(btc=op_btc['id'],xbt=op_xbt['id']),
             channel=pin,htlc_id=bound['id'],payment_hash=payment_hash,expiry=bound['expiry'],
             incoming_amount_msat=price,outgoing_amount_msat=amount),
-            deadline_connections=scoped_connections(lab,incoming,outgoing,reverse),
-            claim_connections=scoped_connections(lab,incoming,outgoing,reverse,recovery=True))
+            deadline_connections=scoped_connections(lab,incoming,outgoing,reverse,channel_id=pin['channel_id']),
+            claim_connections=scoped_connections(lab,incoming,outgoing,reverse,recovery=True,payment_hash=payment_hash))
         bridge('supervisor-plan',plan)
         # Prove a partial enrollment cannot silently become an ordinary job.
         (job/'supervisor-plan.json').unlink()

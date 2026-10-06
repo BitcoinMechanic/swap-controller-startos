@@ -44,7 +44,7 @@ def bridge(drop=False,recover=False,verify=False,fault=None,absent=False):
     return None if drop or fault else private_load(ROOT/'deadline-output.json')
 
 
-def scoped_connections(lab,incoming_node,outgoing_node,reverse=False,recovery=False,inspection=False):
+def scoped_connections(lab,incoming_node,outgoing_node,reverse=False,recovery=False,inspection=False,channel_id=None,payment_hash=None):
     connections=[]
     incoming_network='xbt-regtest' if reverse else 'regtest'
     outgoing_network='regtest' if reverse else 'xbt-regtest'
@@ -54,11 +54,38 @@ def scoped_connections(lab,incoming_node,outgoing_node,reverse=False,recovery=Fa
             methods+=(['reverse-status'] if reverse else ['xbt-quote-status','xbt-spend-info'])
             methods+=[('reverse-release' if reverse else 'xbt-release') if recovery else 'close']
         if inspection:methods=['getinfo']+(['listtransactions','listfunds'] if node is incoming_node else ['listsendpays'])
+        rules=[['method='+m for m in methods]]
+        if node is incoming_node and not inspection:
+            from protection_credentials import restrictions
+            if not recovery:rules=restrictions(network,'close',channel_id)
+            elif reverse:rules=restrictions(network,'reverse-release',payment_hash)
         token=lab.rpc([*node['cli'],'-k'],'createrune',
-                      'restrictions='+json.dumps([['method='+m for m in methods]]))
+                      'restrictions='+json.dumps(rules))
         config={k:v for k,v in lab.connections[node['data'].name].items() if k!='cli'}
         config['rune']=token['rune'];connections.append(config)
         remote=Remote(config)
+        if node is incoming_node and not inspection and (not recovery or reverse):
+            # Ask CLN's authorization checker, never invoke close/release with
+            # deliberately wrong parameters. Positive permission is checked too.
+            method='reverse-release' if recovery else 'close'
+            good=(dict(payment_hash=payment_hash,binding=['1x1x1',0],preimage='00'*32)
+                  if recovery else dict(id=channel_id,unilateraltimeout=1))
+            def permitted(params):
+                try:
+                    reply=lab.rpc([*node['cli'],'-k'],'checkrune','rune='+token['rune'],
+                                  'method='+method,'params='+json.dumps(params))
+                    return reply.get('valid') is True
+                except __import__('subprocess').CalledProcessError:return False
+            assert permitted(good),'bound rune refused intended parameter shape'
+            wrong=dict(good);key='payment_hash' if recovery else 'id'
+            wrong[key]=('00' if good[key][:2]!='00' else '11')+good[key][2:]
+            assert not permitted(wrong),'bound rune accepted another target'
+            assert not permitted({}),'bound rune accepted missing parameters'
+            assert not permitted(dict(good,unexpected=True)),'bound rune accepted extra parameters'
+            assert not permitted(list(good.values())),'bound rune accepted positional parameters'
+            if not recovery:
+                assert not permitted(dict(good,unilateraltimeout=0)),'bound rune accepted changed timeout'
+            print('PASS: CLN authorization enforces exact '+method+' target and parameter shape',flush=True)
         forbidden=['sendpay','pay','withdraw','createrune']
         if node is incoming_node:
             forbidden+=([('reverse-fail' if reverse else 'xbt-fail'),'close'] if recovery else
@@ -122,7 +149,7 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
         groupid=attempt['groupid'],partid=attempt.get('partid',0))
     assert binding==[spec['channel']['short_channel_id'],spec['htlc_id']]
     assert spec['outgoing_amount_msat']==outgoing_amount and spec['incoming_amount_msat']==incoming_amount
-    save(ROOT/'deadline-input.json',dict(spec=spec,connections=scoped_connections(lab,incoming_node,outgoing_node,reverse)))
+    save(ROOT/'deadline-input.json',dict(spec=spec,connections=scoped_connections(lab,incoming_node,outgoing_node,reverse,channel_id=spec['channel']['channel_id'])))
     (ROOT/'remote.json').unlink()  # Do not expose the fixture's submission runes.
     print('PASS: dedicated deadline runes reject spending and gate resolution; original outgoing attempt pending',flush=True)
     mine(incoming['expiry']-rpc(incoming_chain,'getblockcount')-31)
@@ -188,7 +215,7 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
         # Only recipient cooperation and independent on-chain verification stay
         # in the fixture. The packaged resolver must obtain/release the secret.
         save(ROOT/'claim-input.json',dict(spec=spec,
-            connections=scoped_connections(lab,incoming_node,outgoing_node,reverse,recovery=True)))
+            connections=scoped_connections(lab,incoming_node,outgoing_node,reverse,recovery=True,payment_hash=payment_hash)))
         (ROOT/'deadline-input.json').unlink()  # Recovery containers receive no close rune.
         assert bridge(recover=True)['phase']=='outgoing_pending'
         assert not (ROOT/'deadline-job/claim-receipt.json').exists()
