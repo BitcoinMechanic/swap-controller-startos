@@ -61,6 +61,18 @@ class VerificationTests(unittest.TestCase):
         result=self.prove()
         self.assertTrue(result['verified']);self.assertEqual(result['proof']['heights'],[100,104,109])
 
+    def test_commitment_rollback_and_ordered_reconfirmation(self):
+        for tx in self.rows:tx['blockheight']=0
+        self.assertEqual(self.prove()['phase'],'awaiting_commitment')
+        self.commit['blockheight']=103
+        self.assertEqual(self.prove()['phase'],'awaiting_htlc_success')
+        self.success['blockheight']=104
+        self.assertEqual(self.prove()['phase'],'awaiting_csv_sweep')
+        self.sweep['blockheight']=109;self.funds[0]['blockheight']=109
+        result=self.prove()
+        self.assertTrue(result['verified']);self.assertEqual(result['proof']['heights'],[103,104,109])
+        self.assertEqual(result['proof']['commitment'],self.commit['hash'])
+
     def test_unconfirmed_sweep_never_verifies(self):
         self.sweep['blockheight']=0;self.assertFalse(self.prove()['verified'])
     def test_other_funding_not_claimed(self):

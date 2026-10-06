@@ -1270,6 +1270,34 @@ python3 scripts/test-funded-deadline.py \
 ```
 
 No image rebuild or StartOS installation is required for this fixture extension.
-Funded validation is pending. This checks paired-node observation recovery and
+All four funded claim rollback cases passed at checkpoint 53bed2b.
+This checks paired-node observation recovery and
 CSV maturity after success rollback; it does not establish commitment rollback
 recovery, independent chain proofs, finality or live execution readiness.
+
+
+## Funded regtest commitment confirmation rollback
+
+The fixture now repeats the deeper rollback with the commitment block removed
+as well. It builds an empty replacement branch past the old tip and waits for
+CLN to report the original commitment, success and sweep as unconfirmed. Two
+fresh read-only verifier containers must report `awaiting_commitment`, with no
+retained success proof.
+
+It then mines the original commitment by itself, requires
+`awaiting_htlc_success`, and mines the original success in the following block
+before the original expiry. The existing CSV-boundary test rejects a premature
+sweep and reconfirms that same sweep at its new maturity. Verification must
+recover using the three new confirmation heights and the original transaction
+IDs. The original outgoing attempt, gate journal, deadline/claim records and
+close/release audits must remain unchanged throughout.
+
+Backend invalidation and raw transaction selection remain disposable fixture
+operations. No mutation credentials are given to the verifier. This validates
+observation recovery when the same commitment returns; it does not test a
+conflicting commitment, revoked state, funding rollback or arbitrary-depth
+reorgs. Confirmation evidence remains paired-node data, not independent proofs.
+
+Run the existing four-case deadline harness with `all`. No Docker rebuild or
+StartOS installation is needed. Funded commitment rollback validation is pending;
+live execution remains disabled.

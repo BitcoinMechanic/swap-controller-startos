@@ -58,6 +58,7 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 - [x] Run all four funded deadline cases with packaged post-close gate recovery and discarded release replies.
 - [x] Run all four funded cases with packaged read-only claim/sweep verification and independent fixture comparison.
 - [x] Disconnect and reconfirm the sweep block in all four funded cases; revoke and recover read-only verification without repeated mutations.
-- [ ] Disconnect HTLC-success and sweep, reconfirm success and enforce its new CSV maturity in all four funded cases.
+- [x] Disconnect HTLC-success and sweep, reconfirm success and enforce its new CSV maturity in all four funded cases.
+- [ ] Disconnect and reconfirm the original commitment and descendants in all four funded cases without repeated controller mutations.
 - [ ] Establish confirmation/reorg handling beyond paired-node observations before live protection.
 - [ ] Validate live deadline/on-chain protection, including controller downtime, before implementing live execution.

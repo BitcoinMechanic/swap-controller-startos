@@ -263,69 +263,90 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
     current=lab.rpc([*outgoing_node['cli'],'-k'],'listsendpays','payment_hash='+payment_hash)['payments']
     assert len(current)==1 and current[0]['id']==attempt['id'] and current[0]['status']=='complete'
     print('PASS: same sweep confirmed in replacement block; fresh verification recovered; original attempt and mutation journals unchanged',flush=True)
-    # Deeper rollback: retain the commitment, disconnect success and sweep.
-    # Raw transactions stay inside this disposable backend fixture; the
-    # packaged verifier must rediscover their links from its read-only RPCs.
-    txs={t['hash']:t for t in rpc(incoming_node,'listtransactions')['transactions']}
-    success_id=claim['htlc_success_txid'];sweep_id=claim['receiver_sweep_txid']
-    success_raw=txs[success_id]['rawtx'];sweep_raw=txs[sweep_id]['rawtx']
-    success_height=recovered['proof']['heights'][1]
-    old_height=rpc(incoming_chain,'getblockcount')
-    assert recovered['proof']['heights'][0]<success_height
-    # Keep the replacement success within the original quoted claim window.
-    assert old_height+2<spec['expiry'],'insufficient_fixture_claim_margin'
-    removed_success=rpc(incoming_chain,'getblockhash',success_height)
-    rpc(incoming_chain,'invalidateblock',removed_success)
-    assert rpc(incoming_chain,'getblockcount')==success_height-1
-    branch_height=old_height+1
-    for _ in range(branch_height-(success_height-1)):
-        empty=rpc(incoming_chain,'generateblock',rpc(incoming_chain,'getnewaddress'),'[]')
-        assert len(rpc(incoming_chain,'getblock',empty['hash'])['tx'])==1
-    def claim_disconnected():
-        if any(rpc(node,'getinfo')['blockheight']!=branch_height for node in (payer,incoming_node)):return False
-        txs=rpc(incoming_node,'listtransactions')['transactions']
-        return not any(t['hash'] in (success_id,sweep_id) and t.get('blockheight',0)>0 for t in txs)
-    wait_until(claim_disconnected,incoming_node['proc'],timeout=90)
-    for _ in range(2):
-        pending_result=bridge(verify=True)
-        assert pending_result['phase']=='awaiting_htlc_success' and not pending_result['verified']
-        assert 'proof' not in pending_result and private_load(ROOT/'deadline-job/chain-verification.json')==pending_result
-    assert all(path.read_bytes()==data for path,data in snapshots.items())
-    print('PASS: success and sweep disconnected; fresh verifiers report awaiting HTLC-success; commitment retained',flush=True)
-    # Select only the original success, never its CSV-delayed child.
-    block=rpc(incoming_chain,'generateblock',rpc(incoming_chain,'getnewaddress'),json.dumps([success_raw]))
-    assert rpc(incoming_chain,'getblock',block['hash'])['tx'][1:]==[success_id]
-    new_success_height=branch_height+1
-    def success_reconfirmed():
-        if rpc(incoming_node,'getinfo')['blockheight']!=new_success_height:return False
-        return any(t['hash']==success_id and t.get('blockheight')==new_success_height
-                   for t in rpc(incoming_node,'listtransactions')['transactions'])
-    wait_until(success_reconfirmed,incoming_node['proc'],timeout=90)
-    assert bridge(verify=True)['phase']=='awaiting_csv_sweep'
-    delay=recovered['proof']['csv_delay'];assert delay>=2
-    # At this tip, the next block is still one block too early for the sweep.
-    for _ in range(delay-2):
+    def rollback_claim(previous,whole=False):
+        # Raw transactions stay inside this disposable backend fixture; the
+        # packaged verifier must rediscover their links from its read-only RPCs.
+        txs={t['hash']:t for t in rpc(incoming_node,'listtransactions')['transactions']}
+        success_id=claim['htlc_success_txid'];sweep_id=claim['receiver_sweep_txid']
+        success_raw=txs[success_id]['rawtx'];sweep_raw=txs[sweep_id]['rawtx']
+        commitment_id=previous['proof']['commitment']
+        commitment_raw=txs[commitment_id]['rawtx']
+        commitment_height,success_height=previous['proof']['heights'][:2]
+        rewind_height=commitment_height if whole else success_height
+        old_height=rpc(incoming_chain,'getblockcount')
+        assert previous['proof']['heights'][0]<success_height
+        # Keep the replacement success within the original quoted claim window.
+        assert old_height+2+int(whole)<spec['expiry'],'insufficient_fixture_claim_margin'
+        removed_success=rpc(incoming_chain,'getblockhash',rewind_height)
+        rpc(incoming_chain,'invalidateblock',removed_success)
+        assert rpc(incoming_chain,'getblockcount')==rewind_height-1
+        branch_height=old_height+1
+        for _ in range(branch_height-(rewind_height-1)):
+            empty=rpc(incoming_chain,'generateblock',rpc(incoming_chain,'getnewaddress'),'[]')
+            assert len(rpc(incoming_chain,'getblock',empty['hash'])['tx'])==1
+        def claim_disconnected():
+            if any(rpc(node,'getinfo')['blockheight']!=branch_height for node in (payer,incoming_node)):return False
+            txs=rpc(incoming_node,'listtransactions')['transactions']
+            targets=(commitment_id,success_id,sweep_id) if whole else (success_id,sweep_id)
+            return not any(t['hash'] in targets and t.get('blockheight',0)>0 for t in txs)
+        wait_until(claim_disconnected,incoming_node['proc'],timeout=90)
+        for _ in range(2):
+            pending_result=bridge(verify=True)
+            assert pending_result['phase']==('awaiting_commitment' if whole else 'awaiting_htlc_success') and not pending_result['verified']
+            assert 'proof' not in pending_result and private_load(ROOT/'deadline-job/chain-verification.json')==pending_result
+        assert all(path.read_bytes()==data for path,data in snapshots.items())
+        if whole:
+            print('PASS: commitment and descendants disconnected; two fresh verifiers report awaiting commitment without retained proof',flush=True)
+            block=rpc(incoming_chain,'generateblock',rpc(incoming_chain,'getnewaddress'),json.dumps([commitment_raw]))
+            assert rpc(incoming_chain,'getblock',block['hash'])['tx'][1:]==[commitment_id]
+            commitment_height=branch_height+1
+            def commitment_reconfirmed():
+                if rpc(incoming_node,'getinfo')['blockheight']!=commitment_height:return False
+                return any(t['hash']==commitment_id and t.get('blockheight')==commitment_height
+                           for t in rpc(incoming_node,'listtransactions')['transactions'])
+            wait_until(commitment_reconfirmed,incoming_node['proc'],timeout=90)
+            pending_result=bridge(verify=True)
+            assert pending_result['phase']=='awaiting_htlc_success' and not pending_result['verified']
+        else:
+            print('PASS: success and sweep disconnected; fresh verifiers report awaiting HTLC-success; commitment retained',flush=True)
+        # Select only the original success, never its CSV-delayed child.
+        block=rpc(incoming_chain,'generateblock',rpc(incoming_chain,'getnewaddress'),json.dumps([success_raw]))
+        assert rpc(incoming_chain,'getblock',block['hash'])['tx'][1:]==[success_id]
+        new_success_height=branch_height+1+int(whole)
+        def success_reconfirmed():
+            if rpc(incoming_node,'getinfo')['blockheight']!=new_success_height:return False
+            return any(t['hash']==success_id and t.get('blockheight')==new_success_height
+                       for t in rpc(incoming_node,'listtransactions')['transactions'])
+        wait_until(success_reconfirmed,incoming_node['proc'],timeout=90)
+        assert bridge(verify=True)['phase']=='awaiting_csv_sweep'
+        delay=previous['proof']['csv_delay'];assert delay>=2
+        # At this tip, the next block is still one block too early for the sweep.
+        for _ in range(delay-2):
+            rpc(incoming_chain,'generateblock',rpc(incoming_chain,'getnewaddress'),'[]')
+        immature_height=new_success_height+delay-2
+        wait_until(lambda:rpc(incoming_node,'getinfo')['blockheight']==immature_height,incoming_node['proc'],timeout=90)
+        acceptance=rpc(incoming_chain,'testmempoolaccept',json.dumps([sweep_raw]))
+        assert len(acceptance)==1 and acceptance[0]['allowed'] is False
+        assert acceptance[0].get('reject-reason')=='non-BIP68-final',acceptance[0].get('reject-reason')
+        assert not bridge(verify=True)['verified']
         rpc(incoming_chain,'generateblock',rpc(incoming_chain,'getnewaddress'),'[]')
-    immature_height=new_success_height+delay-2
-    wait_until(lambda:rpc(incoming_node,'getinfo')['blockheight']==immature_height,incoming_node['proc'],timeout=90)
-    acceptance=rpc(incoming_chain,'testmempoolaccept',json.dumps([sweep_raw]))
-    assert len(acceptance)==1 and acceptance[0]['allowed'] is False
-    assert acceptance[0].get('reject-reason')=='non-BIP68-final',acceptance[0].get('reject-reason')
-    assert not bridge(verify=True)['verified']
-    rpc(incoming_chain,'generateblock',rpc(incoming_chain,'getnewaddress'),'[]')
-    block=rpc(incoming_chain,'generateblock',rpc(incoming_chain,'getnewaddress'),json.dumps([sweep_raw]))
-    assert rpc(incoming_chain,'getblock',block['hash'])['tx'][1:]==[sweep_id]
-    final_height=new_success_height+delay
-    wait_until(lambda:rpc(incoming_node,'getinfo')['blockheight']==final_height
-               and confirmed(incoming_node,sweep_id),incoming_node['proc'],timeout=90)
-    final=bridge(verify=True)
-    expected_proof=dict(recovered['proof'],heights=[recovered['proof']['heights'][0],new_success_height,final_height])
-    assert final['verified'] and final['proof']==expected_proof and bridge(verify=True)==final
-    assert all(path.read_bytes()==data for path,data in snapshots.items())
-    assert rpc(outgoing_chain,'getblockcount')==outgoing_height
-    current=lab.rpc([*outgoing_node['cli'],'-k'],'listsendpays','payment_hash='+payment_hash)['payments']
-    assert len(current)==1 and current[0]['id']==attempt['id'] and current[0]['status']=='complete'
-    print('PASS: original success reconfirmed; backend rejected premature sweep; new CSV delay matured; verification recovered without close or release',flush=True)
+        block=rpc(incoming_chain,'generateblock',rpc(incoming_chain,'getnewaddress'),json.dumps([sweep_raw]))
+        assert rpc(incoming_chain,'getblock',block['hash'])['tx'][1:]==[sweep_id]
+        final_height=new_success_height+delay
+        wait_until(lambda:rpc(incoming_node,'getinfo')['blockheight']==final_height
+                   and confirmed(incoming_node,sweep_id),incoming_node['proc'],timeout=90)
+        final=bridge(verify=True)
+        expected_proof=dict(previous['proof'],heights=[commitment_height,new_success_height,final_height])
+        assert final['verified'] and final['proof']==expected_proof and bridge(verify=True)==final
+        assert all(path.read_bytes()==data for path,data in snapshots.items())
+        assert rpc(outgoing_chain,'getblockcount')==outgoing_height
+        current=lab.rpc([*outgoing_node['cli'],'-k'],'listsendpays','payment_hash='+payment_hash)['payments']
+        assert len(current)==1 and current[0]['id']==attempt['id'] and current[0]['status']=='complete'
+        print('PASS: original success reconfirmed; backend rejected premature sweep; new CSV delay matured; verification recovered without close or release',flush=True)
+        if whole:print('PASS: original commitment, claim and mature sweep reconfirmed; all transaction IDs and mutation journals preserved',flush=True)
+        return final
+    recovered=rollback_claim(recovered)
+    rollback_claim(recovered,whole=True)
     print('PASS: fixture verified confirmed '+incoming_name+' HTLC-success and CSV sweep; original '+outgoing_name+' attempt settled off-chain; '+outgoing_name+' height stayed fixed',flush=True)
 
 
