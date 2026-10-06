@@ -50,6 +50,17 @@ class VerificationTests(unittest.TestCase):
         self.assertEqual(self.prove()['proof']['csv_delay'],5)
         for count,phase in ((0,'awaiting_commitment'),(1,'awaiting_htlc_success'),(2,'awaiting_csv_sweep')):
             self.assertEqual(v.prove(self.spec,self.rows[:count],self.funds,110)['phase'],phase)
+    def test_claim_reconfirmation_restarts_csv(self):
+        self.success['blockheight']=0;self.sweep['blockheight']=0
+        self.assertEqual(self.prove()['phase'],'awaiting_htlc_success')
+        self.success['blockheight']=104
+        self.assertEqual(self.prove()['phase'],'awaiting_csv_sweep')
+        self.sweep['blockheight']=106
+        with self.assertRaisesRegex(ValueError,'premature_csv_sweep'):self.prove()
+        self.sweep['blockheight']=109;self.funds[0]['blockheight']=109
+        result=self.prove()
+        self.assertTrue(result['verified']);self.assertEqual(result['proof']['heights'],[100,104,109])
+
     def test_unconfirmed_sweep_never_verifies(self):
         self.sweep['blockheight']=0;self.assertFalse(self.prove()['verified'])
     def test_other_funding_not_claimed(self):

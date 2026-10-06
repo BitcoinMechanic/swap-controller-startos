@@ -1439,8 +1439,38 @@ python3 scripts/test-funded-deadline.py \
 ```
 
 This patch changes fixture tests and documentation, so the controller image from
-the claim-verification checkpoint can be reused. Funded rollback validation is
-pending. The test covers loss and replacement of the sweep confirmation only;
+the claim-verification checkpoint can be reused. All four funded sweep rollback cases passed at checkpoint 5dda471. The test covers loss and replacement of the sweep confirmation only;
 it does not establish deep-reorg safety, independent chain proofs, confirmation
 finality, or recovery after the commitment/HTLC-success itself is disconnected.
 Live execution remains disabled, and the installed StartOS package is unchanged.
+
+
+## Funded regtest HTLC-success confirmation rollback
+
+After the sweep-only rollback, the fixture now disconnects the HTLC-success
+block and its descendants while retaining the original commitment. It mines an
+empty replacement branch past the old tip, waits for CLN to report both success
+and sweep as unconfirmed, and runs two fresh read-only verifiers. Both must
+replace the saved success with `awaiting_htlc_success` and no retained proof.
+
+The fixture selects the original raw HTLC-success transaction into a new block
+before the original expiry. Inspection then reports `awaiting_csv_sweep`. Near
+the new CSV boundary, backend `testmempoolaccept` must reject the original sweep
+with `non-BIP68-final`. At maturity the fixture mines that same sweep and two
+fresh verifier processes must report the new success/sweep confirmation heights.
+The commitment ID/height, payment attempt and protected mutation journals remain
+unchanged. Raw transaction selection and chain administration are fixture-only;
+the controller continues to receive separate read-only credentials.
+
+Run the four-case deadline harness using the existing controller image:
+
+```sh
+python3 scripts/test-funded-deadline.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind all
+```
+
+No image rebuild or StartOS installation is required for this fixture extension.
+Funded validation is pending. This checks paired-node observation recovery and
+CSV maturity after success rollback; it does not establish commitment rollback
+recovery, independent chain proofs, finality or live execution readiness.
