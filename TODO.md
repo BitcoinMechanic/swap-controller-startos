@@ -65,7 +65,8 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 - [x] Run both packaged quote directions with the original outgoing attempt settling during controller absence, including interrupted release checkpoints and exact-once settlement.
 - [x] Run both packaged quote directions with definitive outgoing failure during controller absence, exact-once incoming failure and restored balances.
 - [x] Validate supervised pending close and definitive failure recovery in both directions.
-- [ ] Complete integrated supervised quote recovery through confirmed HTLC-success and CSV wallet sweep in both directions.
+- [x] Complete integrated supervised quote recovery through confirmed HTLC-success and CSV wallet sweep in both directions.
+- [ ] Validate the full funded supervisor matrix with protection plans and credentials armed before outgoing submission.
 - [ ] Retain explicit funded evidence for supervised complete outcomes, including interrupted release checkpoints.
 - [ ] Establish confirmation/reorg handling beyond paired-node observations before live protection.
 - [ ] Validate live deadline/on-chain protection, including controller downtime, before implementing live execution.

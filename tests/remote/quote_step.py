@@ -57,22 +57,23 @@ def main():
     isolation()
     stage=sys.argv[1]
     assert os.environ.get('BTC_XBT_DISPOSABLE_CONTAINER')=='1'
-    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-enroll','verify-claim')
+    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-plan','verify-claim')
     root=Path('/controller-state');manager=root/'execution'
     if stage=='verify-claim':
         verify_claim(root)
         print('{"packaged_claim_verification":true}')
         return 0
-    if stage=='supervisor-enroll':
+    if stage=='supervisor-plan':
         import executor
         import regtest_supervisor
         job=manager/'jobs/swap'
         request=private_load(root/'quote-input.json')
-        initial,_=executor.records(job)
-        request['intent_digest']=executor.digest(initial)
-        regtest_supervisor.binding(job,request)
-        assert not (job/'supervisor.json').exists()
-        save(job/'supervisor.json',request)
+        assert not (job/'intent.json').exists() and not (job/'launched.json').exists()
+        assert set(request)=={'spec','deadline_connections','claim_connections'}
+        assert not {'groupid','partid'} & set(request['spec'])
+        assert not (job/'supervisor-required.json').exists()
+        save(job/'supervisor-required.json',dict(plan_digest=executor.digest(request)))
+        save(job/'supervisor-plan.json',request)
         mode='review';request=dict(job='swap')
     elif stage in ('worker','worker-interrupt-resolution'):
         result=worker(manager,stage=='worker-interrupt-resolution')

@@ -1,6 +1,6 @@
 """Opt-in quote supervisor for disposable regtest jobs only.
 
-Separate close and claim credentials; no automatic enrollment or live authority.
+Separate close and claim credentials; optional pre-submission plan, no live authority.
 A close intent permanently selects post-close recovery, never ordinary failure.
 """
 import fcntl
@@ -13,7 +13,7 @@ import deadline_boundary as deadline
 import deadline_recovery as claim
 
 
-def binding(root,request):
+def binding(root,request,*,launched=True):
     require(type(request) is dict and set(request)=={'intent_digest','spec','deadline_connections','claim_connections'},'invalid_supervisor_request')
     spec=request['spec'];deadline.validate(spec)
     initial,state=executor.records(root)
@@ -32,7 +32,7 @@ def binding(root,request):
     for c in initial['connections']:
         role={'regtest':'btc','xbt-regtest':'xbt'}[c['network']]
         require(spec['node_ids'][role]==c['node_id'],'supervisor_identity_changed')
-    require(private_load(root/'launched.json')==dict(digest=executor.digest(initial)),'missing_launch_binding')
+    if launched:require(private_load(root/'launched.json')==dict(digest=executor.digest(initial)),'missing_launch_binding')
     return initial,state
 
 
@@ -51,18 +51,107 @@ def clients(request,recovery=False):
     return result
 
 
+def check_plan(root,initial):
+    plan=private_load(root/'supervisor-plan.json')
+    digest=executor.digest(plan)
+    require(initial.get('supervision_plan_digest')==digest and
+            private_load(root/'supervisor-required.json')==dict(plan_digest=digest),'supervisor_plan_changed')
+    require(type(plan) is dict and set(plan)=={'spec','deadline_connections','claim_connections'},'invalid_supervision_plan')
+    require(not {'groupid','partid'} & set(plan['spec']),'attempt_not_yet_assigned')
+    request=dict(plan,intent_digest=executor.digest(initial),spec=dict(plan['spec'],groupid=0,partid=0))
+    binding(root,request,launched=False)
+    return request
+
+
+def arm(root,initial,state,*,modules=Path('/opt/swap'),clock=time.monotonic):
+    """Called under the executor/lifecycle lock before its launch marker or child."""
+    executor.guard();executor.execution_allowed(root)
+    require(not os.path.lexists(root/'restored.json'),'restored_execution_blocked')
+    require(state['phase']=='prepared' and not os.path.lexists(root/'launched.json'),'already_launched')
+    require((modules/'SOURCE_COMMIT').read_text().strip()==executor.PIN,'source_pin_mismatch')
+    request=check_plan(root,initial);spec=request['spec']
+    incoming='btc' if spec['direction']=='forward' else 'xbt';outgoing='xbt' if incoming=='btc' else 'btc'
+    start=clock()
+    close=clients(request);recovery=clients(request,True)
+    def call(remote,method,*args):
+        require(0<=clock()-start<=120,'supervision_observation_expired')
+        result=remote.call(method,*args)
+        require(0<=clock()-start<=120,'supervision_observation_expired')
+        return result
+    for group in (close,recovery):
+        for role in ('btc','xbt'):
+            info=call(group[role],'getinfo')
+            require(info.get('id')==spec['node_ids'][role] and info.get('network')==group[role].network
+                    and not any(k.startswith('warning') for k in info),'supervision_identity_unavailable')
+    require(call(close[outgoing],'listsendpays',spec['payment_hash']).get('payments')==[],'outgoing_attempt_already_exists')
+    rows=call(close[incoming],'listpeerchannels').get('channels',[])
+    found=[c for c in rows if c.get('channel_id')==spec['channel']['channel_id']]
+    require(len(found)==1 and found[0].get('state')=='CHANNELD_NORMAL' and
+            all(found[0].get(k)==v and type(found[0].get(k)) is type(v) for k,v in spec['channel'].items()),'incoming_pin_changed')
+    expected=dict(id=spec['htlc_id'],direction='in',payment_hash=spec['payment_hash'],amount_msat=spec['incoming_amount_msat'],
+                  expiry=spec['expiry'],state='RCVD_ADD_ACK_REVOCATION')
+    h=[h for h in found[0].get('htlcs',[]) if h.get('id')==spec['htlc_id'] and h.get('direction')=='in']
+    require(len(h)==1 and all(h[0].get(k)==v and type(h[0].get(k)) is type(v) for k,v in expected.items())
+            and h[0].get('local_trimmed',False) is False,'incoming_htlc_changed')
+    method='xbt-spend-info' if incoming=='btc' else 'reverse-status'
+    gate=call(close[incoming],method,spec['payment_hash'])
+    require(gate.get('payment_hash')==spec['payment_hash'] and gate.get('binding')==state[incoming+'_binding']
+            and gate.get('cltv_expiry')==spec['expiry'],'gate_binding_changed')
+    status=call(close[incoming],'xbt-quote-status' if incoming=='btc' else 'reverse-status',spec['payment_hash'])
+    require(status.get('phase')=='held' and status.get('binding')==state[incoming+'_binding'],'incoming_gate_not_held')
+    if incoming=='xbt':require(status.get('hook_ready') is True,'incoming_hook_not_ready')
+    height=call(close[incoming],'getinfo').get('blockheight')
+    require(type(height) is int and spec['expiry']-height>30,'insufficient_supervision_margin')
+    receipt=dict(intent_digest=executor.digest(initial),plan_digest=initial['supervision_plan_digest'])
+    path=root/'supervisor-armed.json'
+    if path.exists():require(private_load(path)==receipt,'supervisor_arming_changed')
+    else:save(path,receipt)
+
+
+def attach_attempt(root,initial,state):
+    """After launch, identify the unique original attempt; never submit again."""
+    request=check_plan(root,initial)
+    require(private_load(root/'supervisor-armed.json')==dict(intent_digest=executor.digest(initial),
+            plan_digest=initial['supervision_plan_digest']),'supervision_not_armed')
+    require(private_load(root/'launched.json')==dict(digest=executor.digest(initial)),'missing_launch_binding')
+    require(state['phase']!='prepared','launch_outcome_unknown')
+    if os.path.lexists(root/'supervisor.json'):
+        current=private_load(root/'supervisor.json')
+        expected=dict(request,spec=dict(request['spec'],groupid=current['spec']['groupid'],partid=current['spec']['partid']))
+        require(current==expected,'supervisor_configuration_changed')
+        return current
+    spec=request['spec'];outgoing='xbt' if spec['direction']=='forward' else 'btc'
+    payments=clients(request)[outgoing].call('listsendpays',spec['payment_hash']).get('payments')
+    require(type(payments) is list and len(payments)==1,'original_attempt_required')
+    payment=dict(payments[0]);payment.setdefault('partid',0)
+    require(payment.get('payment_hash')==spec['payment_hash'] and
+            type(payment.get('amount_sent_msat')) is int and
+            payment['amount_sent_msat']==spec['outgoing_amount_msat'],'outgoing_attempt_changed')
+    for key in ('groupid','partid'):
+        require(type(payment.get(key)) is int and 0<=payment[key]<2**53,'invalid_attempt_binding')
+    request['spec']=dict(spec,groupid=payment['groupid'],partid=payment['partid'])
+    binding(root,request)
+    save(root/'supervisor.json',request)
+    return request
+
+
 def advance(root,*,modules=Path('/opt/swap'),clock=time.monotonic):
     executor.guard()
-    # Ordinary jobs retain their existing executor path. Enrollment is explicit
-    # fixture provisioning, after an original outgoing attempt exists.
-    if not os.path.lexists(root/'supervisor.json'):return executor.step(root)
+    # Intent records retain the requirement even if a plan file disappears.
+    initial,state=executor.records(root)
+    planned='supervision_plan_digest' in initial
+    if not planned and not os.path.lexists(root/'supervisor.json'):return executor.step(root)
+    if planned and state['phase']=='prepared':return executor.step(root)
     fd=os.open(root/'supervisor.lock',os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
     try:
         fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
         with executor.lock(root):
             executor.execution_allowed(root)
             require(not os.path.lexists(root/'restored.json'),'restored_execution_blocked')
-            request=private_load(root/'supervisor.json')
+            if planned:
+                initial,state=executor.records(root)
+                request=attach_attempt(root,initial,state)
+            else:request=private_load(root/'supervisor.json')
             initial,state=binding(root,request)
             require((modules/'SOURCE_COMMIT').read_text().strip()==executor.PIN,'source_pin_mismatch')
             # This receipt fixes credentials as well as the spec without copying

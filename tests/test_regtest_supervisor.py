@@ -21,6 +21,8 @@ class SupervisorTests(unittest.TestCase):
         save(self.root/'supervisor.json',dict(spec=self.spec))
         self.state=dict(phase='outgoing_started')
         self.initial=dict(direction='forward')
+        record_patch=patch.object(s.executor,'records',side_effect=lambda root:(self.initial,self.state))
+        record_patch.start();self.addCleanup(record_patch.stop)
         self.remote=Mock()
         self.payment=dict(payment_hash='a'*64,groupid=1,amount_sent_msat=2000,status='pending')
         self.remote.call.side_effect=lambda *args:dict(payments=[self.payment])

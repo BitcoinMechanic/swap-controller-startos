@@ -77,6 +77,11 @@ def prepare(root, direction, state, connections):
     initial = dict(schema=1, source_commit=PIN, direction=direction, state=state, connections=connections)
     with lock(root):
         execution_allowed(root)
+        if os.path.lexists(root/'supervisor-required.json') or os.path.lexists(root/'supervisor-plan.json'):
+            required=private_load(root/'supervisor-required.json')
+            plan=private_load(root/'supervisor-plan.json')
+            require(required==dict(plan_digest=digest(plan)),'supervisor_plan_changed')
+            initial['supervision_plan_digest']=digest(plan)
         if (root/'intent.json').exists():
             require(private_load(root/'intent.json') == initial, 'existing_intent_changed')
             return digest(initial)
@@ -153,6 +158,12 @@ def step(root, recover_only=False, flags=(), runner=child, now=None):
             require(private_load(root/'launched.json') == dict(digest=digest(initial)), 'missing_launch_binding')
         if state['phase'] in TERMINAL[direction]:
             return subprocess.CompletedProcess([], 0, json.dumps(terminal_result(direction, state)), '')
+        if 'supervision_plan_digest' in initial:
+            from regtest_supervisor import check_plan,arm
+            check_plan(root,initial)
+            if state['phase']=='prepared':arm(root,initial,state)
+            else:require(private_load(root/'supervisor-armed.json')==dict(intent_digest=digest(initial),
+                         plan_digest=initial['supervision_plan_digest']),'supervision_not_armed')
         if state['phase'] == 'prepared':
             require(not recover_only, 'prepared_requires_authorized_start')
             require(not (root/'launched.json').exists(), 'launch_outcome_unknown')

@@ -24,7 +24,7 @@ image_remote.restrictions=quote_restrictions
 
 
 def bridge(stage,request=None):
-    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-enroll','verify-claim','assert-controller-absent')
+    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-plan','verify-claim','assert-controller-absent')
     root=Path('/exchange/control')
     if request is not None:save(root/'quote-input.json',request)
     mailbox=Path('/exchange/jobs')/(uuid.uuid4().hex+'.request')
@@ -140,7 +140,31 @@ def run(lab,reverse=False):
     wait_until(held,incoming['proc'])
     wait_until(lambda:any(h['payment_hash']==invoice['payment_hash'] and h['state']=='RCVD_ADD_ACK_REVOCATION'
                          for h in channel(incoming).get('htlcs',[])),incoming['proc'])
+    control=Path('/exchange/control');manager=control/'execution';job=manager/'jobs/swap'
+    if supervised:
+        from image_deadline import scoped_connections
+        payment_hash=invoice['payment_hash']
+        pin={k:channel(incoming)[k] for k in ('channel_id','funding_txid','funding_outnum','short_channel_id','peer_id')}
+        bound=next(h for h in channel(incoming)['htlcs'] if h['payment_hash']==payment_hash and h['direction']=='in')
+        plan=dict(spec=dict(direction='reverse' if reverse else 'forward',node_ids=dict(btc=op_btc['id'],xbt=op_xbt['id']),
+            channel=pin,htlc_id=bound['id'],payment_hash=payment_hash,expiry=bound['expiry'],
+            incoming_amount_msat=price,outgoing_amount_msat=amount),
+            deadline_connections=scoped_connections(lab,incoming,outgoing,reverse),
+            claim_connections=scoped_connections(lab,incoming,outgoing,reverse,recovery=True))
+        bridge('supervisor-plan',plan)
+        # Prove a partial enrollment cannot silently become an ordinary job.
+        (job/'supervisor-plan.json').unlink()
+        bridge('worker')
+        assert not (job/'launched.json').exists() and not (job/'supervisor-armed.json').exists()
+        assert rpc(outgoing,'listsendpays')['payments']==[] and held()
+        save(job/'supervisor-plan.json',plan)
     status=bridge('worker')
+    if supervised:
+        from executor import digest
+        initial_intent=private_load(job/'intent.json')
+        assert initial_intent['supervision_plan_digest']==digest(plan)
+        assert private_load(job/'supervisor-armed.json')==dict(intent_digest=digest(initial_intent),plan_digest=digest(plan))
+        print('PASS: missing supervision plan blocked submission; restored plan and both credential identities were durably armed before the first outgoing launch',flush=True)
     if downtime:
         assert status['phase']=='outgoing_started'
         payment_hash=invoice['payment_hash']
@@ -155,16 +179,10 @@ def run(lab,reverse=False):
         control=Path('/exchange/control');manager=control/'execution';job=manager/'jobs/swap'
         assert 'preimage' not in private_load(job/'state.json')
         if supervised:
-            from image_deadline import scoped_connections
-            spec=dict(direction='reverse' if reverse else 'forward',node_ids=dict(btc=op_btc['id'],xbt=op_xbt['id']),
-                channel=pin,htlc_id=bound['id'],payment_hash=payment_hash,expiry=bound['expiry'],
-                incoming_amount_msat=price,outgoing_amount_msat=original['amount_sent_msat'],
-                groupid=original['groupid'],partid=original.get('partid',0))
-            bridge('supervisor-enroll',dict(spec=spec,
-                deadline_connections=scoped_connections(lab,incoming,outgoing,reverse),
-                claim_connections=scoped_connections(lab,incoming,outgoing,reverse,recovery=True)))
             bridge('worker')
             assert not private_load(control/'supervisor-output.json')['close_intent_recorded']
+            spec=private_load(job/'supervisor.json')['spec']
+            assert spec['groupid']==original['groupid'] and spec['partid']==original.get('partid',0)
         bridge('assert-controller-absent')
         saved={p:p.read_bytes() for p in control.rglob('*') if p.is_file()}
         quote_before=plugin.with_suffix('.quotes.json').read_bytes()

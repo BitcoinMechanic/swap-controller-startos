@@ -1744,7 +1744,56 @@ python3 scripts/test-quote-flow.py \
 Reuse the controller image from checkpoint 4685c1a; these changes are fixture-only
 and need no rebuild or StartOS installation. Six local quote harness tests and
 twelve claim-verifier tests pass; funded integrated claim/sweep validation is
-pending. Earlier supervisor pending and failure cases passed in both directions.
+complete in both directions at e6fdd95. Earlier supervisor pending and failure cases passed in both directions.
 The verifier still relies on paired CLN observations; fixture comparison does not
-turn its report into an independent chain proof. Enrollment before submission,
-live timing/fee policy and live execution remain outstanding.
+turn its report into an independent chain proof. Live timing/fee policy and live execution remain outstanding; the following
+section adds opt-in pre-submission enrollment for regtest.
+
+
+## Supervision bound before regtest submission
+
+Supervised quote fixtures now provision a private plan while the incoming HTLC
+is committed and before the first outgoing worker launch. The plan fixes node
+identities, incoming funding/channel/HTLC/expiry, amounts and separate restricted
+close and claim credentials. A requirement marker is committed before the plan;
+a missing plan cannot silently fall back to an ordinary unsupervised import.
+The executor embeds the plan digest in its original immutable intent.
+
+Under its existing execution/lifecycle lock, the executor checks the plan and
+quote handoff, verifies both credential sets over HTTPS, checks the exact normal
+incoming channel and committed non-trimmed HTLC, requires a held gate and more
+than the 30-block regtest guard margin, and refuses any existing outgoing attempt.
+It saves an arming receipt before the launch marker and child. Restore, changed
+configuration or unavailable credentials refuse submission. Uncertain child
+launches retain their original no-resend behavior.
+
+The remote node assigns outgoing group/part IDs. A subsequent cycle attaches only
+the unique matching original attempt to the already-armed plan. Missing or
+ambiguous attempts refuse progress; they never trigger another submission.
+Removing the plan or arming receipt after launch prevents recovery from silently
+adopting replacement configuration. Existing post-launch enrolled checkpoints
+remain supported, and ordinary explicitly unenrolled regtest fixtures retain
+their existing path.
+
+All supervised funded scenarios now prove missing-plan refusal before restoring
+the plan and launching. Run the complete milestone matrix against a rebuilt
+controller image:
+
+```sh
+docker buildx build --builder startos-builder --load \
+  -t swap-controller:deadline-boundary . &&
+for outcome in pending settle fail; do
+  python3 scripts/test-quote-flow.py \
+    btc-cln:swap-preparation xbt-cln:recovery-test \
+    swap-controller:deadline-boundary ../bitcoind all \
+    --"${outcome}"-during-downtime --supervise || break
+done
+```
+
+This covers two pending-to-confirmed-sweep cases, four settlement cases including
+interrupted checkpoints, and two definitive-failure cases. Nine local arming tests
+pass, with existing supervisor, executor and quote tests. Funded pre-submission
+arming validation is pending. No StartOS installation is required.
+This binds protection before spending; it does not guarantee an online worker,
+a wall-clock recovery budget, or live cross-chain protection. Live execution
+remains disabled.
