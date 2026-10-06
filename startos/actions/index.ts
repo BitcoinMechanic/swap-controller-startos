@@ -1,3 +1,4 @@
+import { inspectForward, inspectReverse } from './preflight'
 import { livePolicy } from './livePolicy'
 import { pairXbtGate } from './xbtGateObservation'
 import { pairBtcGate } from './gateObservation'
@@ -44,4 +45,4 @@ const workerStatus = sdk.Action.withInput('worker-status', async () => ({
       result: { type: 'group' as const, value: Object.entries(report).map(([name, value]) => ({ name, description: null,
         type: 'single' as const, value: typeof value === 'object' ? JSON.stringify(value) : String(value), masked: false, copyable: false, qr: false })) } }
   }))
-export const actions = sdk.Actions.of().addAction(pair).addAction(status).addAction(workerStatus).addAction(recoveryStatus).addAction(confirmRecovery).addAction(recoverOnce).addAction(quoteStatus).addAction(reviewQuote).addAction(prepareQuote).addAction(approveQuote).addAction(prepareReverseQuote).addAction(liveReadiness).addAction(pairBtcGate).addAction(pairXbtGate).addAction(livePolicy)
+export const actions = sdk.Actions.of().addAction(pair).addAction(status).addAction(workerStatus).addAction(recoveryStatus).addAction(confirmRecovery).addAction(recoverOnce).addAction(quoteStatus).addAction(reviewQuote).addAction(prepareQuote).addAction(approveQuote).addAction(prepareReverseQuote).addAction(liveReadiness).addAction(pairBtcGate).addAction(pairXbtGate).addAction(livePolicy).addAction(inspectForward).addAction(inspectReverse)

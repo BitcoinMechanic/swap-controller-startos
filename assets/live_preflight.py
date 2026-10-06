@@ -3,6 +3,7 @@
 Separate read-only credentials arrive on stdin, are never saved, and must be
 bound to the current monitor pairing. No quote, HTLC or payment is created.
 """
+import copy
 import hashlib
 import json
 from pathlib import Path
@@ -91,7 +92,7 @@ def channel(client, channel_id, amount, incoming):
     return c
 
 
-def inspect(root, request, *, factory=Inspector, clock=time.time, loader=load_config):
+def inspect(root, request, *, factory=Inspector, clock=time.time, loader=load_config, derive_timing=False):
     """Discard observations on pairing changes or age/clock failure; persist nothing."""
     report = dict(read_only=True, live_payment_enabled=False, execution_authorized=False,
                   payment_started=False, preflight_matches=False,
@@ -100,7 +101,7 @@ def inspect(root, request, *, factory=Inspector, clock=time.time, loader=load_co
                   reasons=[])
     try:
         require(type(request) is dict and set(request) == {'candidate', 'credentials'}, 'invalid_request')
-        c = request['candidate']
+        c = copy.deepcopy(request['candidate'])
         fields = {'policy_digest', 'profile', 'btc_amount_msat', 'xbt_amount_msat',
                   'invoice', 'incoming_channel', 'outgoing_channel', 'route_delay_blocks',
                   'quote_expires_at', 'incoming_expiry'}
@@ -123,6 +124,11 @@ def inspect(root, request, *, factory=Inspector, clock=time.time, loader=load_co
         infos = {role: identity(clients[role], config['nodes'][role], networks[role]) for role in clients}
         reverse = c['profile'] == policy.REVERSE
         outgoing, incoming = ('btc', 'xbt') if reverse else ('xbt', 'btc')
+        if derive_timing:
+            # Only the local action adapter selects this mode. Later heights still
+            # reduce the remaining margin and can invalidate the candidate.
+            c['quote_expires_at'] = start + 120
+            c['incoming_expiry'] = infos[incoming]['blockheight'] + (c['route_delay_blocks'] + 174 if reverse else 300)
         amount = c[outgoing + '_amount_msat']
         decoded = clients[outgoing].call('decode', string=c['invoice'])
         require(decoded.get('valid') is True and decoded.get('type') == 'bolt11 invoice'
@@ -170,7 +176,10 @@ def inspect(root, request, *, factory=Inspector, clock=time.time, loader=load_co
             candidate_digest=hashlib.sha256(json.dumps(c, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
             incoming_remaining_blocks=checked['incoming_remaining_blocks'],
             minimum_incoming_remaining_blocks=checked['minimum_incoming_remaining_blocks'],
-            current_fee_trim_checks_passed=True, confirmed_reserves_checked=True)
+            current_fee_trim_checks_passed=True, confirmed_reserves_checked=True,
+            btc_amount_msat=c['btc_amount_msat'], xbt_amount_msat=c['xbt_amount_msat'],
+            route_delay_blocks=c['route_delay_blocks'], quote_expires_at=c['quote_expires_at'],
+            proposed_incoming_expiry=c['incoming_expiry'])
     except Refused as exc:
         # All Refused strings above are fixed local codes; factory errors remain private.
         safe = {'invalid_request','invalid_candidate','policy_digest_mismatch','unsupported_profile',

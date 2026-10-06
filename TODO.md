@@ -50,6 +50,6 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 
 - [x] Run both funded regtest quote flows with policy-bound reviews, approval rejection and held timing checks.
 
-- [ ] Validate the read-only direct live candidate inspector on the packaging VM.
-- [ ] Provision dedicated restricted inspection credentials and add a StartOS preflight action.
+- [x] Validate the read-only direct live candidate inspector on the packaging VM.
+- [ ] Install dedicated restricted inspection credential actions and controller preflight actions; verify a real read-only inspection.
 - [ ] Validate live deadline/on-chain protection before implementing live execution.

@@ -1139,3 +1139,45 @@ remain unchanged; this inspector cannot remove them.
 Run `python3 tests/test_live_preflight.py -v` and
 `python3 tests/test_live_policy.py -v` to validate the inspector and its policy.
 These tests use injected RPC fixtures, not funded live nodes.
+
+
+## Live preflight actions (0.1.0:11)
+
+First install BTC 26.6.8:10 and XBT 0.1.0:16, then explicitly create each node's
+**Inspection Credential** under Coordinator Preparation. The credentials only
+allow invoice decoding, node/channel/reserve inspection and payment-history
+reads. They do not replace the monitor or gate-observer credentials.
+
+Under Readiness, use **Inspect BTC to XBT Candidate** or **Inspect XBT to BTC
+Candidate**. Paste both masked inspection credentials, the recipient invoice,
+and the incoming and direct outgoing coordinator channel short IDs. They are
+passed through stdin and never saved by the controller or prefilled on repeat.
+The existing pairing supplies the endpoints, certificates and expected IDs.
+No additional configuration file is created or backed up.
+
+For BTC to XBT, the recipient invoice must request 2,000 XBT sats; the proposed
+BTC price is fixed at 1,000 sats. For XBT to BTC, the recipient invoice must
+request 1,500 BTC sats; enter a proposed whole-satoshi XBT price between 1 and
+500,000 sats and a direct BTC delay between 40 and 576 blocks (default 40).
+These pilot prices are not a market exchange rate. Use an invoice issued by
+the peer on the chosen outgoing channel; routed invoices are unsupported.
+
+The action builds a candidate using the current policy digest, a 120-second
+quote lifetime, and a proposed incoming expiry based on the observed incoming
+chain height. Forward uses 300 BTC blocks; reverse uses the selected BTC delay
+plus 174 XBT blocks. The inspector checks the remaining margin again using
+later heights; slow observations can therefore reject the candidate. No actual
+incoming invoice, quote registration, HTLC or payment is created.
+
+A false inspection result includes a privacy-safe reason code. Insufficient
+reserves, insufficient directional channel liquidity, a small amount trimmed
+at current fees, a reused payment hash or a stale observation are real blockers;
+do not relax the policy just to make the report pass. A true result remains
+non-authorizing and does not verify a held HTLC or deadline protection. Live
+readiness blockers and the restore barrier remain unchanged. Do not pay any
+invoice as part of this inspection procedure.
+
+This release adds a UI for the previously CLI-only inspector. Validate using
+`python3 tests/test_preflight_actions.py -v`, the existing preflight and policy
+tests, and `node scripts/test-preflight-actions.cjs`. Real-node verification is
+a separate installation check; mocked RPC tests do not establish live readiness.
