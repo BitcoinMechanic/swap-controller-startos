@@ -24,11 +24,13 @@ import image_remote
 ROOT=Path('/exchange/control')
 
 
-def bridge(drop=False,recover=False,verify=False,fault=None):
+def bridge(drop=False,recover=False,verify=False,fault=None,absent=False):
     request=Path('/exchange/jobs')/(uuid.uuid4().hex+'.request')
     stage=('drop-release-reply' if drop else 'recover') if recover else ('drop-close-reply' if drop else 'step')
     if verify:
         assert not drop and not recover and fault in (None,'outage','crash');stage='verify'+('-'+fault if fault else '')
+    if absent:
+        assert not (drop or recover or verify or fault);stage='assert-controller-absent'
     save(request,dict(stage=stage));request.chmod(0o644)
     response=request.with_suffix('.response');end=time.monotonic()+100
     while not response.exists():
@@ -36,6 +38,9 @@ def bridge(drop=False,recover=False,verify=False,fault=None):
         time.sleep(.05)
     result=private_load(response)
     assert result['returncode']==(1 if fault=='outage' else 89 if drop or fault=='crash' else 0),'deadline step failed; inspect private logs'
+    if absent:
+        assert json.loads(result['stdout'])==dict(controller_absent=True)
+        return
     return None if drop or fault else private_load(ROOT/'deadline-output.json')
 
 
@@ -74,6 +79,7 @@ def scoped_connections(lab,incoming_node,outgoing_node,reverse=False,recovery=Fa
 def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_chain,outgoing_chain,invoice,
                  incoming_invoice,binding,plugin,initial,pay_process,pay_log,reverse=False):
     drop=os.environ['DEADLINE_FIXTURE_MODE']=='lost-reply'
+    downtime=os.environ.get('DEADLINE_CONTROLLER_DOWNTIME')=='1'
     payment_hash=invoice['payment_hash']
     incoming_name,outgoing_name=('XBT','BTC') if reverse else ('BTC','XBT')
     incoming_role='xbt' if reverse else 'btc'
@@ -125,7 +131,35 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
     assert not (ROOT/'fixture-close-reply.json').exists()
     assert plugin.with_suffix('.quotes.json').read_bytes()==quote_before
     print('PASS: packaged HTTPS deadline guard leaves bound '+incoming_name+' channel open at 31 blocks',flush=True)
-    mine(1);assert incoming['expiry']-rpc(incoming_chain,'getblockcount')==30
+    close_margin=27 if downtime else 30
+    if downtime:
+        # The 31-block one-shot process has exited. The host acknowledges there
+        # is no named controller container; no step requests occur while mining.
+        bridge(absent=True)
+        offline_files={p:p.read_bytes() for p in ROOT.rglob('*') if p.is_file()}
+        for blocks,remaining in ((1,30),(3,27)):
+            mine(blocks)
+            assert incoming['expiry']-rpc(incoming_chain,'getblockcount')==remaining
+            assert rpc(outgoing_chain,'getblockcount')==outgoing_height
+            current=channel(incoming_node)
+            assert current['state']=='CHANNELD_NORMAL'
+            assert all(current[k]==value for k,value in spec['channel'].items())
+            held=[h for h in current.get('htlcs',[]) if h['id']==spec['htlc_id'] and h['direction']=='in']
+            assert len(held)==1 and all(held[0][k]==value for k,value in dict(
+                payment_hash=payment_hash,expiry=spec['expiry'],amount_msat=incoming_amount,
+                state='RCVD_ADD_ACK_REVOCATION').items())
+            payments=lab.rpc([*outgoing_node['cli'],'-k'],'listsendpays','payment_hash='+payment_hash)['payments']
+            assert len(payments)==1 and all(payments[0].get(k)==attempt.get(k) for k in
+                ('id','groupid','partid','payment_hash','amount_sent_msat'))
+            assert payments[0]['status']=='pending' and not payments[0].get('payment_preimage')
+            assert pay_process.poll() is None
+            assert plugin.with_suffix('.quotes.json').read_bytes()==quote_before
+            assert {p:p.read_bytes() for p in ROOT.rglob('*') if p.is_file()}==offline_files
+        bridge(absent=True)
+        assert not (ROOT/'fixture-close-reply.json').exists()
+        print('PASS: controller absent while incoming margin fell from 31 through 30 to 27 blocks; original HTLC and attempt pending; control files and gate journal unchanged',flush=True)
+    else:mine(1)
+    assert incoming['expiry']-rpc(incoming_chain,'getblockcount')==close_margin
     assert rpc(outgoing_chain,'getblockcount')==outgoing_height
     bridge(drop)
     wait_until(lambda:channel(incoming_node)['state']=='AWAITING_UNILATERAL',incoming_node['proc'])
@@ -147,7 +181,7 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
         assert not {row['method'] for row in audit}&{'sendpay','xbt-release','xbt-fail','reverse-release','reverse-fail','pay','withdraw'}
         assert plugin.with_suffix('.quotes.json').read_bytes()==quote_before
     pending();pending()
-    print('PASS: one original-channel close at 30 blocks; fresh containers reconcile '+('lost reply' if drop else 'saved reply')+' without a second close',flush=True)
+    print('PASS: one original-channel close at '+str(close_margin)+' blocks'+(' after controller downtime' if downtime else '')+'; fresh containers reconcile '+('lost reply' if drop else 'saved reply')+' without a second close',flush=True)
     close=private_load(ROOT/'fixture-close-reply.json');assert close['type']=='unilateral'
     def release():
         pending()
@@ -397,7 +431,7 @@ def main():
         if reverse:reverse_regtest.run(lab,recovery='gate-deadline')
         else:swap_regtest.run(lab,btc_deadline=True)
     finally:lab.close()
-    print('Funded packaged '+('XBT' if reverse else 'BTC')+' deadline OK ('+mode+'; packaged gate recovery; fixture-verified claim; regtest only)',flush=True)
+    print('Funded packaged '+('XBT' if reverse else 'BTC')+' deadline OK ('+mode+('; controller downtime' if os.environ.get('DEADLINE_CONTROLLER_DOWNTIME')=='1' else '')+'; packaged gate recovery; fixture-verified claim; regtest only)',flush=True)
 
 
 if __name__=='__main__':main()

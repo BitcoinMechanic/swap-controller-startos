@@ -75,6 +75,23 @@ class FundedHarnessTests(unittest.TestCase):
                     reader.assert_not_called();inspect.assert_not_called()
                 (root/name).unlink()
 
+    def test_host_absence_requires_no_running_or_stopped_controller(self):
+        script=Path(__file__).resolve().parents[1]/'scripts/test-funded-deadline.py'
+        if not script.exists():self.skipTest('host launcher is intentionally absent from service image')
+        spec=importlib.util.spec_from_file_location('funded_absence',script)
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        with patch.object(module.base,'docker',return_value='') as docker:
+            result=module.absent('deadline-controller-test')
+            self.assertEqual(result.returncode,0)
+            self.assertEqual(json.loads(result.stdout),dict(controller_absent=True))
+            docker.assert_called_once_with('ps','-aq','--filter','name=^/deadline-controller-test$')
+        with patch.object(module.base,'docker',return_value='abc123\n'):
+            with self.assertRaisesRegex(RuntimeError,'still_present'):module.absent('deadline-controller-test')
+        with patch.object(module.base,'docker',side_effect=RuntimeError('daemon unavailable')):
+            with self.assertRaises(RuntimeError):module.absent('deadline-controller-test')
+        with self.assertRaises(ValueError):
+            module.command(Path('/repo'),Path('/exchange'),'image','net','child','assert-controller-absent')
+
     def test_host_command_mounts_only_control_and_fixture_helpers(self):
         script=Path(__file__).resolve().parents[1]/'scripts/test-funded-deadline.py'
         if not script.exists():self.skipTest('host launcher is intentionally absent from service image')

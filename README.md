@@ -1543,5 +1543,43 @@ python3 scripts/test-funded-deadline.py \
 ```
 
 Local verification and harness tests pass, including abrupt child-process exit.
-The four funded outage/interruption cases remain pending packaging-VM validation.
+All four funded outage/interruption cases passed at checkpoint 591b411.
 No StartOS installation is required for this regtest checkpoint.
+
+
+## Funded controller absence across the deadline threshold
+
+The optional `--controller-downtime` fixture mode first runs the packaged guard
+at 31 incoming-chain blocks remaining. That one-shot controller exits normally.
+The host then confirms that its named container is absent, including stopped
+containers, before the fixture mines to 30 and then 27 blocks remaining with no
+controller step in between. This models missed controller polling, not a crash
+inside a running close RPC or a persistent StartOS worker restart.
+
+At both heights the original incoming channel must still be normal with the
+same funding pin and committed HTLC. The original outgoing attempt must remain
+pending, the payer process must remain pending, and the outgoing chain height
+must not advance. Every controller control-file byte and the gate journal must
+remain unchanged during this interval. The host confirms controller absence
+again before a fresh container observes the 27-block margin and closes only the
+original channel.
+
+The normal and lost-reply cases in both directions then use the existing
+reconciliation, packaged gate recovery, confirmed claim/CSV sweep verification,
+verifier outage/interruption and three rollback checks. They must retain one
+outgoing attempt, one close and one gate release. The original threshold tests
+remain available by omitting the flag; they still close at 30 blocks.
+
+```sh
+python3 scripts/test-funded-deadline.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind all --controller-downtime
+```
+
+This changes fixture code only: reuse the controller image rebuilt for stale
+verification. No image rebuild or StartOS installation is required. Local harness
+tests pass; the four funded downtime cases await packaging-VM validation.
+Four blocks of absence on one regtest chain is not a wall-clock outage budget,
+a cross-chain timing guarantee or evidence of protection after arbitrary
+controller downtime. Independent chain proofs and live deadline protection
+remain outstanding; live execution stays disabled.

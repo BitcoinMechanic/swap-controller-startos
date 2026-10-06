@@ -26,7 +26,14 @@ def command(repo,shared,image,network,name,stage):
         '--entrypoint','python3',image,'/remote-tests/deadline_step.py',stage]
 
 
-def run(repo,results,prefix,backend,btc,controller,direction):
+def absent(name):
+    # Host-only observation, including stopped containers. Never starts a child.
+    found=base.docker('ps','-aq','--filter','name=^/'+name+'$')
+    if found.strip():raise RuntimeError('deadline_controller_still_present')
+    return subprocess.CompletedProcess([],0,'{"controller_absent":true}','')
+
+
+def run(repo,results,prefix,backend,btc,controller,direction,downtime=False):
     results=results/direction;results.mkdir()
     shared=results/'exchange';shared.mkdir()
     for folder in ('control','jobs'):(shared/folder).mkdir()
@@ -46,7 +53,7 @@ def run(repo,results,prefix,backend,btc,controller,direction):
         address=str(ipaddress.IPv4Address(inspected['NetworkSettings']['Networks'][network]['IPAddress']))
         log=results/'fixture.log';seen=set()
         with log.open('w') as output,log.open() as reader:
-            fixture=subprocess.Popen(['docker','exec','-e','COORDINATOR_IP='+address,node,
+            fixture=subprocess.Popen(['docker','exec','-e','COORDINATOR_IP='+address,'-e','DEADLINE_CONTROLLER_DOWNTIME='+('1' if downtime else '0'),node,
                 '/usr/bin/python3','/remote-tests/image_deadline.py',direction],stdout=output,stderr=subprocess.STDOUT)
             end=time.monotonic()+1200
             while fixture.poll() is None:
@@ -58,10 +65,14 @@ def run(repo,results,prefix,backend,btc,controller,direction):
                         raise ValueError('invalid_deadline_mailbox')
                     try:job=json.loads(request.read_text())
                     except PermissionError:continue
-                    if set(job)!={'stage'} or job['stage'] not in STAGES:raise ValueError('invalid_deadline_job')
+                    if set(job)!={'stage'} or job['stage'] not in (*STAGES,'assert-controller-absent'):raise ValueError('invalid_deadline_job')
                     seen.add(request.name)
-                    result=subprocess.run(command(repo,shared,controller,network,child,job['stage']),
-                        text=True,capture_output=True,timeout=90)
+                    if job['stage']=='assert-controller-absent':
+                        if not downtime:raise ValueError('deadline_downtime_not_enabled')
+                        result=absent(child)
+                    else:
+                        result=subprocess.run(command(repo,shared,controller,network,child,job['stage']),
+                            text=True,capture_output=True,timeout=90)
                     (results/(str(len(seen))+'-'+job['stage']+'.log')).write_text(result.stdout+result.stderr)
                     base.respond(request.with_suffix('.response'),result)
                 time.sleep(.05)
@@ -79,6 +90,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('btc_image');p.add_argument('xbt_image');p.add_argument('controller_image');p.add_argument('bitcoind',type=Path)
     p.add_argument('mode',choices=('all','normal','lost-reply','reverse','reverse-normal','reverse-lost-reply'),nargs='?',default='all')
+    p.add_argument('--controller-downtime',action='store_true',help='omit controller steps while incoming margin falls from 31 to 27 blocks')
     args=p.parse_args();os.umask(0o077)
     repo=Path(__file__).resolve().parents[1];backend=args.bitcoind.resolve()
     if not backend.is_file() or not os.access(backend,os.X_OK):p.error('executable regtest bitcoind required')
@@ -100,7 +112,7 @@ def main():
         modes={'all':('normal','lost-reply','reverse-normal','reverse-lost-reply'),
                'reverse':('reverse-normal','reverse-lost-reply')}.get(args.mode,(args.mode,))
         for mode in modes:
-            run(repo,results,prefix,backend,btc,controller,mode)
+            run(repo,results,prefix,backend,btc,controller,mode,args.controller_downtime)
 
 
 if __name__=='__main__':main()
