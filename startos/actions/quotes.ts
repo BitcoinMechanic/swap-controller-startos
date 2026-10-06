@@ -11,6 +11,7 @@ const meta = (name: string, description: string) => async () => ({
 })
 const labels: Record<string, string> = {
   job: 'Quote ID', phase: 'Saved state', direction: 'Direction',
+  quote_policy_version: 'Admission policy', quote_policy_digest: 'Admission policy digest',
   review_digest: 'Review code', recipient: 'Recipient node ID',
   btc_price_sats: 'BTC price (sats)', xbt_amount_msat: 'XBT recipient amount (msat)',
   expires_at: 'Quote expiry (Unix seconds)', quote_expired: 'Quote expired',

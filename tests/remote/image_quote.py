@@ -79,6 +79,8 @@ def run(lab,reverse=False):
     assert bridge('status')['quotes']==[]
     review=bridge('prepare',request)
     assert review['phase']=='review_required' and review['xbt_price_sats' if reverse else 'btc_price_sats']==price//1000 and review['btc_amount_msat' if reverse else 'xbt_amount_msat']==amount
+    assert review['quote_policy_version']=='regtest-quote-admission-v1'
+    assert len(review['quote_policy_digest'])==64
     assert invoice_key not in review
     assert review==bridge('prepare',request)
     saved=bridge('review');assert saved['review_digest']==review['review_digest']
@@ -90,7 +92,7 @@ def run(lab,reverse=False):
     else:assert rpc(op_btc,'xbt-pilot-info')['registered_quotes']==0
     assert rpc(outgoing,'listsendpays')['payments']==[]
     assert bridge('worker')['phase']=='review_required'
-    print('PASS: packaged action prepared and locally reviewed quote; repeat preparation preserved terms; no gate registration or payment before approval',flush=True)
+    print('PASS: packaged action bound the quote to admission policy; repeat preparation preserved terms; no gate registration or payment before approval',flush=True)
     approved=bridge('approve',dict(digest=review['review_digest'],confirmed=True))
     again=bridge('approve',dict(digest=review['review_digest'],confirmed=True))
     assert approved==again and approved['phase']==waiting

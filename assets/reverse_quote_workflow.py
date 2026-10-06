@@ -7,6 +7,7 @@ import time
 from controller import private_load, require, save
 import executor
 import lifecycle
+import quote_policy
 import quote_workflow as q
 
 
@@ -27,11 +28,13 @@ def check_invoice(decoded):
 
 
 def preflight(data,rpc):
+    observed_at=int(time.time())
     state=data['controller'];terms=data['terms']
     decoded=rpc(state['btc_cli'],'decode',state['btc_invoice']);check_invoice(decoded)
     expected=dict(payment_hash=state['payment_hash'],payment_secret=state['btc_secret'],payee=state['route'][0]['id'])
     require(all(decoded.get(k)==v for k,v in expected.items()),'invoice_binding_changed')
     require(int(time.time())<terms['expires_at']<=decoded['created_at']+decoded['expiry']-60,'quote_expired')
+    quote_policy.check(data,decoded,'reverse',observed_at=observed_at,now=int(time.time()))
     route=state['route'][0]
     channels=[c for c in rpc(state['btc_cli'],'listpeerchannels')['channels']
               if c.get('short_channel_id')==route['channel'] and c.get('peer_id')==route['id']]
@@ -44,6 +47,7 @@ def preflight(data,rpc):
             incoming[0].get('peer_connected') is True,'incoming_channel_not_ready')
     require(not any(p.get('payment_hash')==terms['payment_hash'] for p in rpc(state['btc_cli'],'listsendpays')['payments']),
             'outgoing_attempt_already_exists')
+    quote_policy.check(data,decoded,'reverse',observed_at=observed_at,now=int(time.time()))
 
 
 def prepare(manager,name,request,core=None,factory=ReverseRemote):
@@ -100,7 +104,7 @@ def prepare(manager,name,request,core=None,factory=ReverseRemote):
         (root/'proposal').mkdir(mode=0o700)
         save(root/'proposal'/'quote.json',data)
         save(root/'review.json',dict(schema=1,source_commit=executor.PIN,direction='reverse',request_digest=executor.digest(request),
-                                    quote=data,connections=request['connections']))
+                                    quote=data,connections=request['connections'],quote_policy=quote_policy.commitment('reverse')))
         return q.report(root)
 
 
@@ -110,11 +114,13 @@ def approve(manager,name,token,confirmed=False,core=None,factory=ReverseRemote):
     with executor.lock(root):
         executor.execution_allowed(root)
         record,data,expected=q.review(root);require(record.get('direction')=='reverse' and token==expected,'review_digest_mismatch')
+        quote_policy.check_commitment(record,'reverse')
         terms=data['terms'];approval=dict(digest=token,expires_at=terms['expires_at'])
         if (root/'approval.json').exists():require(private_load(root/'approval.json')==approval,'approval_changed')
         require(int(time.time())<terms['expires_at'],'quote_expired')
         with q.transport(core,record['connections'],writable=True,factory=factory) as rpc:
             if 'xbt_invoice' not in data:
+                quote_policy.check_commitment(record,'reverse',required=True)
                 preflight(data,rpc);save(root/'approval.json',approval)
                 require(rpc(data['config']['xbt_cli'],'reverse-register',json.dumps(terms))=={'registered':True},'registration_refused')
                 from swap_invoice import unsigned_invoice
@@ -166,7 +172,10 @@ def advance(root,core=None,factory=ReverseRemote):
                     if h.get('id')==binding[1] and h.get('direction')=='in' and h.get('payment_hash')==terms['payment_hash']
                     and h.get('state')=='RCVD_ADD_ACK_REVOCATION']
                 if not committed:return q.report(root)
+                quote_policy.check_commitment(record,'reverse')
                 preflight(data,rpc)
+                require(len(committed)==1 and committed[0].get('expiry')==gate['cltv_expiry'],'incoming_expiry_mismatch')
+                quote_policy.check_held(data,rpc(state['xbt_cli'],'getinfo')['blockheight'],gate['cltv_expiry'])
                 state.update(xbt_binding=binding,xbt_expiry=gate['cltv_expiry'])
                 from reverse_controller import identity,preflight as controller_preflight
                 identity(state);controller_preflight(state)

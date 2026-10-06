@@ -57,6 +57,21 @@ def integer(value, low, high):
     return type(value) is int and low <= value <= high
 
 
+def quote_window_errors(expires, recipient_expires, observed_at, now, *, lifetime=120):
+    if any(not integer(v,0,2**53-1) for v in (expires,recipient_expires,observed_at,now,lifetime)):
+        return ['invalid_integer']
+    reasons=[]
+    if not 0 <= now-observed_at <= 120: reasons.append('observation_not_fresh')
+    if not now < expires <= now+lifetime: reasons.append('quote_lifetime_outside_policy')
+    if recipient_expires-expires < 60: reasons.append('recipient_expiry_headroom_insufficient')
+    return reasons
+
+
+def remaining_within(height, expiry, minimum, maximum):
+    return (all(integer(v,0,499999999) for v in (height,expiry,minimum,maximum)) and
+            minimum <= expiry-height <= maximum)
+
+
 def validate(candidate, *, now):
     """Validate numeric candidate inputs only; never return live authorization.
 
@@ -80,10 +95,7 @@ authenticated here. After submission, expiry does NOT authorize refund/resend.
     if c['policy_digest'] != digest(): reasons.append('policy_digest_mismatch')
     if c['profile'] not in (FORWARD, REVERSE):
         reasons.append('unsupported_profile'); return result
-    if not 0 <= now - c['observed_at'] <= 120: reasons.append('observation_not_fresh')
-    if not now < c['quote_expires_at'] <= now + 120: reasons.append('quote_lifetime_outside_policy')
-    if c['recipient_expires_at'] - c['quote_expires_at'] < 60:
-        reasons.append('recipient_expiry_headroom_insufficient')
+    reasons.extend(quote_window_errors(c['quote_expires_at'],c['recipient_expires_at'],c['observed_at'],now))
     if any(not integer(c[key], 0, 499999999) for key in ('btc_height', 'xbt_height', 'incoming_expiry')):
         reasons.append('invalid_block_height')
     if c['profile'] == FORWARD:
@@ -107,7 +119,8 @@ authenticated here. After submission, expiry does NOT authorize refund/resend.
         remaining = c['incoming_expiry'] - c['xbt_height']
         minimum = c['route_delay_blocks'] + 6 + 144
         invoice_cltv = minimum + 24
-    if not minimum <= remaining <= 2016: reasons.append('incoming_cltv_outside_policy')
+    height=c['btc_height'] if c['profile']==FORWARD else c['xbt_height']
+    if not remaining_within(height,c['incoming_expiry'],minimum,2016): reasons.append('incoming_cltv_outside_policy')
     result.update(numeric_policy_matches=not reasons, incoming_remaining_blocks=remaining,
                   minimum_incoming_remaining_blocks=minimum, proposed_invoice_cltv_blocks=invoice_cltv)
     return result

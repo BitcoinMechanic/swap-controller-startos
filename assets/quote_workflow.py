@@ -16,6 +16,7 @@ import time
 from controller import private_load, require, save
 import executor
 import lifecycle
+import quote_policy
 from execution_rpc import Remote
 
 READS = {'getinfo': (), 'decode': ('string',), 'listpeerchannels': (), 'listsendpays': (),
@@ -110,10 +111,14 @@ def report(root):
         result.pop('btc_price_sats');result.pop('btc_payer_routing_fee_included');result.pop('xbt_amount_msat')
         result.update(xbt_price_sats=terms['xbt_amount_msat']//1000,btc_amount_msat=terms['btc_amount_msat'],
                       xbt_payer_routing_fee_included=False)
+    if 'quote_policy' in record:
+        quote_policy.check_commitment(record,'reverse' if reverse else 'forward')
+        result['quote_policy']=quote_policy.commitment('reverse' if reverse else 'forward')
     return result
 
 
 def preflight(data, rpc):
+    observed_at=int(time.time())
     terms = data['terms']; state = data['controller']
     decoded = rpc(state['xbt_cli'], 'decode', terms['xbt_invoice'])
     expected = dict(valid=True,type='bolt11 invoice',currency='xbtrt',payment_hash=terms['payment_hash'],
@@ -127,6 +132,7 @@ def preflight(data, rpc):
             'unsupported_cltv')
     require(re.fullmatch('[0-9a-f]{64}',terms['payment_hash']) and
             re.fullmatch('[0-9a-f]{64}',state['payment_secret']), 'invalid_invoice_hex')
+    quote_policy.check(data,decoded,'forward',observed_at=observed_at,now=int(time.time()))
     route = state['route'][0]
     channels = [c for c in rpc(state['xbt_cli'],'listpeerchannels')['channels']
                 if c.get('short_channel_id') == route['channel'] and c.get('peer_id') == route['id']]
@@ -135,6 +141,7 @@ def preflight(data, rpc):
             and not channels[0].get('htlcs'), 'direct_channel_not_ready')
     require(not any(p.get('payment_hash') == terms['payment_hash'] for p in rpc(state['xbt_cli'],'listsendpays')['payments']),
             'outgoing_attempt_already_exists')
+    quote_policy.check(data,decoded,'forward',observed_at=observed_at,now=int(time.time()))
 
 
 def prepare(manager, name, request, core=None, factory=QuoteRemote):
@@ -163,6 +170,7 @@ def prepare(manager, name, request, core=None, factory=QuoteRemote):
             core.create(config,invoice,request['btc_sats'],root/'proposal')
             data = private_load(root/'proposal'/'quote.json')
             require(0 < data['terms']['xbt_amount_msat'] <= 1000000000, 'regtest_amount_limit')
+            require(data['terms']['btc_amount_msat']==request['btc_sats']*1000,'requested_price_changed')
             preflight(data,rpc)
             for other in lifecycle.jobs(manager):
                 if other == root: continue
@@ -173,7 +181,7 @@ def prepare(manager, name, request, core=None, factory=QuoteRemote):
                     require(executor.records(other)[1]['payment_hash'] != data['terms']['payment_hash'], 'invoice_already_used')
                 else: require(False, 'unreadable_existing_job')
         save(root/'review.json',dict(schema=1,source_commit=executor.PIN,request_digest=executor.digest(request),
-                                   quote=data,connections=request['connections']))
+                                   quote=data,connections=request['connections'],quote_policy=quote_policy.commitment('forward')))
         return report(root)
 
 
@@ -189,6 +197,7 @@ def approve(manager,name,token,confirmed=False,core=None,factory=QuoteRemote):
         executor.execution_allowed(root)
         record,data,expected=review(root)
         require(token == expected, 'review_digest_mismatch')
+        quote_policy.check_commitment(record,'forward')
         approval=dict(digest=token,expires_at=data['terms']['expires_at'])
         if (root/'approval.json').exists():
             require(private_load(root/'approval.json') == approval, 'approval_changed')
@@ -196,6 +205,7 @@ def approve(manager,name,token,confirmed=False,core=None,factory=QuoteRemote):
             # Reprinting a saved invoice never registers/signs again. Expired
             # copies are not offered as payable invoices.
             if 'btc_invoice' not in data:
+                quote_policy.check_commitment(record,'forward',required=True)
                 preflight(data,rpc)
                 save(root/'approval.json',approval)
             else:
@@ -240,6 +250,7 @@ def advance(root,core=None,factory=QuoteRemote):
                          and h.get('payment_hash')==terms['payment_hash'] and h.get('state')=='RCVD_ADD_ACK_REVOCATION']
                 if not matches: return report(root)
                 require(len(matches)==1 and matches[0].get('amount_msat')==terms['btc_amount_msat'], 'incoming_amount_mismatch')
+                quote_policy.check_commitment(record,'forward')
                 preflight(data,rpc)
                 state=dict(data['controller'],btc_binding=binding)
                 # The existing packaged executor supports direct controlled-chain
@@ -250,6 +261,7 @@ def advance(root,core=None,factory=QuoteRemote):
                         'xbt_invoice','expires_at','min_cltv_delta','max_cltv_delta')) and info.get('binding')==binding,
                         'held_terms_mismatch')
                 require(matches[0].get('expiry') == info.get('cltv_expiry'), 'incoming_expiry_mismatch')
+                quote_policy.check_held(data,rpc(config['btc_cli'],'getinfo')['blockheight'],info.get('cltv_expiry'))
                 from swap_controller import check_spend
                 require(check_spend(state) is None, 'spend_preflight_refused')
                 handoff=dict(review_digest=token,state=state)

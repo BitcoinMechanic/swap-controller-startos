@@ -1042,3 +1042,46 @@ unsupported; viewing this proposal cannot remove any readiness blocker.
 Validation: `python3 tests/test_live_policy.py -v`, `npm run check`,
 `npm run build` and `node scripts/check-bundle.cjs`. No funded scenario is claimed
 for this policy-only addition.
+
+## Policy-bound regtest quote admission (0.1.0:10)
+
+New quote reviews commit to `regtest-quote-admission-v1`, its direction and its
+policy digest. The existing review code includes that commitment. Preparation
+and approval use the same strict numeric checks; fresh preflight runs before
+registration/signing and again before executor import. Quote Review exposes the
+admission policy version and digest. Repeated approval returns the saved invoice
+without registering or signing it again.
+
+The checks bind the requested BTC price (forward), decoded recipient amount,
+controller amount and direct route amount. A different route amount would imply
+an unapproved fee and is rejected. Both fixtures require one hop, zero outgoing
+routing fees, delay 40, recipient final CLTV 1–40 and gate limits 100–2,000 blocks.
+The actual held expiry is rechecked against the incoming chain's freshly read
+height before executor import; the two chains' absolute heights are never compared.
+Invoice, channel and HTLC binding checks remain in their existing adapters.
+
+Regtest limits remain distinct from the live pilot proposal: forward allows
+1–1,000,000 whole BTC sats and up to 1,000,000 XBT sats; reverse retains exactly
+200,000 XBT sats for 100,000 BTC sats. Forward quote lifetime is at most 600
+seconds and reverse at most 900 seconds. Both require 60 seconds of recipient
+invoice expiry headroom and preflight duration 0–120 seconds. Strict integer,
+quote-window and same-chain remaining-block helpers are shared with the live
+policy validator. These regtest bounds do not activate or prove enforcement of
+the different live amount and timing limits.
+
+A pre-upgrade unpublished quote without a policy commitment cannot receive new
+publication approval; retain it for inspection and prepare a new job with a new
+invoice. Existing published quotes keep their previous approval, and attempts
+already imported into the executor retain recovery semantics. Admission expiry
+checks are not reapplied to an already-started attempt: expiry never proves
+failure and does not authorize a refund or resend. No records are migrated or
+silently reapproved. Live readiness blockers, RPC credentials and restore
+barriers are unchanged.
+
+The `test-quote-flow.py` launcher now runs the admission rejection suite inside
+the controller image before its funded scenario. Run both `forward` and `reverse`
+against disposable packaged nodes. The fixture checks the displayed policy
+commitment, single payment, final balances and repeat terminal recovery. Unit
+tests additionally reject altered terms and policy digests before publication,
+slow/backwards clocks and insufficient held margins; they verify expired
+already-started attempts still reach the existing reconciliation path.

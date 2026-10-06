@@ -17,3 +17,4 @@
 !assets/readiness.py
 !assets/gate_observation.py
 !assets/live_policy.py
+!assets/quote_policy.py

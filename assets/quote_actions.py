@@ -45,8 +45,13 @@ def filtered(value):
     require(type(value.get('quote_expired')) is bool and value.get('outgoing_route_fee_msat')==0 and
             value.get(fee) is False and value.get('pricing')=='operator_supplied_regtest',
             'invalid_quote_policy')
-    return {k:value[k] for k in ('phase','direction','review_digest','recipient',price,amount,
+    result={k:value[k] for k in ('phase','direction','review_digest','recipient',price,amount,
             'expires_at','quote_expired','outgoing_route_fee_msat',fee,'pricing')}
+    if 'quote_policy' in value:
+        expected=workflow.quote_policy.commitment(value['direction'])
+        require(value['quote_policy']==expected,'quote_policy_changed')
+        result.update(quote_policy_version=expected['version'],quote_policy_digest=expected['digest'])
+    return result
 
 
 def local_review(manager,job):
