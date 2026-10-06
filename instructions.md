@@ -1496,12 +1496,54 @@ python3 scripts/test-quote-flow.py \
 The fixture verifies no close above the threshold, controller absence down to a
 27-block margin, one close, then original preimage recovery and one gate release
 after the commitment is on-chain. Repeated workers preserve close/claim records.
-It does not verify final on-chain balances or claim/sweep confirmation; those
-remain covered separately by the funded deadline harness.
+At checkpoint 4685c1a this stopped at gate resolution. The integrated claim/sweep
+extension below adds confirmation and wallet-output verification.
 
 Add `--supervise` to the existing `--settle-during-downtime` or
 `--fail-during-downtime` commands to exercise terminal selection through this
 supervisor. Eleven local supervisor tests pass alongside the existing quote,
-executor, lifecycle and deadline tests. Funded supervisor validation is pending.
+executor, lifecycle and deadline tests. Funded pending and failure supervisor
+scenarios passed in both directions at checkpoint 4685c1a.
 Rebuild the disposable controller image; no StartOS installation is required.
 Live execution remains disabled.
+
+
+## Supervised quote recovery through confirmed wallet funds
+
+The existing `--pending-during-downtime` quote scenarios now continue beyond gate
+resolution. In each direction, the same packaged quote worker selects deadline
+close, preserves the pending outgoing attempt and later recovers its preimage.
+The pinned claim fixture confirms the original commitment before permitting
+recipient settlement. It then verifies the HTLC-success witness, the payer's
+on-chain preimage recovery, CSV maturity and the confirmed unspent wallet output
+from the coordinator's sweep. A disposable incoming wallet reserve funds on-chain
+fees; this is not a live reserve policy.
+
+A separate fresh verifier container receives only a dedicated verification
+directory containing copied close/claim records and restricted inspection
+credentials. It cannot mount the execution directory, close credentials, claim
+credentials or node files. The fixture verifies the inspection runes reject
+writes. The packaged verifier must report unverified before claim confirmation,
+then link the same HTLC-success and sweep transaction IDs independently observed
+by the fixture. Repeating verification must preserve mutation audits, gate state
+and close/claim records. Stale output is removed before a new inspection.
+
+The scenario also checks payer completion with the same preimage, the paid
+recipient invoice, outgoing channel balances and no outgoing pending HTLCs. The
+incoming channel has closed: its recovery is measured through confirmed claim
+and sweep outputs, not an assertion that all four off-chain balances were restored.
+Exactly one outgoing send, one close and one incoming release must remain.
+
+```sh
+python3 scripts/test-quote-flow.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind all --pending-during-downtime
+```
+
+Reuse the controller image from checkpoint 4685c1a; these changes are fixture-only
+and need no rebuild or StartOS installation. Six local quote harness tests and
+twelve claim-verifier tests pass; funded integrated claim/sweep validation is
+pending. Earlier supervisor pending and failure cases passed in both directions.
+The verifier still relies on paired CLN observations; fixture comparison does not
+turn its report into an independent chain proof. Enrollment before submission,
+live timing/fee policy and live execution remain outstanding.

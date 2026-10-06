@@ -14,7 +14,7 @@ import uuid
 
 spec=importlib.util.spec_from_file_location('separated',Path(__file__).with_name('test-separated-controller.py'))
 base=importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
-STAGES=('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-enroll')
+STAGES=('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-enroll','verify-claim')
 
 
 def command(repo,shared,image,network,name,stage):
@@ -22,7 +22,7 @@ def command(repo,shared,image,network,name,stage):
     return ['docker','run','--rm','--name',name,'--network',network,'--read-only','--cap-drop=ALL',
         '--security-opt=no-new-privileges','--tmpfs','/tmp:rw,nosuid,nodev,size=16m',
         '-e','BTC_XBT_DISPOSABLE_CONTAINER=1','-e','PYTHONDONTWRITEBYTECODE=1',
-        *base.mount(shared/'control','/controller-state'),*base.mount(repo/'tests/remote','/remote-tests',True),
+        *base.mount(shared/'control'/('verification' if stage=='verify-claim' else '.'),'/controller-state'),*base.mount(repo/'tests/remote','/remote-tests',True),
         '--entrypoint','python3',image,'/remote-tests/quote_step.py',stage]
 
 

@@ -13,7 +13,7 @@ sys.path[:0]=[str(Path(__file__).resolve().parents[1]/'assets'),'/app',str(Path(
 import executor
 import lifecycle
 import quote_step
-from controller import private_load
+from controller import private_load,save
 
 
 class QuoteDowntimeTests(unittest.TestCase):
@@ -59,6 +59,28 @@ class QuoteDowntimeTests(unittest.TestCase):
             with self.subTest(changes=changes),self.assertRaises(AssertionError):
                 check(original,dict(failed,**changes),True)
 
+    def test_claim_verifier_has_only_copied_evidence(self):
+        import claim_verification
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            save(root/'request.json',dict(spec={},connections=[]))
+            save(root/'deadline.json',{})
+            save(root/'claim-receipt.json',{})
+            expected=dict(verified=True,phase='claim_and_sweep_verified')
+            with patch.object(claim_verification,'inspect_config',return_value=expected) as inspect:
+                quote_step.verify_claim(root)
+                self.assertEqual(private_load(root/'output.json'),expected)
+                self.assertEqual(inspect.call_args.args[1](),dict(spec={},connections=[]))
+            for name in ('remote.json','supervisor.json','execution','unexpected.json'):
+                save(root/name,{})
+                with patch.object(claim_verification,'inspect_config') as inspect:
+                    with self.assertRaises(AssertionError):quote_step.verify_claim(root)
+                    inspect.assert_not_called()
+                (root/name).unlink()
+            with patch.object(claim_verification,'inspect_config',side_effect=ValueError):
+                with self.assertRaises(ValueError):quote_step.verify_claim(root)
+                self.assertFalse((root/'output.json').exists())
+
     def test_host_absence_and_container_boundary(self):
         script=Path(__file__).resolve().parents[1]/'scripts/test-quote-flow.py'
         if not script.exists():self.skipTest('host launcher is intentionally absent from service image')
@@ -77,6 +99,10 @@ class QuoteDowntimeTests(unittest.TestCase):
                                 'type=bind,src=/repo/tests/remote,dst=/remote-tests,readonly'])
         self.assertIn('--read-only',command);self.assertIn('--cap-drop=ALL',command)
         self.assertEqual(command[-1],'worker-interrupt-resolution')
+        verifier=module.command(Path('/repo'),Path('/exchange'),'image','net','child','verify-claim')
+        mounts=[verifier[i+1] for i,v in enumerate(verifier) if v=='--mount']
+        self.assertEqual(mounts,['type=bind,src=/exchange/control/verification,dst=/controller-state',
+                                'type=bind,src=/repo/tests/remote,dst=/remote-tests,readonly'])
         with self.assertRaises(ValueError):module.command(Path('/r'),Path('/s'),'i','n','c','assert-controller-absent')
 
 

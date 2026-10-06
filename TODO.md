@@ -64,6 +64,8 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 - [x] Run all four funded cases with the controller absent as the incoming margin falls from 31 to 27 blocks, then resume exact-channel protection without duplicate mutations.
 - [x] Run both packaged quote directions with the original outgoing attempt settling during controller absence, including interrupted release checkpoints and exact-once settlement.
 - [x] Run both packaged quote directions with definitive outgoing failure during controller absence, exact-once incoming failure and restored balances.
-- [ ] Validate the opt-in unified regtest quote supervisor with funded pending, complete and failed outcomes in both directions.
+- [x] Validate supervised pending close and definitive failure recovery in both directions.
+- [ ] Complete integrated supervised quote recovery through confirmed HTLC-success and CSV wallet sweep in both directions.
+- [ ] Retain explicit funded evidence for supervised complete outcomes, including interrupted release checkpoints.
 - [ ] Establish confirmation/reorg handling beyond paired-node observations before live protection.
 - [ ] Validate live deadline/on-chain protection, including controller downtime, before implementing live execution.

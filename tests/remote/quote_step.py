@@ -19,6 +19,7 @@ def worker(manager,interrupt=False):
             class Audited(base):
                 def _request(self,method,params):
                     result=super()._request(method,params)
+                    if method=='close':save(manager/'fixture-close-reply.json',result)
                     with (manager/'supervisor-audit.jsonl').open('a') as out:
                         out.write(json.dumps(dict(network=self.network,method=method))+'\n')
                         out.flush();os.fsync(out.fileno())
@@ -42,12 +43,26 @@ def worker(manager,interrupt=False):
     save(manager/'resolution-interrupted.json',dict(returncode=exits[0]))
 
 
+def verify_claim(root):
+    from claim_verification import inspect_config
+    allowed={'request.json','deadline.json','claim-receipt.json','executor.lock',
+             'chain-verification.json','output.json'}
+    assert all(p.name in allowed and p.is_file() and not p.is_symlink() for p in root.iterdir())
+    (root/'output.json').unlink(missing_ok=True)
+    result=inspect_config(root,lambda:private_load(root/'request.json'))
+    save(root/'output.json',result)
+
+
 def main():
     isolation()
     stage=sys.argv[1]
     assert os.environ.get('BTC_XBT_DISPOSABLE_CONTAINER')=='1'
-    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-enroll')
+    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-enroll','verify-claim')
     root=Path('/controller-state');manager=root/'execution'
+    if stage=='verify-claim':
+        verify_claim(root)
+        print('{"packaged_claim_verification":true}')
+        return 0
     if stage=='supervisor-enroll':
         import executor
         import regtest_supervisor

@@ -24,7 +24,7 @@ image_remote.restrictions=quote_restrictions
 
 
 def bridge(stage,request=None):
-    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-enroll','assert-controller-absent')
+    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-enroll','verify-claim','assert-controller-absent')
     root=Path('/exchange/control')
     if request is not None:save(root/'quote-input.json',request)
     mailbox=Path('/exchange/jobs')/(uuid.uuid4().hex+'.request')
@@ -39,6 +39,7 @@ def bridge(stage,request=None):
     if stage=='assert-controller-absent':
         assert json.loads(result['stdout'])==dict(controller_absent=True)
         return
+    if stage=='verify-claim':return private_load(root/'verification/output.json')
     return private_load(root/'quote-output.json')
 
 
@@ -80,9 +81,10 @@ def run(lab,reverse=False):
     def channel(node):
         channels=rpc(node,'listpeerchannels')['channels'];assert len(channels)==1;return channels[0]
     def mine(backend,nodes,count):
-        rpc(backend,'generatetoaddress',count,rpc(backend,'getnewaddress'))
+        blocks=rpc(backend,'generatetoaddress',count,rpc(backend,'getnewaddress'))
         height=rpc(backend,'getblockcount')
         for node in nodes:wait_until(lambda:rpc(node,'getinfo')['blockheight']>=height,node['proc'],timeout=90)
+        return blocks
     def open_channel(backend,sender,recipient):
         mine(backend,(sender,recipient),1)
         txid=rpc(backend,'sendtoaddress',rpc(sender,'newaddr','bech32')['bech32'],'0.02')
@@ -94,6 +96,11 @@ def run(lab,reverse=False):
         mine(backend,(sender,recipient),6)
         for node in (sender,recipient):wait_until(lambda:channel(node)['state']=='CHANNELD_NORMAL',node['proc'])
     open_channel(xbt if reverse else btc,payer,incoming);open_channel(btc if reverse else xbt,outgoing,receiver)
+    if pending:
+        backend=xbt if reverse else btc
+        reserve=rpc(backend,'sendtoaddress',rpc(incoming,'newaddr','bech32')['bech32'],'0.01')
+        mine(backend,(payer,incoming),1)
+        wait_until(lambda:any(o['txid']==reserve and o['status']=='confirmed' for o in rpc(incoming,'listfunds')['outputs']),incoming['proc'])
     initial={n['id']:channel(n)['to_us_msat'] for n in (payer,op_btc,op_xbt,receiver)}
     print('PASS: funded '+('XBT payer -> coordinator and BTC coordinator -> recipient channels' if reverse else 'BTC payer -> coordinator and XBT coordinator -> recipient channels'),flush=True)
     invoice=rpc(receiver,'invoice',str(amount)+'msat','packaged-quote','Packaged quote flow')
@@ -182,19 +189,54 @@ def run(lab,reverse=False):
             bridge('worker')
             assert private_load(control/'supervisor-output.json')['phase']=='outgoing_pending'
             assert (job/'deadline.json').read_bytes()==close_record
-            wait_until(lambda:bool(rpc(incoming_chain,'getrawmempool')),incoming['proc'])
-            mine(incoming_chain,(payer,incoming),1)
-            wait_until(lambda:channel(incoming)['state']=='ONCHAIN',incoming['proc'])
-            assert rpc(receiver,'xbt-continue',payment_hash)['continued']==1
-            wait_until(lambda:attempts()[0]['status']=='complete',outgoing['proc'])
-            bridge('worker')
-            assert private_load(control/'supervisor-output.json')['phase']=='gate_resolved'
-            assert rpc(incoming,status_method,payment_hash)['phase']=='resolved'
-            receipt=(job/'claim-receipt.json').read_bytes()
-            bridge('worker')
-            assert private_load(control/'supervisor-output.json')['phase']=='gate_resolved'
-            assert (job/'claim-receipt.json').read_bytes()==receipt
-            assert (job/'deadline.json').read_bytes()==close_record and len(attempts())==1
+            from preimage_claim import run_claim
+            verification=control/'verification';verification.mkdir(mode=0o700)
+            def release_and_verify_pending():
+                assert rpc(receiver,'xbt-continue',payment_hash)['continued']==1
+                wait_until(lambda:attempts()[0]['status']=='complete',outgoing['proc'])
+                bridge('worker')
+                assert private_load(control/'supervisor-output.json')['phase']=='gate_resolved'
+                assert rpc(incoming,status_method,payment_hash)['phase']=='resolved'
+                receipt=(job/'claim-receipt.json').read_bytes()
+                bridge('worker')
+                assert private_load(control/'supervisor-output.json')['phase']=='gate_resolved'
+                assert (job/'claim-receipt.json').read_bytes()==receipt
+                assert (job/'deadline.json').read_bytes()==close_record
+                # The verifier receives copied evidence and fresh read-only
+                # credentials in a separate mount, never the execution volume.
+                for name in ('deadline.json','claim-receipt.json'):
+                    save(verification/name,private_load(job/name))
+                save(verification/'request.json',dict(spec=spec,connections=scoped_connections(
+                    lab,incoming,outgoing,reverse,inspection=True)))
+                result=bridge('verify-claim')
+                assert not result['verified'] and 'proof' not in result
+                return attempts()[0]['payment_preimage']
+            def confirmed(node,txid):
+                return [o for o in rpc(node,'listfunds')['outputs'] if o['txid']==txid and o['status']=='confirmed']
+            claim=run_claim(incoming_chain,payer,incoming,
+                dict(txid=pin['funding_txid'],outnum=pin['funding_outnum']),
+                dict(bolt11=approved[invoice_key],payment_hash=payment_hash),None,bound['expiry'],
+                lambda count:mine(incoming_chain,(payer,incoming),count),rpc,confirmed,
+                amount_sat=price//1000,standalone=False,release=release_and_verify_pending,
+                close=private_load(manager/'fixture-close-reply.json'))
+            payer_process.wait(timeout=30);assert payer_process.returncode==0
+            paid=json.loads(paylog.read_text())
+            assert paid['status']=='complete' and paid['payment_preimage']==claim['payment_preimage']
+            assert len(attempts())==1 and attempts()[0]['id']==original['id']
+            assert attempts()[0]['payment_preimage']==paid['payment_preimage']
+            received=rpc(receiver,'listinvoices','packaged-quote')['invoices'][0]
+            assert received['status']=='paid' and received['amount_received_msat']==amount
+            for node,delta in ((outgoing,-amount),(receiver,amount)):
+                wait_until(lambda:channel(node)['state']=='CHANNELD_NORMAL' and not channel(node).get('htlcs')
+                    and channel(node)['to_us_msat']==initial[node['id']]+delta,node['proc'])
+            immutable={p:p.read_bytes() for p in (job/'deadline.json',job/'claim-receipt.json',
+                job/'remote-audit.jsonl',manager/'supervisor-audit.jsonl',plugin.with_suffix('.quotes.json'))}
+            result=bridge('verify-claim')
+            assert result['verified'] and result['phase']=='claim_and_sweep_verified'
+            assert result['proof']['success']==claim['htlc_success_txid']
+            assert result['proof']['sweep']==claim['receiver_sweep_txid']
+            assert bridge('verify-claim')==result
+            assert immutable=={p:p.read_bytes() for p in immutable}
             assert rpc(outgoing_chain,'getblockcount')==outgoing_height
             audit=[json.loads(line) for line in (manager/'supervisor-audit.jsonl').read_text().splitlines()]
             assert sum(r['method']=='close' for r in audit)==1
@@ -204,7 +246,8 @@ def run(lab,reverse=False):
             assert sum(r['method']=='sendpay' for r in execution_audit)==1
             assert not {r['method'] for r in execution_audit}&{'close','xbt-release','reverse-release','xbt-fail','reverse-fail'}
             print('PASS: same packaged worker chose pending close, then post-close preimage recovery; repeated recovery retained close and claim records',flush=True)
-            print('PASS: gate resolved; on-chain claim and final balances are not asserted by this supervisor scenario',flush=True)
+            print('PASS: supervised quote recovered through confirmed HTLC-success and mature wallet sweep; isolated read-only verifier agrees with fixture transaction IDs',flush=True)
+            print('PASS: payer settled with on-chain preimage; recipient paid; outgoing balances verified; one send, close and release retained',flush=True)
             return
         assert rpc(receiver,'xbt-fail'  if failure else 'xbt-continue',payment_hash)['failed' if failure else 'continued']==1
         wait_until(lambda:len(attempts())==1 and attempts()[0]['status']==('failed' if failure else 'complete'),outgoing['proc'])
