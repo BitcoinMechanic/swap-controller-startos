@@ -1085,3 +1085,57 @@ commitment, single payment, final balances and repeat terminal recovery. Unit
 tests additionally reject altered terms and policy digests before publication,
 slow/backwards clocks and insufficient held margins; they verify expired
 already-started attempts still reach the existing reconciliation path.
+
+
+## Read-only direct live candidate inspection
+
+`assets/live_preflight.py` is a packaged CLI module, not a StartOS action or
+worker entry point. It checks a proposed direct-channel candidate in either
+live direction using fresh HTTPS observations. No new installed action or
+package version is introduced by this development checkpoint.
+
+The command is `python3 /app/live_preflight.py /data inspect`, with one JSON
+object on standard input containing `candidate` and `credentials`. It loads
+the existing monitor pairing for endpoint, CA and node identity; the two
+separate inspection runes are provided as `credentials.btc` and
+`credentials.xbt`. Nothing is saved. Do not put credentials in shell arguments,
+logs or pasted output. Dedicated credential provisioning is still pending;
+do not broaden the existing monitor credentials or substitute admin runes.
+
+Required candidate fields are `policy_digest`, `profile`, `btc_amount_msat`,
+`xbt_amount_msat`, `invoice`, `incoming_channel`, `outgoing_channel`,
+`route_delay_blocks`, `quote_expires_at`, and `incoming_expiry`. Amounts and
+heights must be integers. Channel identifiers are exact short-channel IDs.
+Use the current live policy digest and either `live-pilot-v1` or
+`reverse-live-v1`. The incoming expiry is a proposed absolute height on the
+incoming chain; it is not evidence of an actual held HTLC.
+
+The independent inspection transport only permits `getinfo`, `listfunds`,
+`listpeerchannels`, `decode(string)` and `listsendpays(payment_hash)`.
+It uses verified HTTPS, disables redirects/proxies and makes no retries.
+Both coordinator identities and networks are checked before sensitive reads
+and again at completion. The pairing must remain unchanged. Reports expose
+only fixed reason codes, numeric summaries and digests, never credentials,
+endpoints, invoices, payment hashes or raw remote failures.
+
+Inspection verifies the node-decoded signed invoice's currency, recipient,
+amount, secret/hash shape, expiry and final CLTV; the outgoing channel must
+lead directly to that recipient. Both exact channels must be connected and
+normal with no pending HTLCs, enough incoming/outgoing liquidity, and an amount
+above the conservative current-fee dust threshold. Both wallets require at
+least 50,000 confirmed unreserved sats. Any existing payment attempt for the
+hash is refused. Fresh heights feed the proposed policy's same-chain remaining
+block calculation, with a 120-second observation bound and quote lifetime.
+
+`preflight_matches` is an observation only, never an execution approval.
+There is no routing discovery or multi-hop validation in this module. The
+snapshot is not atomic and cannot reserve liquidity, guarantee future fees or
+relative chain progress, or authenticate an incoming HTLC that does not yet
+exist. It must be repeated and extended before any future live submission.
+Gate admission, deadline protection, on-chain recovery and execution authority
+remain separate requirements. All live readiness blockers and restore barriers
+remain unchanged; this inspector cannot remove them.
+
+Run `python3 tests/test_live_preflight.py -v` and
+`python3 tests/test_live_policy.py -v` to validate the inspector and its policy.
+These tests use injected RPC fixtures, not funded live nodes.

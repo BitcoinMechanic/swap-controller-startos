@@ -48,4 +48,8 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 
 - [x] Install controller 0.1.0:9; review both proposed live policies and verify unchanged pairing, readiness blockers and restore barrier.
 
-- [ ] Run both funded regtest quote flows with policy-bound reviews, approval rejection and held timing checks.
+- [x] Run both funded regtest quote flows with policy-bound reviews, approval rejection and held timing checks.
+
+- [ ] Validate the read-only direct live candidate inspector on the packaging VM.
+- [ ] Provision dedicated restricted inspection credentials and add a StartOS preflight action.
+- [ ] Validate live deadline/on-chain protection before implementing live execution.
