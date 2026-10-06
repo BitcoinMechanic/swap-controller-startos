@@ -24,9 +24,11 @@ import image_remote
 ROOT=Path('/exchange/control')
 
 
-def bridge(drop=False,recover=False):
+def bridge(drop=False,recover=False,verify=False):
     request=Path('/exchange/jobs')/(uuid.uuid4().hex+'.request')
     stage=('drop-release-reply' if drop else 'recover') if recover else ('drop-close-reply' if drop else 'step')
+    if verify:
+        assert not drop and not recover;stage='verify'
     save(request,dict(stage=stage));request.chmod(0o644)
     response=request.with_suffix('.response');end=time.monotonic()+100
     while not response.exists():
@@ -37,7 +39,7 @@ def bridge(drop=False,recover=False):
     return None if drop else private_load(ROOT/'deadline-output.json')
 
 
-def scoped_connections(lab,incoming_node,outgoing_node,reverse=False,recovery=False):
+def scoped_connections(lab,incoming_node,outgoing_node,reverse=False,recovery=False,inspection=False):
     connections=[]
     incoming_network='xbt-regtest' if reverse else 'regtest'
     outgoing_network='regtest' if reverse else 'xbt-regtest'
@@ -46,6 +48,7 @@ def scoped_connections(lab,incoming_node,outgoing_node,reverse=False,recovery=Fa
         if node is incoming_node:
             methods+=(['reverse-status'] if reverse else ['xbt-quote-status','xbt-spend-info'])
             methods+=[('reverse-release' if reverse else 'xbt-release') if recovery else 'close']
+        if inspection:methods=['getinfo']+(['listtransactions','listfunds'] if node is incoming_node else ['listsendpays'])
         token=lab.rpc([*node['cli'],'-k'],'createrune',
                       'restrictions='+json.dumps([['method='+m for m in methods]]))
         config={k:v for k,v in lab.connections[node['data'].name].items() if k!='cli'}
@@ -56,7 +59,8 @@ def scoped_connections(lab,incoming_node,outgoing_node,reverse=False,recovery=Fa
             forbidden+=([('reverse-fail' if reverse else 'xbt-fail'),'close'] if recovery else
                          (['reverse-release','reverse-fail'] if reverse else ['xbt-release','xbt-fail']))
         else:forbidden+=['close']
-        for method in forbidden:
+        if inspection:forbidden+=['close','xbt-release','xbt-fail','reverse-release','reverse-fail']
+        for method in set(forbidden):
             req=urllib.request.Request(config['url']+'/v1/'+method,data=b'{}',
                 headers={'Content-Type':'application/json','Rune':config['rune']})
             try:
@@ -174,6 +178,11 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
         assert completed['status']=='complete' and completed['id']==attempt['id']
         print('PASS: packaged post-close recovery learned the original preimage and resolved the bound gate once; '+
               ('discarded release reply reconciled' if drop else 'terminal recovery repeated safely'),flush=True)
+        save(ROOT/'verification-input.json',dict(spec=spec,connections=scoped_connections(
+            lab,incoming_node,outgoing_node,reverse,inspection=True)))
+        (ROOT/'claim-input.json').unlink()
+        assert not bridge(verify=True)['verified']
+        print('PASS: read-only packaged verifier reports claim pending before confirmation; write methods denied',flush=True)
         return completed['payment_preimage']
     claim=run_claim(incoming_chain,payer,incoming_node,funding,dict(bolt11=incoming_invoice,payment_hash=payment_hash),None,
                     incoming['expiry'],mine,rpc,confirmed,amount_sat=incoming_amount//1000,standalone=False,release=release,close=close)
@@ -192,8 +201,14 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
     assert not rpc(incoming_node,'xbt-held')['held'] and rpc(outgoing_chain,'getblockcount')==outgoing_height
     assert journal.read_bytes()==before
     terminal=(ROOT/'deadline-job/claim-receipt.json').read_bytes()
-    assert bridge(recover=True)['phase']=='gate_resolved'
+    result=bridge(verify=True);assert result['verified']
+    assert result['proof']['success']==claim['htlc_success_txid']
+    assert result['proof']['sweep']==claim['receiver_sweep_txid']
+    observation=(ROOT/'deadline-job/chain-verification.json').read_bytes()
+    assert bridge(verify=True)==result and (ROOT/'deadline-job/chain-verification.json').read_bytes()==observation
+    assert journal.read_bytes()==before
     assert (ROOT/'deadline-job/claim-receipt.json').read_bytes()==terminal
+    print('PASS: fresh read-only verifier linked funding, preimage claim and mature wallet sweep; fixture transaction IDs agree',flush=True)
     releases=[json.loads(line) for line in (ROOT/'claim-audit.jsonl').read_text().splitlines()
               if json.loads(line)['method'] in ('xbt-release','reverse-release')]
     assert len(releases)==1

@@ -7,6 +7,7 @@ sys.path.insert(0,'/app')
 from controller import private_load,save
 from deadline_boundary import DeadlineRemote,step
 from deadline_recovery import ClaimRemote,resolve
+from claim_verification import ChainReader,inspect
 from partition_check import isolation
 
 ROOT=Path('/controller-state')
@@ -45,24 +46,28 @@ def main():
     isolation()
     assert os.environ.get('BTC_XBT_DISPOSABLE_CONTAINER')=='1'
     stage=sys.argv[1]
-    assert stage in ('step','drop-close-reply','recover','drop-release-reply')
+    assert stage in ('step','drop-close-reply','recover','drop-release-reply','verify')
+    verifying=stage=='verify'
     recovering=stage in ('recover','drop-release-reply')
     assert not (ROOT/'remote.json').exists()
     (ROOT/'deadline-job').mkdir(mode=0o700,exist_ok=True)
-    request=private_load(ROOT/('claim-input.json' if recovering else 'deadline-input.json'));spec=request['spec']
+    request=private_load(ROOT/('verification-input.json' if verifying else 'claim-input.json' if recovering else 'deadline-input.json'));spec=request['spec']
     assert spec['direction'] in ('forward','reverse')
     incoming='xbt' if spec['direction']=='reverse' else 'btc'
     clients={}
     for config in request['connections']:
         role={'regtest':'btc','xbt-regtest':'xbt'}[config['network']]
         assert role not in clients
-        if recovering:
+        if verifying:
+            assert not (ROOT/'deadline-input.json').exists() and not (ROOT/'claim-input.json').exists()
+            clients[role]=ChainReader(config)
+        elif recovering:
             assert not (ROOT/'deadline-input.json').exists()
             clients[role]=AuditedClaim(config,spec['direction'],spec['payment_hash'],
                 [spec['channel']['short_channel_id'],spec['htlc_id']],stage=='drop-release-reply')
         else:
             clients[role]=Audited(config,spec['channel']['channel_id'] if role==incoming else None,stage=='drop-close-reply')
-    result=(resolve if recovering else step)(ROOT/'deadline-job',spec,clients)
+    result=(inspect if verifying else resolve if recovering else step)(ROOT/'deadline-job',spec,clients)
     save(ROOT/'deadline-output.json',result)
     print('{"packaged_deadline_step":true}')
 

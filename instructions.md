@@ -1163,3 +1163,49 @@ python3 scripts/test-funded-deadline.py \
 
 No StartOS version bump or installation is required. The installed monitor and
 its read-only credentials are unchanged.
+
+
+## Packaged read-only regtest claim verification
+
+`assets/claim_verification.py` inspects the completed post-close claim using
+separate read-only HTTPS credentials. It starts from the saved funding outpoint,
+payment hash, amount and original outgoing attempt. The fixture does not supply
+claim or sweep transaction IDs to the verifier.
+
+The verifier parses raw transactions locally, recomputes transaction IDs, links
+the commitment to the funding output, checks the HTLC-success preimage and P2WSH
+witness, and follows the delayed output into a confirmed wallet sweep. It checks
+the pinned non-lease CSV script, sequence and reported confirmation-height gap.
+The bounded fixture requires the delayed output and wallet return to retain more
+than 80 percent of their respective input amounts. This is a test constraint,
+not a general fee policy or support for arbitrary channel scripts.
+
+Confirmation heights and wallet ownership are supplied by the authenticated CLN
+node. This is not an independent chain proof, signature/script interpreter or
+reorg protection. Each run reads the evidence again; an earlier success is not
+reused when confirmations disappear. The observation explicitly reports
+`confirmation_source: paired_cln` and `independent_chain_proof: false`.
+
+Incoming inspection credentials permit only `getinfo`, `listtransactions` and
+`listfunds`; outgoing credentials permit only `getinfo` and `listsendpays`.
+The verifier container receives no close or gate-resolution credential. The
+fixture checks that these credentials reject spending, closing and resolution.
+Only the private observation file is written; deadline and recovery journals
+remain unchanged. Reports omit raw transactions, preimages and credentials.
+
+The funded harness now checks a pending observation before claim confirmation,
+then compares the packaged verifier's discovered transaction IDs with the
+independent fixture result after the CSV sweep. A fresh verifier repeats the
+terminal inspection. Run all four cases on the packaging VM after rebuilding:
+
+```sh
+docker buildx build --builder startos-builder --load \
+  -t swap-controller:deadline-boundary .
+python3 scripts/test-funded-deadline.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind all
+```
+
+The new funded verification cases are pending validation. This adds no StartOS
+action, live execution authority, restore-barrier exception or package version
+change. The verifier is restricted to disposable regtest fixtures.

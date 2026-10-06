@@ -61,6 +61,20 @@ class FundedHarnessTests(unittest.TestCase):
                 self.assertIsNone(clients['xbt' if incoming=='btc' else 'btc']['target'])
                 self.assertEqual(len(created),2)
 
+    def test_verifier_refuses_remaining_mutation_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            runner.save(root/'verification-input.json',dict(spec=dict(direction='forward'),connections=[dict(network='regtest')]))
+            for name in ('deadline-input.json','claim-input.json'):
+                runner.save(root/name,{})
+                with patch.object(runner,'ROOT',root),patch.object(runner,'isolation'), \
+                     patch.dict(runner.os.environ,{'BTC_XBT_DISPOSABLE_CONTAINER':'1'}), \
+                     patch.object(runner.sys,'argv',['deadline_step.py','verify']), \
+                     patch.object(runner,'ChainReader') as reader,patch.object(runner,'inspect') as inspect:
+                    with self.assertRaises(AssertionError):runner.main()
+                    reader.assert_not_called();inspect.assert_not_called()
+                (root/name).unlink()
+
     def test_host_command_mounts_only_control_and_fixture_helpers(self):
         script=Path(__file__).resolve().parents[1]/'scripts/test-funded-deadline.py'
         if not script.exists():self.skipTest('host launcher is intentionally absent from service image')

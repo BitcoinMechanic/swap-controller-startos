@@ -22,3 +22,4 @@
 !assets/preflight_actions.py
 !assets/deadline_boundary.py
 !assets/deadline_recovery.py
+!assets/claim_verification.py

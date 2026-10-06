@@ -14,7 +14,7 @@ import uuid
 
 spec=importlib.util.spec_from_file_location('separated',Path(__file__).with_name('test-separated-controller.py'))
 base=importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
-STAGES=('step','drop-close-reply','recover','drop-release-reply')
+STAGES=('step','drop-close-reply','recover','drop-release-reply','verify')
 
 
 def command(repo,shared,image,network,name,stage):
@@ -85,7 +85,7 @@ def main():
     if not (repo.parent/'btc-cln-startos/tests/image_pair.py').is_file():p.error('BTC packaging sibling required')
     btc,xbt,controller=[base.image_id(n) for n in (args.btc_image,args.xbt_image,args.controller_image)]
     # Check the adapter against the module pin baked into this image.
-    for test in ('test_deadline_boundary.py','test_deadline_recovery.py','test_funded_deadline.py'):
+    for test in ('test_deadline_boundary.py','test_deadline_recovery.py','test_claim_verification.py','test_funded_deadline.py'):
         subprocess.run(['docker','run','--rm','--network','none','--read-only','--cap-drop=ALL',
         '--tmpfs','/tmp:rw,nosuid,nodev,size=16m','-e','PYTHONPATH=/app',
         *base.mount(repo/'tests','/deadline-tests',True),'--entrypoint','python3',controller,
