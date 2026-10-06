@@ -61,6 +61,7 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 - [x] Disconnect HTLC-success and sweep, reconfirm success and enforce its new CSV maturity in all four funded cases.
 - [x] Disconnect and reconfirm the original commitment and descendants in all four funded cases without repeated controller mutations.
 - [x] Run all four funded cases with prior verification invalidated during network outage and abrupt verifier exit, then recover through fresh read-only inspection.
-- [ ] Run all four funded cases with the controller absent as the incoming margin falls from 31 to 27 blocks, then resume exact-channel protection without duplicate mutations.
+- [x] Run all four funded cases with the controller absent as the incoming margin falls from 31 to 27 blocks, then resume exact-channel protection without duplicate mutations.
+- [ ] Run both packaged quote directions with the original outgoing attempt settling during controller absence, including interrupted release checkpoints and exact-once settlement.
 - [ ] Establish confirmation/reorg handling beyond paired-node observations before live protection.
 - [ ] Validate live deadline/on-chain protection, including controller downtime, before implementing live execution.

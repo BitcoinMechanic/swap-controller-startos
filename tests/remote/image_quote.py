@@ -24,7 +24,7 @@ image_remote.restrictions=quote_restrictions
 
 
 def bridge(stage,request=None):
-    assert stage in ('prepare','approve','status','review','worker')
+    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','assert-controller-absent')
     root=Path('/exchange/control')
     if request is not None:save(root/'quote-input.json',request)
     mailbox=Path('/exchange/jobs')/(uuid.uuid4().hex+'.request')
@@ -36,10 +36,16 @@ def bridge(stage,request=None):
         time.sleep(.05)
     result=private_load(response)
     assert result['returncode']==0, 'packaged quote step failed; inspect private step logs'
+    if stage=='assert-controller-absent':
+        assert json.loads(result['stdout'])==dict(controller_absent=True)
+        return
     return private_load(root/'quote-output.json')
 
 
 def run(lab,reverse=False):
+    downtime=os.environ.get('QUOTE_SETTLED_DOWNTIME')=='1'
+    interrupt=os.environ.get('QUOTE_INTERRUPT_RESOLUTION')=='1'
+    assert not interrupt or downtime
     btc=lab.node('knots-btc',False);xbt=lab.node('knots-xbt',True)
     plugin=lab.root/('reverse_gate.py' if reverse else 'quote_plugin.py')
     source=Path('/usr/local/libexec/cln-swap')
@@ -48,7 +54,10 @@ def run(lab,reverse=False):
     payer=lab.lightning('payer','xbt-regtest' if reverse else 'regtest',xbt if reverse else btc)
     op_btc=lab.lightning('swap-btc','regtest',btc,plugins=() if reverse else (plugin,))
     op_xbt=lab.lightning('swap-xbt','xbt-regtest',xbt,plugins=(plugin,) if reverse else ())
-    receiver=lab.lightning('receiver','regtest' if reverse else 'xbt-regtest',btc if reverse else xbt)
+    hold=lab.root/'hold_htlc.py'
+    if downtime:
+        hold.write_text('#!'+sys.executable+'\n'+(source/'hold_htlc.py').read_text());hold.chmod(0o700)
+    receiver=lab.lightning('receiver','regtest' if reverse else 'xbt-regtest',btc if reverse else xbt,plugins=(hold,) if downtime else ())
     incoming,outgoing=(op_xbt,op_btc) if reverse else (op_btc,op_xbt)
     price,amount=(200000000,100000000) if reverse else (100000000,200000000)
     invoice_key='xbt_invoice' if reverse else 'btc_invoice'
@@ -112,6 +121,55 @@ def run(lab,reverse=False):
     wait_until(lambda:any(h['payment_hash']==invoice['payment_hash'] and h['state']=='RCVD_ADD_ACK_REVOCATION'
                          for h in channel(incoming).get('htlcs',[])),incoming['proc'])
     status=bridge('worker')
+    if downtime:
+        assert status['phase']=='outgoing_started'
+        payment_hash=invoice['payment_hash']
+        def attempts():return [p for p in rpc(outgoing,'listsendpays')['payments'] if p['payment_hash']==payment_hash]
+        wait_until(lambda:any(h['payment_hash']==payment_hash and h['state']=='SENT_ADD_ACK_REVOCATION'
+                             for h in channel(outgoing).get('htlcs',[])),outgoing['proc'])
+        original=attempts();assert len(original)==1 and original[0]['status']=='pending'
+        original=original[0]
+        pin={k:channel(incoming)[k] for k in ('channel_id','funding_txid','funding_outnum','short_channel_id','peer_id')}
+        htlcs=[h for h in channel(incoming)['htlcs'] if h['payment_hash']==payment_hash and h['direction']=='in']
+        assert len(htlcs)==1;bound=htlcs[0]
+        control=Path('/exchange/control');manager=control/'execution';job=manager/'jobs/swap'
+        assert 'preimage' not in private_load(job/'state.json')
+        bridge('assert-controller-absent')
+        saved={p:p.read_bytes() for p in control.rglob('*') if p.is_file()}
+        quote_before=plugin.with_suffix('.quotes.json').read_bytes()
+        incoming_chain,outgoing_chain=(xbt,btc) if reverse else (btc,xbt)
+        outgoing_height=rpc(outgoing_chain,'getblockcount')
+        count=bound['expiry']-rpc(incoming_chain,'getblockcount')-27
+        assert count>0
+        mine(incoming_chain,(payer,incoming),count)
+        assert bound['expiry']-rpc(incoming_chain,'getblockcount')==27
+        assert channel(incoming)['state']=='CHANNELD_NORMAL'
+        assert rpc(receiver,'xbt-continue',payment_hash)['continued']==1
+        wait_until(lambda:len(attempts())==1 and attempts()[0]['status']=='complete',outgoing['proc'])
+        complete=attempts()[0]
+        assert all(complete.get(k)==original.get(k) for k in ('id','groupid','partid','payment_hash','amount_sent_msat'))
+        assert hashlib.sha256(bytes.fromhex(complete['payment_preimage'])).hexdigest()==payment_hash
+        assert payer_process.poll() is None and held()
+        current=channel(incoming)
+        assert current['state']=='CHANNELD_NORMAL' and all(current[k]==v for k,v in pin.items())
+        same=[h for h in current['htlcs'] if h['id']==bound['id'] and h['direction']=='in']
+        assert len(same)==1 and all(same[0][k]==bound[k] for k in ('payment_hash','expiry','amount_msat','state'))
+        assert rpc(outgoing_chain,'getblockcount')==outgoing_height
+        assert plugin.with_suffix('.quotes.json').read_bytes()==quote_before
+        assert saved=={p:p.read_bytes() for p in control.rglob('*') if p.is_file()}
+        bridge('assert-controller-absent')
+        print('PASS: original outgoing attempt settled with controller absent at 27 incoming blocks remaining; incoming HTLC stayed held; controller files and gate journal unchanged',flush=True)
+        if interrupt:
+            interrupted=bridge('worker-interrupt-resolution')
+            assert interrupted['phase']==('btc_paid' if reverse else 'xbt_paid')
+            assert private_load(manager/'resolution-interrupted.json')['returncode']==(89 if reverse else 87)
+            assert rpc(incoming,status_method,payment_hash)['phase']=='resolved'
+        status=bridge('worker')
+        assert status['phase']==terminal
+        assert channel(incoming)['state']=='CHANNELD_NORMAL'
+        assert all(channel(incoming)[k]==v for k,v in pin.items())
+        assert attempts()[0]['id']==original['id'] and len(attempts())==1
+        print('PASS: fresh packaged worker recovered original preimage and resolved incoming gate without channel close'+('; interrupted release checkpoint reconciled' if interrupt else ''),flush=True)
     end=time.monotonic()+90
     while status['phase']!=terminal:
         if time.monotonic()>end:raise RuntimeError('packaged_quote_did_not_settle')
@@ -121,7 +179,7 @@ def run(lab,reverse=False):
     assert paid['status']=='complete' and received['status']=='paid' and received['amount_received_msat']==amount
     assert hashlib.sha256(bytes.fromhex(paid['payment_preimage'])).hexdigest()==invoice['payment_hash']
     for node,delta in ((payer,-price),(incoming,price),(outgoing,-amount),(receiver,amount)):
-        wait_until(lambda:not channel(node).get('htlcs') and channel(node)['to_us_msat']==initial[node['id']]+delta,node['proc'])
+        wait_until(lambda:channel(node)['state']=='CHANNELD_NORMAL' and not channel(node).get('htlcs') and channel(node)['to_us_msat']==initial[node['id']]+delta,node['proc'])
     journal=Path('/exchange/control/execution/jobs/swap')
     before=(journal/'remote-audit.jsonl').read_bytes()
     assert bridge('worker')['phase']==terminal
@@ -130,6 +188,7 @@ def run(lab,reverse=False):
     assert len(outgoing)==1 and outgoing[0]['status']=='complete'
     assert outgoing[0]['payment_preimage']==paid['payment_preimage']
     audit=[json.loads(line) for line in before.splitlines()]
+    assert not {r['method'] for r in audit}&{'close','xbt-fail','reverse-fail'}
     assert sum(r['method']=='sendpay' for r in audit)==1 and sum(r['method']==('reverse-release' if reverse else 'xbt-release') for r in audit)==1
     print('PASS: packaged worker bound the committed incoming HTLC, paid the recipient once, and released the incoming payment with the same preimage',flush=True)
     print('PASS: all four balances verified; no pending HTLCs; a fresh worker repeated terminal status without another mutation',flush=True)
@@ -149,7 +208,7 @@ def main():
     assert direction in ('forward','reverse')
     try:run(lab,direction=='reverse')
     finally:lab.close()
-    print('Packaged StartOS '+direction+' quote -> approval -> invoice -> worker settlement OK (isolated HTTPS; regtest only)',flush=True)
+    print('Packaged StartOS '+direction+' quote -> approval -> invoice -> worker settlement OK ('+('settled during downtime; ' if os.environ.get('QUOTE_SETTLED_DOWNTIME')=='1' else '')+'isolated HTTPS; regtest only)',flush=True)
 
 
 if __name__=='__main__':main()

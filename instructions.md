@@ -1377,8 +1377,51 @@ python3 scripts/test-funded-deadline.py \
 
 This changes fixture code only: reuse the controller image rebuilt for stale
 verification. No image rebuild or StartOS installation is required. Local harness
-tests pass; the four funded downtime cases await packaging-VM validation.
+tests pass; all four funded downtime cases passed at checkpoint 4794a60.
 Four blocks of absence on one regtest chain is not a wall-clock outage budget,
 a cross-chain timing guarantee or evidence of protection after arbitrary
 controller downtime. Independent chain proofs and live deadline protection
 remain outstanding; live execution stays disabled.
+
+
+## Packaged quote recovery after settlement during controller absence
+
+The quote harness accepts `--settle-during-downtime`. A disposable holding hook
+on the recipient keeps the worker's original outgoing payment pending. After the
+packaged worker exits with `outgoing_started`, the host confirms that its named
+container is absent. The fixture advances only the incoming chain to 27 blocks
+remaining and lets the recipient resume ordinary invoice settlement.
+
+Before another worker starts, the outgoing attempt must be complete with its
+original identity and a matching preimage, while the original incoming HTLC and
+payer remain pending. The gate journal and all controller control files must be
+byte-for-byte unchanged, with no preimage in the saved pending state. A fresh
+packaged worker must obtain the outcome remotely and release the bound incoming
+HTLC. All four balances must match the agreed amounts, every channel must remain
+normal with no pending HTLCs, and the audit must contain one send and one release,
+with no close or failure mutation. A further worker must not add any RPC audit
+entries.
+
+Each direction also runs an interruption after the release RPC was acknowledged
+but before the executor saved its terminal checkpoint. The existing pinned crash
+flags must return their exact expected exit codes. A new worker reconciles the
+resolved gate without repeating release. This tests a missing terminal checkpoint,
+not a transport-level discarded release response.
+
+```sh
+python3 scripts/test-quote-flow.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind all --settle-during-downtime
+```
+
+The `all` direction runs forward and reverse, each with ordinary recovery and
+interrupted release checkpoint recovery. Omit the flag for the existing quote
+happy path. This is fixture-only work; reuse the current controller image. No
+StartOS installation or image rebuild is required. Four local fault/boundary tests
+pass; funded settlement-during-downtime validation remains pending.
+
+The quote worker currently has no integrated deadline watcher. These cases test
+its terminal outcome recovery; the separate deadline harness covers closing when
+the outgoing attempt is still pending. They do not establish automatic dispatch
+between those paths, arbitrary outage tolerance or live execution readiness.
+Live execution remains disabled.

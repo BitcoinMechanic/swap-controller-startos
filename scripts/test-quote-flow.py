@@ -14,7 +14,7 @@ import uuid
 
 spec=importlib.util.spec_from_file_location('separated',Path(__file__).with_name('test-separated-controller.py'))
 base=importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
-STAGES=('prepare','approve','status','review','worker')
+STAGES=('prepare','approve','status','review','worker','worker-interrupt-resolution')
 
 
 def command(repo,shared,image,network,name,stage):
@@ -26,7 +26,13 @@ def command(repo,shared,image,network,name,stage):
         '--entrypoint','python3',image,'/remote-tests/quote_step.py',stage]
 
 
-def run(repo,results,prefix,backend,btc,controller,direction):
+def absent(name):
+    if base.docker('ps','-aq','--filter','name=^/'+name+'$').strip():
+        raise RuntimeError('quote_controller_still_present')
+    return subprocess.CompletedProcess([],0,'{"controller_absent":true}','')
+
+
+def run(repo,results,prefix,backend,btc,controller,direction,downtime=False,interrupt=False):
     shared=results/'exchange';shared.mkdir()
     for folder in ('control','jobs'):(shared/folder).mkdir()
     nodes=results/'nodes';nodes.mkdir()
@@ -45,7 +51,8 @@ def run(repo,results,prefix,backend,btc,controller,direction):
         address=str(ipaddress.IPv4Address(inspected['NetworkSettings']['Networks'][network]['IPAddress']))
         log=results/'fixture.log';seen=set()
         with log.open('w') as output,log.open() as reader:
-            fixture=subprocess.Popen(['docker','exec','-e','COORDINATOR_IP='+address,node,
+            fixture=subprocess.Popen(['docker','exec','-e','COORDINATOR_IP='+address,'-e','QUOTE_SETTLED_DOWNTIME='+('1' if downtime else '0'),
+                '-e','QUOTE_INTERRUPT_RESOLUTION='+('1' if interrupt else '0'),node,
                 '/usr/bin/python3','/remote-tests/image_quote.py',direction],stdout=output,stderr=subprocess.STDOUT)
             end=time.monotonic()+1200
             while fixture.poll() is None:
@@ -57,10 +64,14 @@ def run(repo,results,prefix,backend,btc,controller,direction):
                         raise ValueError('invalid_quote_mailbox')
                     try:job=json.loads(request.read_text())
                     except PermissionError:continue
-                    if set(job)!={'stage'} or job['stage'] not in STAGES:raise ValueError('invalid_quote_job')
+                    if set(job)!={'stage'} or job['stage'] not in (*STAGES,'assert-controller-absent'):raise ValueError('invalid_quote_job')
                     seen.add(request.name)
-                    result=subprocess.run(command(repo,shared,controller,network,child,job['stage']),
-                        text=True,capture_output=True,timeout=90)
+                    if job['stage']=='assert-controller-absent':
+                        if not downtime:raise ValueError('quote_downtime_not_enabled')
+                        result=absent(child)
+                    else:
+                        result=subprocess.run(command(repo,shared,controller,network,child,job['stage']),
+                            text=True,capture_output=True,timeout=90)
                     (results/(str(len(seen))+'-'+job['stage']+'.log')).write_text(result.stdout+result.stderr)
                     base.respond(request.with_suffix('.response'),result)
                 time.sleep(.05)
@@ -77,14 +88,15 @@ def run(repo,results,prefix,backend,btc,controller,direction):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('btc_image');p.add_argument('xbt_image');p.add_argument('controller_image');p.add_argument('bitcoind',type=Path)
-    p.add_argument('direction',choices=('forward','reverse'),nargs='?',default='forward')
+    p.add_argument('direction',choices=('forward','reverse','all'),nargs='?',default='forward')
+    p.add_argument('--settle-during-downtime',action='store_true')
     args=p.parse_args();os.umask(0o077)
     repo=Path(__file__).resolve().parents[1];backend=args.bitcoind.resolve()
     if not backend.is_file() or not os.access(backend,os.X_OK):p.error('executable regtest bitcoind required')
     if not (repo.parent/'btc-cln-startos/tests/image_pair.py').is_file():p.error('BTC packaging sibling required')
     btc,xbt,controller=[base.image_id(n) for n in (args.btc_image,args.xbt_image,args.controller_image)]
     # Run the policy tests against exactly the module pin baked into this image.
-    for test in ('test_live_policy.py','test_quote_workflow.py','test_quote_actions.py','test_reverse_quote_workflow.py','test_quote_policy.py'):
+    for test in ('test_live_policy.py','test_quote_workflow.py','test_quote_actions.py','test_reverse_quote_workflow.py','test_quote_policy.py','test_quote_downtime.py'):
         subprocess.run(['docker','run','--rm','--network','none','--read-only','--cap-drop=ALL',
         '--tmpfs','/tmp:rw,nosuid,nodev,size=16m','-e','PYTHONPATH=/app',
         *base.mount(repo/'tests','/quote-tests',True),'--entrypoint','python3',controller,
@@ -96,7 +108,11 @@ def main():
         prefix=Path(temporary);container=base.docker('create','--network','none',xbt)
         try:base.docker('cp',container+':/usr/local/.',str(prefix)+'/')
         finally:base.docker('rm',container)
-        run(repo,results,prefix,backend,btc,controller,args.direction)
+        directions=('forward','reverse') if args.direction=='all' else (args.direction,)
+        for direction in directions:
+            for interrupt in ((False,True) if args.settle_during_downtime else (False,)):
+                work=results/(direction+('-interrupted-release' if interrupt else '-normal'));work.mkdir()
+                run(repo,work,prefix,backend,btc,controller,direction,args.settle_during_downtime,interrupt)
 
 
 if __name__=='__main__':main()

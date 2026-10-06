@@ -9,15 +9,33 @@ from controller import private_load,save
 from partition_check import isolation
 
 
+def worker(manager,interrupt=False):
+    import executor
+    import lifecycle
+    if not interrupt:return lifecycle.tick(manager)
+    from unittest.mock import patch
+    original=executor.step;exits=[]
+    def interrupted(root,*args,**kwargs):
+        initial,_=executor.records(root)
+        forward=initial['direction']=='forward'
+        kwargs['flags']=('--crash-after-btc' if forward else '--crash-after-xbt-resolution',)
+        result=original(root,*args,**kwargs)
+        assert result.returncode==(87 if forward else 89)
+        exits.append(result.returncode)
+        return result
+    with patch.object(executor,'step',side_effect=interrupted):lifecycle.tick(manager)
+    assert len(exits)==1
+    save(manager/'resolution-interrupted.json',dict(returncode=exits[0]))
+
+
 def main():
     isolation()
     stage=sys.argv[1]
     assert os.environ.get('BTC_XBT_DISPOSABLE_CONTAINER')=='1'
-    assert stage in ('prepare','approve','status','review','worker')
+    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution')
     root=Path('/controller-state');manager=root/'execution'
-    if stage=='worker':
-        import lifecycle
-        lifecycle.tick(manager)
+    if stage in ('worker','worker-interrupt-resolution'):
+        worker(manager,stage=='worker-interrupt-resolution')
         mode='review';request=dict(job='swap')
     elif stage=='prepare':
         # Test-only provisioning. The StartOS action itself cannot supply or
