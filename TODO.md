@@ -56,6 +56,7 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 - [x] Run funded forward packaged HTTPS deadline close/reconciliation in normal and lost-reply cases, with fixture-assisted on-chain claim verification.
 - [x] Run reverse funded packaged HTTPS deadline close/reconciliation in normal and lost-reply cases, with fixture-assisted on-chain claim verification.
 - [x] Run all four funded deadline cases with packaged post-close gate recovery and discarded release replies.
-- [ ] Run all four funded cases with packaged read-only claim/sweep verification and independent fixture comparison.
+- [x] Run all four funded cases with packaged read-only claim/sweep verification and independent fixture comparison.
+- [ ] Disconnect and reconfirm the sweep block in all four funded cases; revoke and recover read-only verification without repeated mutations.
 - [ ] Establish confirmation/reorg handling beyond paired-node observations before live protection.
 - [ ] Validate live deadline/on-chain protection, including controller downtime, before implementing live execution.

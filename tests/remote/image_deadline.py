@@ -212,6 +212,57 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
     releases=[json.loads(line) for line in (ROOT/'claim-audit.jsonl').read_text().splitlines()
               if json.loads(line)['method'] in ('xbt-release','reverse-release')]
     assert len(releases)==1
+    # Fixture-only chain administration: the verifier has read-only runes and
+    # never receives backend credentials. Disconnect only the sweep block and
+    # descendants, keeping the commitment and HTLC-success confirmed.
+    protected=[journal,ROOT/'deadline-job/claim-receipt.json',
+               ROOT/'deadline-audit.jsonl',ROOT/'claim-audit.jsonl',plugin.with_suffix('.quotes.json')]
+    snapshots={path:path.read_bytes() for path in protected}
+    sweep_height=result['proof']['heights'][2]
+    assert sweep_height>result['proof']['heights'][1]
+    old_height=rpc(incoming_chain,'getblockcount')
+    removed=rpc(incoming_chain,'getblockhash',sweep_height)
+    rpc(incoming_chain,'invalidateblock',removed)
+    assert rpc(incoming_chain,'getblockcount')==sweep_height-1
+    # CLN detects a changed predecessor while fetching tip+1; a shorter
+    # backend tip alone leaves it waiting for that next block. Extend an empty
+    # replacement branch past the old tip without confirming the sweep.
+    replacement_height=old_height+1
+    for _ in range(replacement_height-(sweep_height-1)):
+        empty=rpc(incoming_chain,'generateblock',rpc(incoming_chain,'getnewaddress'),'[]')
+        block=rpc(incoming_chain,'getblock',empty['hash'])
+        assert len(block['tx'])==1  # coinbase only, regardless of the mempool
+    assert rpc(incoming_chain,'getblockcount')==replacement_height
+    assert rpc(incoming_chain,'getblockhash',sweep_height)!=removed
+    def disconnected():
+        if any(rpc(node,'getinfo')['blockheight']!=replacement_height for node in (payer,incoming_node)):return False
+        txs=rpc(incoming_node,'listtransactions')['transactions']
+        return not any(t['hash']==claim['receiver_sweep_txid'] and t.get('blockheight',0)>0 for t in txs)
+    wait_until(disconnected,incoming_node['proc'],timeout=90)
+    for _ in range(2):
+        pending_result=bridge(verify=True)
+        assert pending_result['phase']=='awaiting_csv_sweep' and not pending_result['verified']
+        assert 'proof' not in pending_result
+        assert private_load(ROOT/'deadline-job/chain-verification.json')==pending_result
+    assert all(path.read_bytes()==data for path,data in snapshots.items())
+    assert rpc(outgoing_chain,'getblockcount')==outgoing_height
+    print('PASS: disconnected sweep confirmation; two fresh read-only verifiers revoked success without close or release',flush=True)
+    # Mine a replacement block, not reconsiderblock: require the same wallet
+    # sweep to enter a different active block and be observed again by CLN.
+    wait_until(lambda:claim['receiver_sweep_txid'] in rpc(incoming_chain,'getrawmempool'),incoming_node['proc'],timeout=90)
+    mine(1)
+    assert rpc(incoming_chain,'getblockhash',sweep_height)!=removed
+    wait_until(lambda:confirmed(incoming_node,claim['receiver_sweep_txid']),incoming_node['proc'],timeout=90)
+    recovered=bridge(verify=True)
+    assert recovered['verified']
+    expected_proof=dict(result['proof'],heights=[*result['proof']['heights'][:2],replacement_height+1])
+    assert recovered['proof']==expected_proof
+    assert bridge(verify=True)==recovered
+    assert all(path.read_bytes()==data for path,data in snapshots.items())
+    assert rpc(outgoing_chain,'getblockcount')==outgoing_height
+    current=lab.rpc([*outgoing_node['cli'],'-k'],'listsendpays','payment_hash='+payment_hash)['payments']
+    assert len(current)==1 and current[0]['id']==attempt['id'] and current[0]['status']=='complete'
+    print('PASS: same sweep confirmed in replacement block; fresh verification recovered; original attempt and mutation journals unchanged',flush=True)
     print('PASS: fixture verified confirmed '+incoming_name+' HTLC-success and CSV sweep; original '+outgoing_name+' attempt settled off-chain; '+outgoing_name+' height stayed fixed',flush=True)
 
 

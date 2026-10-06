@@ -1206,6 +1206,40 @@ python3 scripts/test-funded-deadline.py \
   swap-controller:deadline-boundary ../bitcoind all
 ```
 
-The new funded verification cases are pending validation. This adds no StartOS
+All four funded verification cases passed at checkpoint 833ddae. This adds no StartOS
 action, live execution authority, restore-barrier exception or package version
 change. The verifier is restricted to disposable regtest fixtures.
+
+
+## Funded regtest sweep confirmation rollback
+
+The deadline fixture now invalidates the incoming-chain sweep block after a
+successful packaged inspection. The earlier commitment and HTLC-success remain
+confirmed. It mines coinbase-only replacement blocks past the old tip so CLN
+can detect the changed predecessor. It waits for both nodes to observe that
+branch and for the sweep to lose confirmation before running two fresh verifier
+containers. Both must report `awaiting_csv_sweep`, `verified: false`, and no
+retained proof in the saved observation.
+
+The fixture then mines a replacement block containing the same sweep. Two fresh
+inspections must recover verification. It checks that the replacement block hash
+is different, the outgoing chain height and original payment attempt are
+unchanged, and the close audit, release audit, deadline journal, claim receipt
+and gate journal remain byte-for-byte unchanged through rollback and recovery.
+Backend invalidation/mining is fixture-only; the packaged verifier has no such
+RPC authority and receives no close or resolution credentials.
+
+Run the existing four-case harness on the packaging VM:
+
+```sh
+python3 scripts/test-funded-deadline.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind all
+```
+
+This patch changes fixture tests and documentation, so the controller image from
+the claim-verification checkpoint can be reused. Funded rollback validation is
+pending. The test covers loss and replacement of the sweep confirmation only;
+it does not establish deep-reorg safety, independent chain proofs, confirmation
+finality, or recovery after the commitment/HTLC-success itself is disconnected.
+Live execution remains disabled, and the installed StartOS package is unchanged.

@@ -83,7 +83,7 @@ class VerificationTests(unittest.TestCase):
     def test_rpc_no_write_methods_or_live_network(self):
         client=v.ChainReader.__new__(v.ChainReader);client.node_id='02'+'a'*64;client.network='regtest'
         with patch.object(client,'_request') as request:
-            for method in ('close','sendpay','pay','withdraw','xbt-release','reverse-release','xbt-fail','createrune'):
+            for method in ('close','sendpay','pay','withdraw','xbt-release','reverse-release','xbt-fail','createrune','invalidateblock','reconsiderblock','generatetoaddress'):
                 with self.assertRaises(ValueError):client.call(method)
             request.assert_not_called()
         with self.assertRaises(ValueError):v.ChainReader({'network':'bitcoin'})
@@ -114,7 +114,13 @@ class VerificationTests(unittest.TestCase):
                 # Prior success is not reused after a reported confirmation loss.
                 self.sweep['blockheight']=0
                 self.assertFalse(v.inspect(root,self.spec,clients)['verified'])
+                pending=private_load(root/'chain-verification.json')
+                self.assertFalse(pending['verified']);self.assertNotIn('proof',pending)
+                self.assertFalse(v.inspect(root,self.spec,clients)['verified'])
                 self.sweep['blockheight']=106
+                self.assertTrue(v.inspect(root,self.spec,clients)['verified'])
+                self.assertEqual(report,(root/'chain-verification.json').read_bytes())
+                self.assertEqual(original,{name:(root/name).read_bytes() for name in original})
                 self.assertEqual(set(calls),{'getinfo','listtransactions','listfunds','listsendpays'})
 
 if __name__=='__main__':unittest.main()
