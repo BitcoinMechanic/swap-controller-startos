@@ -6,7 +6,7 @@ import sys
 import time
 from controller import load_config, require, NETWORKS
 from read_only_rpc import Client
-from gate_observation import observe, GateClient
+from gate_observation import observe, GateClient, XbtGateClient
 
 
 def base(root):
@@ -23,7 +23,7 @@ def base(root):
     return result
 
 
-def inspect(root,factory=Client,clock=time.time,gate_factory=GateClient):
+def inspect(root,factory=Client,clock=time.time,gate_factory=GateClient,xbt_gate_factory=XbtGateClient):
     result=base(root)
     try:config=load_config(root)
     except Exception:
@@ -70,7 +70,7 @@ def inspect(root,factory=Client,clock=time.time,gate_factory=GateClient):
             if not info['connected_normal_channels']:result['blockers'].append(role+'_connected_channel_required')
             if info['pending_htlcs']:result['blockers'].append(role+'_pending_htlcs_require_review')
     result['btc_gate']=observe(root,config,gate_factory) if len(clients)==2 else dict(observation='identity_not_verified')
-    result['xbt_gate']=dict(observation='not_verified')
+    result['xbt_gate']=observe(root,config,xbt_gate_factory,'xbt') if len(clients)==2 else dict(observation='identity_not_verified')
     end=clock()
     # Do not publish observations against credentials replaced during the probe.
     try:unchanged=load_config(root)==config
@@ -78,14 +78,20 @@ def inspect(root,factory=Client,clock=time.time,gate_factory=GateClient):
     if not unchanged or not 0<=end-start<=120:
         result['nodes']={};result['connection_ready']=False
         result['btc_gate']=dict(observation='expired_or_pairing_changed')
+        result['xbt_gate']=dict(observation='expired_or_pairing_changed')
         result['blockers'].append('pairing_changed_or_observation_expired')
     else:
         result['checked_at']=int(end)
         result['connection_ready']=all(i.get('observation')=='verified' and not i.get('warning_present') for i in infos.values())
-    if result['btc_gate'].get('observation')=='verified':
-        result['gate_activation']='btc_verified_xbt_not_verified'
+    verified={role:result[role+'_gate'].get('observation')=='verified' for role in NETWORKS}
+    if any(verified.values()):
         result['blockers'].remove('gate_activation_not_verified')
-        result['blockers'].append('xbt_gate_activation_not_verified')
+        if all(verified.values()): result['gate_activation']='both_profiles_verified'
+        else:
+            ready_role=next(role for role in NETWORKS if verified[role])
+            missing_role=next(role for role in NETWORKS if not verified[role])
+            result['gate_activation']=ready_role+'_verified_'+missing_role+'_not_verified'
+            result['blockers'].append(missing_role+'_gate_activation_not_verified')
     result['restore_barrier']=os.path.lexists(root/'execution'/'restored.json')
     if result['restore_barrier'] and 'restored_execution_remains_blocked' not in result['blockers']:
         result['blockers'].append('restored_execution_remains_blocked')

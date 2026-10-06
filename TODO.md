@@ -42,4 +42,6 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 
 - [x] Install 0.1.0:6 and verify Live Swap Readiness with the existing pairing state; confirm live requirements and restore barrier remain explicit.
 
-- [ ] Install 0.1.0:7 and BTC 26.6.8:9; pair the separate gate observer and verify BTC-only readiness without changing live execution or restore barriers.
+- [x] Install 0.1.0:7 and BTC 26.6.8:9; pair the separate gate observer and verify BTC-only readiness without changing live execution or restore barriers.
+
+- [ ] Install XBT 0.1.0:15 and controller 0.1.0:8; explicitly activate and observe the reverse gate while retaining execution barriers.

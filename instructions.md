@@ -755,3 +755,39 @@ pairing gate observation again. Status never exports the rune or endpoint.
 profile/count. This reports BTC observation only: XBT gate activation remains
 unverified, live execution stays disabled, and restore barriers remain intact.
 A successful observation does not prove liquidity, fee or cross-chain timing policy.
+
+## XBT reverse gate opt-in and observation
+
+XBT Core Lightning 0.1.0:15 adds **XBT Swap Gate Status** and
+**Enable Bounded XBT Swap Gate**. Prepare Coordinator must already succeed,
+and a connected normal channel with no pending HTLCs is required for activation.
+Activation saves a receipt bound to this node, its wallet secret hash and the
+exact pinned Python source bundle. Restart the service explicitly, then check
+status again. The wrapper loads immutable image code; the durable gate journal
+is stored at `xbt/swap-gate/reverse_gate.quotes.json`.
+
+The reverse gate uses `reverse-live-v1`: 1,500 BTC sats payout, incoming XBT from
+1 to 500,000 sats, at most 30 BTC sats routing fee, and one active quote at a time.
+These are existing pilot bounds, not a market price or a controller authorization.
+The forward BTC gate's `live-pilot-v1` limits are different. Ordinary payments
+with unregistered hashes continue normally. This action publishes no invoice,
+registers no quote, creates no credential and submits no payment.
+
+Activation is excluded from backups. Restore writes a gate barrier before
+removing activation and running existing recovery checks. The gate journal is
+preserved; an existing journal without its activation cannot be silently reused.
+There is no automatic barrier reset or gate-disable action for unresolved swaps.
+
+After the gate is active, use **Create or Show XBT Gate Observation Credential**.
+It permits only parameterless `getinfo` and `reverse-pilot-info`; its status and
+revocation actions are separate from the existing monitor credential.
+In Swap Controller 0.1.0:8, **Pair XBT Gate Observation** reuses the saved XBT
+HTTPS endpoint and CA, verifies both node identities and binds the new credential
+to the current pairing generation. Existing BTC gate pairing is preserved.
+Controller backups omit both observation credentials and restore removes them.
+
+Live Swap Readiness verifies the two profiles independently. XBT observation
+reports `gate_active`, not a remote quote count (that RPC does not expose one).
+Verifying both profiles removes only the gate-verification blocker: live
+execution, execution credentials, amount/fee/expiry policy, cross-chain timing
+and any restored execution barrier remain separate outstanding requirements.

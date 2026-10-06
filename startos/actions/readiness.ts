@@ -23,7 +23,7 @@ export const liveReadiness = sdk.Action.withInput('live-readiness', async () => 
     catch { throw new Error('Readiness unavailable; private details withheld.') }
     if (res.exitCode !== 0) throw new Error('Readiness unavailable; private details withheld.')
     return { version: '1' as const, title: 'Live Swap Readiness',
-      message: 'Observation only. This release cannot execute live swaps. BTC gate observation uses a separate restricted credential; XBT gate activation remains unverified. Channel counts do not establish a route or sufficient liquidity. The restore barrier is unchanged.',
+      message: 'Observation only. This release cannot execute live swaps. Each gate observation uses its own restricted credential. Verified gate profiles do not authorize execution. Channel counts do not establish a route or sufficient liquidity. The restore barrier is unchanged.',
       result: { type: 'group' as const, value: Object.entries(report).filter(([key]) => key in labels).map(([key, value]) => ({
         name: labels[key], description: null, type: 'single' as const,
         value: typeof value === 'object' ? JSON.stringify(value) : String(value),
