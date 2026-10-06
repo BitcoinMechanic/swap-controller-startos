@@ -1317,3 +1317,50 @@ This change is limited to mounted test helpers and documentation. No service
 image rebuild or StartOS installation is needed. Node-fixture RPC still performs
 submission, gate resolution and claim verification. Packaged claim recovery,
 controller-downtime protection and live execution are not enabled by this test.
+
+
+## Packaged post-close gate recovery (regtest only)
+
+`deadline_recovery.py` adds an explicit resolver for the saved deadline record.
+It is separate from the normal-channel stale-journal resolver and does not relax
+that resolver's channel checks. Both funded deadline directions now use it to
+recover the outgoing preimage and resolve the bound incoming gate after close.
+
+Before a release it requires the matching immutable deadline specification,
+source pin and original durable close intent, verified identities on both
+regtest nodes, the original unique completed outgoing attempt, a preimage that
+hashes to the original payment hash, matching gate binding/amount/expiry, and
+the original funding-pinned channel reported ONCHAIN by CLN. Pending outgoing
+payments remain pending. Failed outgoing payments are refused; this helper
+cannot refund, submit, close, withdraw or clear restore barriers.
+
+The resolver saves release intent before the gate RPC. A lost release reply is
+reconciled only if the gate is durably resolved; a still-held gate after an
+uncertain release stops for inspection instead of repeating the mutation.
+Separate receipts record the attempt and phase without storing the preimage.
+The original deadline journal remains unchanged. Terminal reconciliation also
+works after the verified sweep without another release.
+
+The test replaces close credentials with separately issued release-only runes
+before invoking fresh recovery containers. The fixture checks server-side
+rejection of send, withdrawal, close and gate-failure methods with those runes.
+The normal modes retain close/release replies; lost-reply modes discard both
+responses before the respective packaged algorithm receives them.
+
+The package recovers the preimage and releases the gate to CLN's on-chain
+machinery. It does not construct transactions or independently prove that a
+claim/sweep confirmed: those checks remain in the pinned node fixture. The
+recipient cooperation and controlled chain advancement are also fixture tasks.
+There is no live execution, unattended watcher or downtime guarantee here.
+
+Rebuild the test image and run all four cases on the packaging VM:
+
+```bash
+docker buildx build --builder startos-builder --load -t swap-controller:deadline-boundary . &&
+python3 scripts/test-funded-deadline.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind all
+```
+
+No StartOS version bump or installation is required. The installed monitor and
+its read-only credentials are unchanged.

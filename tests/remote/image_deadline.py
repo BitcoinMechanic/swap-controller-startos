@@ -1,7 +1,7 @@
-"""Funded bidirectional close over packaged HTTPS; claim verification stays in fixture.
+"""Funded packaged HTTPS deadline close and gate recovery; fixture verifies claims.
 
 The pinned setup/submission and settlement CLI are fixture infrastructure.
-Only deadline decisions/close/reconciliation execute in the isolated image.
+Deadline decisions, close and preimage/gate recovery run in the isolated image.
 """
 import json
 import os
@@ -24,9 +24,10 @@ import image_remote
 ROOT=Path('/exchange/control')
 
 
-def bridge(drop=False):
+def bridge(drop=False,recover=False):
     request=Path('/exchange/jobs')/(uuid.uuid4().hex+'.request')
-    save(request,dict(stage='drop-close-reply' if drop else 'step'));request.chmod(0o644)
+    stage=('drop-release-reply' if drop else 'recover') if recover else ('drop-close-reply' if drop else 'step')
+    save(request,dict(stage=stage));request.chmod(0o644)
     response=request.with_suffix('.response');end=time.monotonic()+100
     while not response.exists():
         if time.monotonic()>end:raise RuntimeError('deadline_container_timeout')
@@ -36,14 +37,15 @@ def bridge(drop=False):
     return None if drop else private_load(ROOT/'deadline-output.json')
 
 
-def scoped_connections(lab,incoming_node,outgoing_node,reverse=False):
+def scoped_connections(lab,incoming_node,outgoing_node,reverse=False,recovery=False):
     connections=[]
     incoming_network='xbt-regtest' if reverse else 'regtest'
     outgoing_network='regtest' if reverse else 'xbt-regtest'
     for node,network in ((incoming_node,incoming_network),(outgoing_node,outgoing_network)):
         methods=['getinfo','listpeerchannels','listsendpays']
         if node is incoming_node:
-            methods+=(['reverse-status'] if reverse else ['xbt-quote-status','xbt-spend-info'])+['close']
+            methods+=(['reverse-status'] if reverse else ['xbt-quote-status','xbt-spend-info'])
+            methods+=[('reverse-release' if reverse else 'xbt-release') if recovery else 'close']
         token=lab.rpc([*node['cli'],'-k'],'createrune',
                       'restrictions='+json.dumps([['method='+m for m in methods]]))
         config={k:v for k,v in lab.connections[node['data'].name].items() if k!='cli'}
@@ -51,7 +53,8 @@ def scoped_connections(lab,incoming_node,outgoing_node,reverse=False):
         remote=Remote(config)
         forbidden=['sendpay','pay','withdraw','createrune']
         if node is incoming_node:
-            forbidden+=['reverse-release','reverse-fail'] if reverse else ['xbt-release','xbt-fail']
+            forbidden+=([('reverse-fail' if reverse else 'xbt-fail'),'close'] if recovery else
+                         (['reverse-release','reverse-fail'] if reverse else ['xbt-release','xbt-fail']))
         else:forbidden+=['close']
         for method in forbidden:
             req=urllib.request.Request(config['url']+'/v1/'+method,data=b'{}',
@@ -144,15 +147,33 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
     close=private_load(ROOT/'fixture-close-reply.json');assert close['type']=='unilateral'
     def release():
         pending()
-        # Fixture-only settlement after the on-chain verifier confirms the
-        # original unresolved commitment. Packaged claims remain future work.
+        # Only recipient cooperation and independent on-chain verification stay
+        # in the fixture. The packaged resolver must obtain/release the secret.
+        save(ROOT/'claim-input.json',dict(spec=spec,
+            connections=scoped_connections(lab,incoming_node,outgoing_node,reverse,recovery=True)))
+        (ROOT/'deadline-input.json').unlink()  # Recovery containers receive no close rune.
+        assert bridge(recover=True)['phase']=='outgoing_pending'
+        assert not (ROOT/'deadline-job/claim-receipt.json').exists()
         assert rpc(receiver,'xbt-continue',payment_hash)['continued']==1
+        def outgoing_complete():
+            payments=lab.rpc([*outgoing_node['cli'],'-k'],'listsendpays','payment_hash='+payment_hash)['payments']
+            return len(payments)==1 and payments[0]['status']=='complete'
+        wait_until(outgoing_complete,outgoing_node['proc'])
+        bridge(drop,recover=True)
+        receipt=ROOT/'deadline-job/claim-receipt.json'
+        if drop:assert private_load(receipt)['stage']=='release_intent'
+        assert bridge(recover=True)['phase']=='gate_resolved'
+        terminal=receipt.read_bytes()
+        assert bridge(recover=True)['phase']=='gate_resolved' and receipt.read_bytes()==terminal
+        audit=[json.loads(line) for line in (ROOT/'claim-audit.jsonl').read_text().splitlines()]
+        releases=[row for row in audit if row['method'] in ('xbt-release','reverse-release')]
+        assert releases==[dict(network='xbt-regtest' if reverse else 'regtest',method='reverse-release' if reverse else 'xbt-release')]
+        assert not {row['method'] for row in audit}&{'sendpay','close','xbt-fail','reverse-fail','pay','withdraw'}
+        assert journal.read_bytes()==before
         completed=rpc(outgoing_node,'waitsendpay',payment_hash,10,attempt.get('partid',0),attempt['groupid'])
         assert completed['status']=='complete' and completed['id']==attempt['id']
-        if reverse:
-            assert rpc(incoming_node,'reverse-release',payment_hash,json.dumps(binding),completed['payment_preimage'])['released']==1
-        else:
-            assert rpc(incoming_node,'xbt-release',completed['payment_preimage'])['released']==1
+        print('PASS: packaged post-close recovery learned the original preimage and resolved the bound gate once; '+
+              ('discarded release reply reconciled' if drop else 'terminal recovery repeated safely'),flush=True)
         return completed['payment_preimage']
     claim=run_claim(incoming_chain,payer,incoming_node,funding,dict(bolt11=incoming_invoice,payment_hash=payment_hash),None,
                     incoming['expiry'],mine,rpc,confirmed,amount_sat=incoming_amount//1000,standalone=False,release=release,close=close)
@@ -170,6 +191,12 @@ def run_bound_deadline(lab,payer,incoming_node,outgoing_node,receiver,incoming_c
     assert json.loads(plugin.with_suffix('.quotes.json').read_text())[payment_hash]==expected
     assert not rpc(incoming_node,'xbt-held')['held'] and rpc(outgoing_chain,'getblockcount')==outgoing_height
     assert journal.read_bytes()==before
+    terminal=(ROOT/'deadline-job/claim-receipt.json').read_bytes()
+    assert bridge(recover=True)['phase']=='gate_resolved'
+    assert (ROOT/'deadline-job/claim-receipt.json').read_bytes()==terminal
+    releases=[json.loads(line) for line in (ROOT/'claim-audit.jsonl').read_text().splitlines()
+              if json.loads(line)['method'] in ('xbt-release','reverse-release')]
+    assert len(releases)==1
     print('PASS: fixture verified confirmed '+incoming_name+' HTLC-success and CSV sweep; original '+outgoing_name+' attempt settled off-chain; '+outgoing_name+' height stayed fixed',flush=True)
 
 
@@ -210,7 +237,7 @@ def main():
         if reverse:reverse_regtest.run(lab,recovery='gate-deadline')
         else:swap_regtest.run(lab,btc_deadline=True)
     finally:lab.close()
-    print('Funded packaged '+('XBT' if reverse else 'BTC')+' deadline OK ('+mode+'; fixture-assisted claim; regtest only)',flush=True)
+    print('Funded packaged '+('XBT' if reverse else 'BTC')+' deadline OK ('+mode+'; packaged gate recovery; fixture-verified claim; regtest only)',flush=True)
 
 
 if __name__=='__main__':main()
