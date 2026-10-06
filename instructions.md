@@ -791,3 +791,53 @@ reports `gate_active`, not a remote quote count (that RPC does not expose one).
 Verifying both profiles removes only the gate-verification blocker: live
 execution, execution credentials, amount/fee/expiry policy, cross-chain timing
 and any restored execution barrier remain separate outstanding requirements.
+
+## Proposed live pilot policy review (0.1.0:9)
+
+**Review Live Pilot Policy** in Readiness is a local, parameterless action. It
+makes no RPC calls, saves no approval and moves no funds. It works while unpaired
+and does not read credentials or remove the restore barrier. Readiness reports
+`proposal_available_not_enforced` for amount/expiry and timing policy; both
+policy blockers remain until a live executor enforces them.
+
+The numeric validator in `assets/live_policy.py` is a reusable pure function,
+not a live execution path. Its versioned digest commits to the complete proposal
+and source pin `81ba4099a63e5a0e83f55cead53c54f2a1b3c1fe`. Passing it only means the
+supplied numbers match; invoice signatures, authenticated identities, route
+structure, HTLC binding, spendable/receivable liquidity, reserves and current-fee
+trim checks still require separate validation. No existing RPC credential scope
+or regtest executor guard changes.
+
+| Limit | BTC to XBT | XBT to BTC |
+| --- | --- | --- |
+| Active gate profile | `live-pilot-v1` | `reverse-live-v1` |
+| BTC amount | Exactly 1,000 sats incoming | Exactly 1,500 sats paid out |
+| XBT amount | Exactly 2,000 sats paid out | 1–500,000 whole sats incoming |
+| Outgoing routing fee | Zero, one direct hop | At most 30 BTC sats, at most 8 hops; direct hop has zero routing fee |
+| Outgoing route delay | 40 XBT blocks | 40–576 BTC blocks; recipient final CLTV at most 144 |
+| Incoming remaining CLTV | 288–2,016 BTC blocks | BTC route delay + 150, up to 2,016 XBT blocks |
+| Proposed incoming invoice CLTV | 300 BTC blocks | BTC route delay + 174 XBT blocks |
+
+These amounts describe bounded pilot profiles, not a market exchange rate. The
+controller proposal tightens quote lifetime to at most 120 seconds and requires
+at least 60 seconds between quote expiry and recipient invoice expiry. Supplied
+observations must be at most 120 seconds old and not from the future. Integer
+fields reject booleans, strings, fractions and negative values; amounts use msat.
+
+Reverse timing follows pinned `reverse-timing-candidate-v2`: expected relative
+pace 1, six BTC submission blocks, 144 XBT recovery blocks and 24 XBT quote-drift
+blocks. Independent chains have no bounded relative progress, so these are risk
+budgets, not an atomicity guarantee. Absolute heights from different chains are
+never compared. Forward policy also requires the pinned BTC deadline protection
+at 72 remaining BTC blocks; this release neither installs a live deadline worker
+nor authorizes channel closes. Both profiles require 50,000 confirmed unreserved
+sats per coordinator and enforceable, untrimmed HTLCs before spending.
+
+Expired quotes or elapsed block deadlines never establish payment failure and
+never authorize refunding an unresolved incoming HTLC or resending an outgoing
+payment. Recovery must reconcile the original attempt. Live execution remains
+unsupported; viewing this proposal cannot remove any readiness blocker.
+
+Validation: `python3 tests/test_live_policy.py -v`, `npm run check`,
+`npm run build` and `node scripts/check-bundle.cjs`. No funded scenario is claimed
+for this policy-only addition.

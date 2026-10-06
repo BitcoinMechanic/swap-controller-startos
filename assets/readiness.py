@@ -14,8 +14,8 @@ def base(root):
         paired=False,connection_ready=False,restore_barrier=os.path.lexists(root/'execution'/'restored.json'),
         gate_activation='not_verified_with_read_only_credentials',
         execution_credentials='not_configured_by_this_release',
-        live_amount_fee_expiry_policy='not_supported_by_this_release',
-        cross_chain_timing_policy='not_supported_by_this_release',
+        live_amount_fee_expiry_policy='proposal_available_not_enforced',
+        cross_chain_timing_policy='proposal_available_not_enforced',
         live_executor='not_supported_by_this_release',nodes={},
         blockers=['live_execution_not_supported','gate_activation_not_verified','dedicated_execution_credentials_required',
                   'live_amount_fee_expiry_policy_required','live_cross_chain_timing_policy_required'])

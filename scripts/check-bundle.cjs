@@ -3,16 +3,16 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
-for (const name of ['recovery.py','recovery_inspection.py','recovery_workflow.py','recovery_actions.py','quote_workflow.py','quote_actions.py', 'reverse_quote_workflow.py','readiness.py','gate_observation.py']) {
+for (const name of ['recovery.py','recovery_inspection.py','recovery_workflow.py','recovery_actions.py','quote_workflow.py','quote_actions.py', 'reverse_quote_workflow.py','readiness.py','gate_observation.py','live_policy.py']) {
  assert.ok(fs.readFileSync('Dockerfile','utf8').includes('assets/'+name))
  assert.ok(fs.readFileSync('.dockerignore','utf8').includes('!assets/'+name))
 }
 const { manifest, actions } = require('../javascript/index.js')
 assert.equal(manifest.id, 'swap-controller')
-assert.equal(manifest.version, '0.1.0:8')
+assert.equal(manifest.version, '0.1.0:9')
 assert.deepEqual(Object.keys(manifest.images), ['controller'])
 assert.deepEqual(manifest.volumes, ['main'])
-assert.deepEqual(Object.keys(actions.actions), ['pair-nodes', 'connection-status', 'worker-status', 'recovery-status', 'confirm-recovery-revocation', 'recover-existing-swap', 'quote-status', 'review-swap-quote', 'prepare-swap-quote', 'approve-swap-quote', 'prepare-reverse-swap-quote', 'live-readiness', 'pair-btc-gate-observation', 'pair-xbt-gate-observation'])
+assert.deepEqual(Object.keys(actions.actions), ['pair-nodes', 'connection-status', 'worker-status', 'recovery-status', 'confirm-recovery-revocation', 'recover-existing-swap', 'quote-status', 'review-swap-quote', 'prepare-swap-quote', 'approve-swap-quote', 'prepare-reverse-swap-quote', 'live-readiness', 'pair-btc-gate-observation', 'pair-xbt-gate-observation', 'review-live-policy'])
 assert.equal(manifest.images.controller.source.dockerBuild.dockerfile, 'Dockerfile')
 const { Daemons } = require(path.join(path.dirname(require.resolve('@start9labs/start-sdk')), 'mainFn/Daemons.js'))
 function load(file, modules) {
@@ -23,6 +23,7 @@ async function run() {
  await require('./test-recovery-actions.cjs')()
  await require('./test-quote-actions.cjs')()
  await require('./test-readiness-action.cjs')()
+ await require('./test-live-policy-action.cjs')()
  await require('./test-gate-observation-action.cjs')()
  let reply={paired:false,ready:false}
  const sub={exec:async()=>({exitCode:0,stdout:JSON.stringify(reply)})}

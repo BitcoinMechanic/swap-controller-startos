@@ -10,7 +10,7 @@ RUN git init && git remote add origin https://github.com/BitcoinMechanic/lightni
 FROM python:3.13-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
-COPY assets/controller.py assets/read_only_rpc.py assets/readiness.py assets/gate_observation.py /app/
+COPY assets/controller.py assets/read_only_rpc.py assets/readiness.py assets/gate_observation.py assets/live_policy.py /app/
 COPY --from=source /src/tools/blake2b/ /opt/swap/
 COPY --from=source /src/LICENSE /opt/swap/LICENSE
 COPY assets/executor.py assets/execution_child.py assets/execution_rpc.py assets/lifecycle.py /app/

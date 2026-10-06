@@ -16,3 +16,4 @@
 !assets/reverse_quote_workflow.py
 !assets/readiness.py
 !assets/gate_observation.py
+!assets/live_policy.py
