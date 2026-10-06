@@ -146,6 +146,7 @@ def step(root, recover_only=False, flags=(), runner=child, now=None):
     require(len(flags) <= 1 and all(f in FLAGS for f in flags), 'invalid_fixture_flags')
     with lock(root):
         execution_allowed(root)
+        require(not os.path.lexists(root/'deadline.json'), 'post_close_supervisor_required')
         initial, state = records(root)
         direction = initial['direction']
         if state['phase'] != 'prepared':

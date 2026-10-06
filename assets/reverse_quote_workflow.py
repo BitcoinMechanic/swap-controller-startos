@@ -186,4 +186,5 @@ def advance(root,core=None,factory=ReverseRemote):
     initial,state=executor.records(root)
     if state['phase']=='prepared' and not (root/'launched.json').exists():
         executor.authorize(root,executor.digest(initial),data['terms']['expires_at'],confirmed=True)
-    return executor.step(root)
+    from regtest_supervisor import advance as supervise
+    return supervise(root)

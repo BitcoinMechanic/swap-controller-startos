@@ -1654,6 +1654,55 @@ This runs two funded scenarios, one per direction. It does not inject an
 interrupted failure checkpoint or discarded failure response. The separate
 settlement scenarios retain their existing interruption coverage. This patch is
 fixture-only; reuse the current controller image without a StartOS installation.
-Local harness tests pass; funded failure-during-downtime validation is pending.
+Local harness tests pass; both funded failure-during-downtime cases passed at 100a38f.
 The quote worker still has no integrated deadline watcher. Live execution remains
 disabled.
+
+
+## Opt-in regtest quote supervisor
+
+Explicitly enrolled disposable quote jobs now use one worker entry point for
+outcome selection. A pending original attempt runs the existing bounded deadline
+guard; a complete or definitively failed attempt uses the ordinary executor's
+independent outcome and gate checks. The guard rechecks pending status before
+closing, so a racing terminal outcome refuses the close and waits for a new
+cycle. Unknown, ambiguous, changed or stale observations never authorize action.
+
+Enrollment is a private fixture-provisioned `supervisor.json` after the original
+outgoing attempt exists. It contains an intent digest, exact deadline spec and
+separate restricted close/claim connections. The worker checks quote handoff,
+node identities, amounts and incoming binding, then durably fixes the enrollment
+digest. Normal unenrolled jobs retain their existing path. This is not automatic
+provisioning or protection from the instant of submission.
+
+Once `deadline.json` exists, every supervisor cycle uses post-close recovery.
+The ordinary executor refuses that job. Pending outcomes remain pending; a
+completed outgoing attempt can release the bound gate through the existing
+claim adapter. A failed outgoing attempt after close remains refused: this does
+not implement an on-chain timeout/refund proof. Restore and backup barriers are
+retained. The executor's original pending checkpoint is preserved after gate
+recovery, so it must not be interpreted as fully verified on-chain settlement.
+
+The funded quote fixture can enroll both directions and drive the same packaged
+worker through pending protection and post-close gate recovery:
+
+```sh
+docker buildx build --builder startos-builder --load \
+  -t swap-controller:deadline-boundary . &&
+python3 scripts/test-quote-flow.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind all --pending-during-downtime
+```
+
+The fixture verifies no close above the threshold, controller absence down to a
+27-block margin, one close, then original preimage recovery and one gate release
+after the commitment is on-chain. Repeated workers preserve close/claim records.
+It does not verify final on-chain balances or claim/sweep confirmation; those
+remain covered separately by the funded deadline harness.
+
+Add `--supervise` to the existing `--settle-during-downtime` or
+`--fail-during-downtime` commands to exercise terminal selection through this
+supervisor. Eleven local supervisor tests pass alongside the existing quote,
+executor, lifecycle and deadline tests. Funded supervisor validation is pending.
+Rebuild the disposable controller image; no StartOS installation is required.
+Live execution remains disabled.

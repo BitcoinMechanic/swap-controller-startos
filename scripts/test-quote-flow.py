@@ -14,7 +14,7 @@ import uuid
 
 spec=importlib.util.spec_from_file_location('separated',Path(__file__).with_name('test-separated-controller.py'))
 base=importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
-STAGES=('prepare','approve','status','review','worker','worker-interrupt-resolution')
+STAGES=('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-enroll')
 
 
 def command(repo,shared,image,network,name,stage):
@@ -32,7 +32,7 @@ def absent(name):
     return subprocess.CompletedProcess([],0,'{"controller_absent":true}','')
 
 
-def run(repo,results,prefix,backend,btc,controller,direction,downtime=False,interrupt=False,failure=False):
+def run(repo,results,prefix,backend,btc,controller,direction,downtime=False,interrupt=False,failure=False,supervise=False,pending=False):
     if failure and (not downtime or interrupt):raise ValueError("invalid_failure_downtime_mode")
     shared=results/'exchange';shared.mkdir()
     for folder in ('control','jobs'):(shared/folder).mkdir()
@@ -54,7 +54,9 @@ def run(repo,results,prefix,backend,btc,controller,direction,downtime=False,inte
         with log.open('w') as output,log.open() as reader:
             fixture=subprocess.Popen(['docker','exec','-e','COORDINATOR_IP='+address,'-e','QUOTE_SETTLED_DOWNTIME='+('1' if downtime else '0'),
                 '-e','QUOTE_INTERRUPT_RESOLUTION='+('1' if interrupt else '0'),
-                '-e','QUOTE_FAILED_DOWNTIME='+('1' if failure else '0'),node,
+                '-e','QUOTE_FAILED_DOWNTIME='+('1' if failure else '0'),
+                '-e','QUOTE_SUPERVISED='+('1' if supervise else '0'),
+                '-e','QUOTE_PENDING_DOWNTIME='+('1' if pending else '0'),node,
                 '/usr/bin/python3','/remote-tests/image_quote.py',direction],stdout=output,stderr=subprocess.STDOUT)
             end=time.monotonic()+1200
             while fixture.poll() is None:
@@ -94,13 +96,17 @@ def main():
     modes=p.add_mutually_exclusive_group()
     modes.add_argument('--settle-during-downtime',action='store_true')
     modes.add_argument('--fail-during-downtime',action='store_true')
-    args=p.parse_args();os.umask(0o077)
+    modes.add_argument('--pending-during-downtime',action='store_true')
+    p.add_argument('--supervise',action='store_true')
+    args=p.parse_args()
+    if args.supervise and not (args.settle_during_downtime or args.fail_during_downtime or args.pending_during_downtime):p.error('--supervise requires a downtime scenario')
+    os.umask(0o077)
     repo=Path(__file__).resolve().parents[1];backend=args.bitcoind.resolve()
     if not backend.is_file() or not os.access(backend,os.X_OK):p.error('executable regtest bitcoind required')
     if not (repo.parent/'btc-cln-startos/tests/image_pair.py').is_file():p.error('BTC packaging sibling required')
     btc,xbt,controller=[base.image_id(n) for n in (args.btc_image,args.xbt_image,args.controller_image)]
     # Run the policy tests against exactly the module pin baked into this image.
-    for test in ('test_live_policy.py','test_quote_workflow.py','test_quote_actions.py','test_reverse_quote_workflow.py','test_quote_policy.py','test_quote_downtime.py'):
+    for test in ('test_live_policy.py','test_quote_workflow.py','test_quote_actions.py','test_reverse_quote_workflow.py','test_quote_policy.py','test_quote_downtime.py','test_regtest_supervisor.py'):
         subprocess.run(['docker','run','--rm','--network','none','--read-only','--cap-drop=ALL',
         '--tmpfs','/tmp:rw,nosuid,nodev,size=16m','-e','PYTHONPATH=/app',
         *base.mount(repo/'tests','/quote-tests',True),'--entrypoint','python3',controller,
@@ -117,7 +123,8 @@ def main():
             for interrupt in ((False,True) if args.settle_during_downtime else (False,)):
                 work=results/(direction+('-interrupted-release' if interrupt else '-normal'));work.mkdir()
                 run(repo,work,prefix,backend,btc,controller,direction,
-                    args.settle_during_downtime or args.fail_during_downtime,interrupt,args.fail_during_downtime)
+                    args.settle_during_downtime or args.fail_during_downtime or args.pending_during_downtime,
+                    interrupt,args.fail_during_downtime,args.supervise or args.pending_during_downtime,args.pending_during_downtime)
 
 
 if __name__=='__main__':main()

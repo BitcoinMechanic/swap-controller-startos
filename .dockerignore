@@ -23,3 +23,5 @@
 !assets/deadline_boundary.py
 !assets/deadline_recovery.py
 !assets/claim_verification.py
+
+!assets/regtest_supervisor.py

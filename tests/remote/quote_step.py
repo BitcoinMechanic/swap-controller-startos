@@ -12,7 +12,21 @@ from partition_check import isolation
 def worker(manager,interrupt=False):
     import executor
     import lifecycle
-    if not interrupt:return lifecycle.tick(manager)
+    if not interrupt:
+        import regtest_supervisor as supervisor
+        from unittest.mock import patch
+        def audited(base):
+            class Audited(base):
+                def _request(self,method,params):
+                    result=super()._request(method,params)
+                    with (manager/'supervisor-audit.jsonl').open('a') as out:
+                        out.write(json.dumps(dict(network=self.network,method=method))+'\n')
+                        out.flush();os.fsync(out.fileno())
+                    return result
+            return Audited
+        with patch.object(supervisor.deadline,'DeadlineRemote',audited(supervisor.deadline.DeadlineRemote)), \
+             patch.object(supervisor.claim,'ClaimRemote',audited(supervisor.claim.ClaimRemote)):
+            return lifecycle.tick(manager)
     from unittest.mock import patch
     original=executor.step;exits=[]
     def interrupted(root,*args,**kwargs):
@@ -32,10 +46,23 @@ def main():
     isolation()
     stage=sys.argv[1]
     assert os.environ.get('BTC_XBT_DISPOSABLE_CONTAINER')=='1'
-    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution')
+    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-enroll')
     root=Path('/controller-state');manager=root/'execution'
-    if stage in ('worker','worker-interrupt-resolution'):
-        worker(manager,stage=='worker-interrupt-resolution')
+    if stage=='supervisor-enroll':
+        import executor
+        import regtest_supervisor
+        job=manager/'jobs/swap'
+        request=private_load(root/'quote-input.json')
+        initial,_=executor.records(job)
+        request['intent_digest']=executor.digest(initial)
+        regtest_supervisor.binding(job,request)
+        assert not (job/'supervisor.json').exists()
+        save(job/'supervisor.json',request)
+        mode='review';request=dict(job='swap')
+    elif stage in ('worker','worker-interrupt-resolution'):
+        result=worker(manager,stage=='worker-interrupt-resolution')
+        if isinstance(result,dict) and isinstance(result.get('swap'),dict):
+            save(root/'supervisor-output.json',result['swap'])
         mode='review';request=dict(job='swap')
     elif stage=='prepare':
         # Test-only provisioning. The StartOS action itself cannot supply or

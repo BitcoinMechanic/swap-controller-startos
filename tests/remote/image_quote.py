@@ -24,7 +24,7 @@ image_remote.restrictions=quote_restrictions
 
 
 def bridge(stage,request=None):
-    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','assert-controller-absent')
+    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-enroll','assert-controller-absent')
     root=Path('/exchange/control')
     if request is not None:save(root/'quote-input.json',request)
     mailbox=Path('/exchange/jobs')/(uuid.uuid4().hex+'.request')
@@ -54,6 +54,9 @@ def run(lab,reverse=False):
     interrupt=os.environ.get('QUOTE_INTERRUPT_RESOLUTION')=='1'
     failure=os.environ.get('QUOTE_FAILED_DOWNTIME')=='1'
     assert not failure or (downtime and not interrupt)
+    supervised=os.environ.get('QUOTE_SUPERVISED')=='1'
+    pending=os.environ.get('QUOTE_PENDING_DOWNTIME')=='1'
+    assert not pending or (supervised and downtime and not failure and not interrupt)
     assert not interrupt or downtime
     btc=lab.node('knots-btc',False);xbt=lab.node('knots-xbt',True)
     plugin=lab.root/('reverse_gate.py' if reverse else 'quote_plugin.py')
@@ -144,6 +147,17 @@ def run(lab,reverse=False):
         assert len(htlcs)==1;bound=htlcs[0]
         control=Path('/exchange/control');manager=control/'execution';job=manager/'jobs/swap'
         assert 'preimage' not in private_load(job/'state.json')
+        if supervised:
+            from image_deadline import scoped_connections
+            spec=dict(direction='reverse' if reverse else 'forward',node_ids=dict(btc=op_btc['id'],xbt=op_xbt['id']),
+                channel=pin,htlc_id=bound['id'],payment_hash=payment_hash,expiry=bound['expiry'],
+                incoming_amount_msat=price,outgoing_amount_msat=original['amount_sent_msat'],
+                groupid=original['groupid'],partid=original.get('partid',0))
+            bridge('supervisor-enroll',dict(spec=spec,
+                deadline_connections=scoped_connections(lab,incoming,outgoing,reverse),
+                claim_connections=scoped_connections(lab,incoming,outgoing,reverse,recovery=True)))
+            bridge('worker')
+            assert not private_load(control/'supervisor-output.json')['close_intent_recorded']
         bridge('assert-controller-absent')
         saved={p:p.read_bytes() for p in control.rglob('*') if p.is_file()}
         quote_before=plugin.with_suffix('.quotes.json').read_bytes()
@@ -154,7 +168,45 @@ def run(lab,reverse=False):
         mine(incoming_chain,(payer,incoming),count)
         assert bound['expiry']-rpc(incoming_chain,'getblockcount')==27
         assert channel(incoming)['state']=='CHANNELD_NORMAL'
-        assert rpc(receiver,'xbt-fail' if failure else 'xbt-continue',payment_hash)['failed' if failure else 'continued']==1
+        if pending:
+            assert saved=={p:p.read_bytes() for p in control.rglob('*') if p.is_file()}
+            assert plugin.with_suffix('.quotes.json').read_bytes()==quote_before and held()
+            bridge('assert-controller-absent')
+            assert attempts()[0]['status']=='pending'
+            bridge('worker')
+            decision=private_load(control/'supervisor-output.json')
+            assert decision['close_intent_recorded'] and decision['close_reply_recorded']
+            close_record=(job/'deadline.json').read_bytes()
+            # A fresh cycle must remain on the post-close branch, even while
+            # the outgoing payment is still pending.
+            bridge('worker')
+            assert private_load(control/'supervisor-output.json')['phase']=='outgoing_pending'
+            assert (job/'deadline.json').read_bytes()==close_record
+            wait_until(lambda:bool(rpc(incoming_chain,'getrawmempool')),incoming['proc'])
+            mine(incoming_chain,(payer,incoming),1)
+            wait_until(lambda:channel(incoming)['state']=='ONCHAIN',incoming['proc'])
+            assert rpc(receiver,'xbt-continue',payment_hash)['continued']==1
+            wait_until(lambda:attempts()[0]['status']=='complete',outgoing['proc'])
+            bridge('worker')
+            assert private_load(control/'supervisor-output.json')['phase']=='gate_resolved'
+            assert rpc(incoming,status_method,payment_hash)['phase']=='resolved'
+            receipt=(job/'claim-receipt.json').read_bytes()
+            bridge('worker')
+            assert private_load(control/'supervisor-output.json')['phase']=='gate_resolved'
+            assert (job/'claim-receipt.json').read_bytes()==receipt
+            assert (job/'deadline.json').read_bytes()==close_record and len(attempts())==1
+            assert rpc(outgoing_chain,'getblockcount')==outgoing_height
+            audit=[json.loads(line) for line in (manager/'supervisor-audit.jsonl').read_text().splitlines()]
+            assert sum(r['method']=='close' for r in audit)==1
+            assert sum(r['method']==('reverse-release' if reverse else 'xbt-release') for r in audit)==1
+            assert not {r['method'] for r in audit}&{'sendpay','xbt-fail','reverse-fail'}
+            execution_audit=[json.loads(line) for line in (job/'remote-audit.jsonl').read_text().splitlines()]
+            assert sum(r['method']=='sendpay' for r in execution_audit)==1
+            assert not {r['method'] for r in execution_audit}&{'close','xbt-release','reverse-release','xbt-fail','reverse-fail'}
+            print('PASS: same packaged worker chose pending close, then post-close preimage recovery; repeated recovery retained close and claim records',flush=True)
+            print('PASS: gate resolved; on-chain claim and final balances are not asserted by this supervisor scenario',flush=True)
+            return
+        assert rpc(receiver,'xbt-fail'  if failure else 'xbt-continue',payment_hash)['failed' if failure else 'continued']==1
         wait_until(lambda:len(attempts())==1 and attempts()[0]['status']==('failed' if failure else 'complete'),outgoing['proc'])
         complete=attempts()[0]
         check_outcome(original,complete,failure)
@@ -228,7 +280,7 @@ def main():
     assert direction in ('forward','reverse')
     try:run(lab,direction=='reverse')
     finally:lab.close()
-    print('Packaged StartOS '+direction+' quote -> approval -> invoice -> worker settlement OK ('+('failed during downtime; ' if os.environ.get('QUOTE_FAILED_DOWNTIME')=='1' else 'settled during downtime; ' if os.environ.get('QUOTE_SETTLED_DOWNTIME')=='1' else '')+'isolated HTTPS; regtest only)',flush=True)
+    print('Packaged StartOS '+direction+' quote worker OK ('+('supervised pending deadline; ' if os.environ.get('QUOTE_PENDING_DOWNTIME')=='1' else 'failed during downtime; ' if os.environ.get('QUOTE_FAILED_DOWNTIME')=='1' else 'settled during downtime; ' if os.environ.get('QUOTE_SETTLED_DOWNTIME')=='1' else '')+'isolated HTTPS; regtest only)',flush=True)
 
 
 if __name__=='__main__':main()
