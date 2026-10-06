@@ -1027,3 +1027,54 @@ docker run --rm --network none --entrypoint python3 \
 
 This test mounts only read-only test source, creates disposable local journals,
 and does not contact nodes, close real channels or alter installed services.
+
+
+## Funded packaged BTC deadline fixture
+
+`test-funded-deadline.py` exercises the packaged deadline adapter against funded
+BTC/XBT regtest channels over verified HTTPS. It runs two independent disposable
+fixtures: a normal close response and process exit after the server has closed
+the channel but before the adapter receives its response. Fresh controller
+containers reconcile the saved intent without another close request.
+
+The forward fixture keeps the original XBT attempt pending and holds XBT height
+fixed while BTC advances. At 31 remaining BTC blocks the channel stays open; at
+30 blocks the packaged guard closes the exact pinned BTC channel. The private
+journal must retain the original channel funding, HTLC and outgoing attempt.
+The fixture then confirms the unresolved commitment, lets the XBT recipient
+settle, releases the BTC hook with the learned preimage, and checks the confirmed
+HTLC-success witness, payer settlement and CSV sweep to the operator wallet.
+
+This tests packaged deadline decisions and close RPCs. Funding, submission,
+recipient cooperation, gate release and claim/sweep verification are performed
+by the node fixture using local RPC. They are not packaged recovery operations.
+The lost-response fixture stores the response separately for its on-chain
+verifier; the adapter only sees its original intent and fresh node state.
+No claim of protection during controller downtime or an independent chain stall
+is made. Reverse funded deadlines and packaged claim recovery remain pending.
+
+The controller container gets only its disposable state and read-only test
+helpers, with no CLN binaries, node volumes, RPC sockets or Docker socket.
+Its dedicated runes allow deadline observations and, on BTC, the close method;
+exact channel targeting is enforced by the adapter rather than a rune parameter
+restriction. The fixture checks server-side rejection of payment, withdrawal,
+credential creation and BTC gate resolution with these runes. Broad fixture
+credentials are removed from the controller volume before it runs.
+
+CLN omits `partid` for part zero. The adapter now accepts only that documented
+missing-field representation as zero; all other attempt fields stay required,
+and explicit malformed or mismatched part IDs remain rejected.
+
+On the packaging VM, after applying this patch:
+
+```bash
+docker buildx build --builder startos-builder --load -t swap-controller:deadline-boundary . &&
+python3 scripts/test-funded-deadline.py \
+  btc-cln:swap-preparation xbt-cln:recovery-test \
+  swap-controller:deadline-boundary ../bitcoind
+```
+
+The launcher checks the packaged adapter first, then runs both funded scenarios.
+An optional final `normal` or `lost-reply` selects one fixture for troubleshooting.
+Logs and private fixture evidence remain under the printed disposable directory.
+No StartOS version bump or installation is needed; live execution remains disabled.

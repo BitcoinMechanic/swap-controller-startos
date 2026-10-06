@@ -53,6 +53,26 @@ class DeadlineTests(unittest.TestCase):
                 owner.assertIn(incoming+'_close_intent',record['state'])
         self.clients={role:Fake(role) for role in ('btc','xbt')}
     def step(self,**kwargs):return d.step(self.root,self.spec,self.clients,modules=MODULES,**kwargs)
+    def test_cln_omitted_zero_part_and_wrong_attempt(self):
+        self.fixture();original=self.clients['xbt'].call
+        def omitted(method,*args):
+            result=original(method,*args)
+            if method=='listsendpays':result['payments'][0].pop('partid')
+            return result
+        self.clients['xbt'].call=omitted
+        self.assertFalse(self.step()['close_intent_recorded'])
+        self.spec['partid']=1
+        with self.assertRaises(Exception):self.step()
+        self.spec['partid']=0
+        for invalid in (False,None,'0',1):
+            def malformed(method,*args):
+                result=original(method,*args)
+                if method=='listsendpays':result['payments'][0]['partid']=invalid
+                return result
+            self.clients['xbt'].call=malformed
+            with self.assertRaises(Exception):self.step()
+        self.assertEqual(self.close_count,0)
+
     def test_both_guards_threshold_and_original_only(self):
         for reverse in (False,True):
             with self.subTest(reverse=reverse):

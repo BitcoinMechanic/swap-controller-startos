@@ -102,7 +102,11 @@ def step(root, spec, clients, *, modules=Path('/opt/swap'), clock=time.monotonic
         payments=clients[outgoing].call('listsendpays',spec['payment_hash']).get('payments')
         expected=dict(payment_hash=spec['payment_hash'],groupid=spec['groupid'],partid=spec['partid'],
                       amount_sent_msat=spec['outgoing_amount_msat'],status='pending')
-        require(type(payments) is list and len(payments)==1 and all(payments[0].get(k)==v and type(payments[0].get(k)) is type(v) for k,v in expected.items()),'original_outgoing_attempt_not_pending')
+        require(type(payments) is list and len(payments)==1 and type(payments[0]) is dict,'original_outgoing_attempt_not_pending')
+        # CLN omits partid for the non-MPP part zero. No other missing field
+        # receives a default, and explicit bool/string/null values still fail.
+        payment=dict(payments[0]);payment.setdefault('partid',0)
+        require(all(payment.get(k)==v and type(payment.get(k)) is type(v) for k,v in expected.items()),'original_outgoing_attempt_not_pending')
 
         def persist(_path,value):
             require({k:v for k,v in value.items() if k not in mutable}==base,'deadline_state_changed')
