@@ -27,3 +27,6 @@
 !assets/regtest_supervisor.py
 
 !assets/protection_credentials.py
+
+!assets/pilot_contract.py
+!assets/forward_pilot.py

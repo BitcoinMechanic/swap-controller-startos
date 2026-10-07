@@ -18,3 +18,6 @@ COPY assets/recovery.py assets/recovery_inspection.py assets/recovery_workflow.p
 COPY assets/quote_workflow.py assets/quote_actions.py assets/reverse_quote_workflow.py /app/
 RUN python3 -m py_compile /app/controller.py /app/read_only_rpc.py /app/recovery.py /app/recovery_inspection.py
 CMD ["python3", "/app/controller.py", "/data", "run"]
+
+COPY assets/pilot_contract.py assets/forward_pilot.py /app/
+RUN python3 -m py_compile /app/pilot_contract.py /app/forward_pilot.py

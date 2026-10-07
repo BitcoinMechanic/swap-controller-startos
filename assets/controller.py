@@ -105,8 +105,16 @@ def load_config(root):
 def pair(root,nodes,confirmed=False,replace=False,factory=Client):
     require(confirmed is True,'confirmation_required')
     nodes=validate(nodes)
-    with locked(root):
+    with locked(root), contextlib.ExitStack() as stack:
+        if os.path.lexists(root/'execution'/'forward-pilot'):
+            import lifecycle
+            stack.enter_context(lifecycle.locked(root/'execution'))
         old=load_config(root)
+        pilot=root/'execution'/'forward-pilot'/'record.json'
+        if os.path.lexists(pilot):
+            current=private_load(pilot)
+            require(current.get('phase') in ('review','settled','failed') or (old is not None and old['nodes']==nodes),
+                    'active_pilot_pairing_change_refused')
         require(old is None or old['nodes']==nodes or replace is True,'replacement_confirmation_required')
         reports=probe(nodes,factory)
         require(paired_report(reports),'pair_verification_failed')

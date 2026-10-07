@@ -27,10 +27,12 @@ export const main = sdk.setupMain(async ({ effects }) => {
       try {
         const status = JSON.parse(String(res.stdout))
         if (!status.worker_fresh) return { result: 'loading', message: 'Waiting for worker heartbeat.' }
+        if (status.forward_pilot?.phase === 'attention' || status.forward_pilot?.needs_attention) return { result: 'failure', message: 'Forward pilot needs inspection. Preserve its records.' }
+        if (status.live_payment_enabled) return { result: 'success', message: 'Approved forward pilot worker active. Inspect Forward Pilot Status for its outcome.' }
         if (status.restored_block) return { result: 'success', message: 'Execution blocked after restore. Read-only monitoring remains available.' }
         if (status.backup_paused) return { result: 'loading', message: 'Execution paused for backup; inspect Worker Status if this persists.' }
         if (status.jobs.some((j: any) => j.outcome === 'unreadable' || j.outcome === 'launch_uncertain')) return { result: 'failure', message: 'Execution record needs inspection. See Worker Status.' }
-        return { result: 'success', message: 'Worker running. Live execution disabled.' }
+        return { result: 'success', message: 'Worker running. Live execution requires explicit Forward Pilot approval.' }
       } catch { return { result: 'failure', message: 'Invalid worker status.' } }
     } },
   })

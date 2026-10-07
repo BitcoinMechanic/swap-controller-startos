@@ -1,3 +1,4 @@
+import { prepareForwardPilot, approveForwardPilot, forwardPilotStatus } from './forwardPilot'
 import { inspectForward, inspectReverse } from './preflight'
 import { livePolicy } from './livePolicy'
 import { pairXbtGate } from './xbtGateObservation'
@@ -33,7 +34,7 @@ const pair = sdk.Action.withInput('pair-nodes', meta('Pair Coordinator Nodes'), 
 }))
 const status = sdk.Action.withInput('connection-status', meta('Connection Status'), sdk.InputSpec.of({}), async () => {}, async ({ effects }) => invoke(effects, 'status'))
 const workerStatus = sdk.Action.withInput('worker-status', async () => ({
-  name: 'Worker Status', description: 'Inspect execution lifecycle and filtered per-swap status. Live execution remains disabled.',
+  name: 'Worker Status', description: 'Inspect execution lifecycle and filtered per-swap status. The forward pilot has separate explicit approval and credentials.',
   warning: null, allowedStatuses: 'only-running' as const, group: 'Execution', visibility: 'enabled' as const,
 }), sdk.InputSpec.of({}), async () => {}, async ({ effects }) =>
   sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'worker-status', async sub => {
@@ -41,8 +42,8 @@ const workerStatus = sdk.Action.withInput('worker-status', async () => ({
     if (res.exitCode !== 0) throw new Error('Worker status unavailable; private details withheld.')
     let report: any
     try { report = JSON.parse(String(res.stdout)) } catch { throw new Error('Worker status unavailable.') }
-    return { version: '1' as const, title: 'Execution Worker', message: 'Live payments are disabled. Restored execution records cannot run automatically.',
+    return { version: '1' as const, title: 'Execution Worker', message: 'Inspect Forward Pilot Status for the separately approved pilot. Restored execution records cannot run automatically.',
       result: { type: 'group' as const, value: Object.entries(report).map(([name, value]) => ({ name, description: null,
         type: 'single' as const, value: typeof value === 'object' ? JSON.stringify(value) : String(value), masked: false, copyable: false, qr: false })) } }
   }))
-export const actions = sdk.Actions.of().addAction(pair).addAction(status).addAction(workerStatus).addAction(recoveryStatus).addAction(confirmRecovery).addAction(recoverOnce).addAction(quoteStatus).addAction(reviewQuote).addAction(prepareQuote).addAction(approveQuote).addAction(prepareReverseQuote).addAction(liveReadiness).addAction(pairBtcGate).addAction(pairXbtGate).addAction(livePolicy).addAction(inspectForward).addAction(inspectReverse)
+export const actions = sdk.Actions.of().addAction(pair).addAction(status).addAction(workerStatus).addAction(recoveryStatus).addAction(confirmRecovery).addAction(recoverOnce).addAction(quoteStatus).addAction(reviewQuote).addAction(prepareQuote).addAction(approveQuote).addAction(prepareReverseQuote).addAction(liveReadiness).addAction(pairBtcGate).addAction(pairXbtGate).addAction(livePolicy).addAction(inspectForward).addAction(inspectReverse).addAction(prepareForwardPilot).addAction(approveForwardPilot).addAction(forwardPilotStatus)

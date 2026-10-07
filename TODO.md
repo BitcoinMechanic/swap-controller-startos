@@ -1,3 +1,14 @@
+# Integrated forward pilot candidate
+
+- [x] Implement one explicit fixed-price forward contract, node-side restricted authority and persistent worker.
+- [x] Pass local Python, action, TypeScript and bundle checks.
+- [ ] Run the four new funded candidate scenarios on the packaging VM.
+- [ ] Build/install BTC 26.6.8:11, XBT 0.1.0:17 and controller 0.1.0:12 after funded validation.
+- [ ] Review and explicitly approve one live 1,000 BTC sat → 2,000 XBT sat pilot; verify its actual outcome.
+
+The evidence below describes earlier releases and regtest checkpoints. It does
+not establish that this new candidate's funded matrix or a live swap has passed.
+
 # Release validation remaining
 
 - [x] Build the x86_64 s9pk on the packaging VM.

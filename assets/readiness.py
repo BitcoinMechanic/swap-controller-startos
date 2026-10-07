@@ -13,11 +13,11 @@ def base(root):
     result=dict(read_only=True,live_payment_enabled=False,live_ready=False,
         paired=False,connection_ready=False,restore_barrier=os.path.lexists(root/'execution'/'restored.json'),
         gate_activation='not_verified_with_read_only_credentials',
-        execution_credentials='not_configured_by_this_release',
+        execution_credentials='separate_forward_pilot_authority_required',
         live_amount_fee_expiry_policy='proposal_available_not_enforced',
         cross_chain_timing_policy='proposal_available_not_enforced',
-        live_executor='not_supported_by_this_release',nodes={},
-        blockers=['live_execution_not_supported','gate_activation_not_verified','dedicated_execution_credentials_required',
+        live_executor='separate_explicit_forward_pilot_actions',nodes={},
+        blockers=['general_live_execution_not_supported','gate_activation_not_verified','dedicated_execution_credentials_required',
                   'live_amount_fee_expiry_policy_required','live_cross_chain_timing_policy_required'])
     if result['restore_barrier']:result['blockers'].append('restored_execution_remains_blocked')
     return result

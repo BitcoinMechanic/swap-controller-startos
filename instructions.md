@@ -1661,3 +1661,71 @@ Rebuild btc-cln:swap-preparation in the BTC packaging repository and
 swap-controller:deadline-boundary in this repository. Then run the supervised
 pending quote flow in both directions, followed by the funded deadline harness
 for normal and lost-reply cases in both directions. No StartOS update is needed.
+
+## Explicit single forward pilot (0.1.0:12 candidate)
+
+The new **Forward Pilot** actions implement one separately authorized direct
+swap: **1,000 BTC sats → 2,000 XBT sats**. This is a fixed operator-approved price,
+not a market quote. The existing regtest actions and generic read-only readiness
+report remain separate. Installing the package does not start a swap.
+
+Use BTC Swap Preparation 26.6.8:11 and XBT Core Lightning 0.1.0:17 with this
+controller. Both nodes must be paired over verified HTTPS. BTC's existing
+`live-pilot-v1` gate must be active and unused. Each coordinator needs at least
+50,000 sats of confirmed, unreserved wallet funds for on-chain protection. The
+selected channels must be connected, normal, free of other HTLCs, and have
+sufficient directional liquidity. The current fee/dust check can refuse a
+1,000-sat incoming HTLC; never lower that check to force admission.
+
+1. Create a fresh 2,000-sat XBT invoice on the customer directly connected to the
+   XBT coordinator, with at least 33 minutes remaining.
+2. Run **Prepare Forward Pilot** with that invoice, the LND → BTC and XBT →
+   customer short channel IDs, and the two inspection credentials. Review the
+   returned contract, including both node IDs and funding/channel pins. This
+   action has no spending authority and publishes no BTC invoice.
+3. Run **Authorize BTC Forward Pilot** and **Authorize XBT Forward Pilot** on
+   their respective node packages, pasting the same contract and explicitly
+   confirming it. Copy each returned restricted credential and compare its
+   pilot ID with the reviewed ID.
+4. Within the 30-minute admission window, run **Approve Forward Pilot and
+   Publish BTC Invoice** with that pilot ID, both execution credentials and
+   explicit confirmation. Approval requires a fresh persistent-worker heartbeat.
+5. Pay the returned **1,000-sat BTC invoice from LND** promptly. Its quote window
+   is 120 seconds. Do not pay an expired invoice or recreate a payment after an
+   uncertain result. Inspect **Forward Pilot Status** while the worker proceeds.
+
+The worker waits for the exact committed incoming BTC HTLC before submitting
+one 2,000-sat outgoing attempt (group 1, part 0) on the pinned direct XBT channel.
+Incoming admission requires 288–2016 BTC blocks; the published invoice requests
+300. The outgoing route uses 40 XBT blocks. If the outgoing attempt remains
+pending at 72 incoming BTC blocks, protection requests one exact-channel force
+close. These are independent chains: block counts do not guarantee relative
+wall-clock progress or safety under arbitrary stalls/reorganizations.
+
+A completed original outgoing attempt supplies the hash-verified preimage for
+the bound BTC release. Definitive failure before a close fails the held incoming
+gate. Persistent node/controller intents precede mutations. Lost replies are
+reconciled; missing or contradictory evidence raises attention without repeating
+send, close or release. This may require manual investigation. There is one
+pilot slot, not a reusable swap exchange or an automatic retry facility.
+
+`settled` means the original outgoing attempt completed, the incoming gate was
+resolved, and both channel HTLC sets cleared. `failed` means the original
+outgoing attempt failed and the incoming gate failed without a requested close.
+`onchain_recovery` means the bound gate was released after closing; it explicitly
+does **not** certify a confirmed claim or mature wallet sweep. CLN performs
+on-chain recovery. The funded fixture separately checks those transactions.
+
+Active execution blocks backup and replacement pairing. Execution credentials
+are excluded from backups. Controller restore changes a pilot authority epoch;
+old records cannot resume. The old generic `restored.json` guard is retained.
+A fresh pilot after a previous read-only controller restore requires a new
+pairing, new contract nonce, unused node-side authority slots, an unused BTC
+gate and fresh explicit approval. Coordinator restore barriers still refuse
+authorization. Never delete journals or restore markers to make a swap proceed.
+
+Candidate validation: Python tests, TypeScript builds, and action/bundle checks
+have passed locally. The new funded matrix (normal, lost replies, failure,
+pending close through claim/CSV sweep) must still run on the packaging VM.
+It uses disposable regtest nodes and fixture-only network labels, never live
+credentials. No live payment has been initiated by preparing this release.

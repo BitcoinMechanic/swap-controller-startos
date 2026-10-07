@@ -50,6 +50,12 @@ def inventory(root):
                      'prepared' if phase=='prepared' else 'pending_recovery')
             reports.append(dict(job=job.name, direction=intent['direction'], phase=phase, outcome=outcome))
         except Exception: reports.append(dict(job=job.name, outcome='unreadable'))
+    pilot=root/'forward-pilot'/'record.json'
+    if pilot.exists():
+        try:
+            phase=private_load(pilot)['phase']
+            reports.append(dict(job='forward-pilot',phase=phase,outcome='terminal' if phase in ('settled','failed') else 'pending_recovery'))
+        except Exception:reports.append(dict(job='forward-pilot',outcome='unreadable'))
     return reports
 
 
@@ -81,6 +87,13 @@ def snapshot(root, now=None):
             result['worker_fresh']=0<=now-heartbeat['checked_at']<=30
             result['worker_mode']=heartbeat['mode'] if heartbeat['mode'] in ('disabled','regtest','restored','backup_paused') else 'unknown'
         except Exception: result['worker_mode']='waiting'
+        try:
+            from forward_pilot import status as pilot_status
+            pilot=pilot_status(root.parent)
+            result['forward_pilot']={k:v for k,v in pilot.items() if k not in ('invoice','pilot_id')}
+            result['live_payment_enabled']=pilot.get('phase') not in ('not_prepared','review','settled','failed') and not pilot.get('restore_blocked',False)
+            result['regtest_only']=not result['live_payment_enabled']
+        except Exception:result['forward_pilot']={'phase':'attention'}
         return result
 
 
@@ -104,6 +117,14 @@ def tick(root):
         except Exception:
             outcomes[job.name]=None
             print('{"event":"worker_job_needs_attention","details":"withheld"}', flush=True)
+    if mode in ('disabled','restored') and (root/'forward-pilot').exists():
+        try:
+            from forward_pilot import tick as pilot_tick
+            outcomes['forward-pilot']=pilot_tick(root.parent)
+            save(root/'forward-pilot-status.json',dict(needs_attention=False,checked_at=int(time.time())))
+        except Exception:
+            save(root/'forward-pilot-status.json',dict(needs_attention=True,checked_at=int(time.time())))
+            print('{"event":"forward_pilot_needs_attention","details":"withheld"}',flush=True)
     with locked(root):
         save(root/'heartbeat.json', dict(checked_at=int(time.time()), mode=mode))
     return outcomes
@@ -129,6 +150,8 @@ def restored(root):
         # Commit barrier first. Never remove it automatically or clear it when
         # pairing read-only credentials. Also covers backups predating workers.
         save(root/'restored.json', dict(blocked=True))
+        import secrets
+        save(root/'forward-pilot-restore-epoch.json',dict(epoch=secrets.token_hex(32)))
         # The restored snapshot's pause belongs to the old backup operation.
         # Commit the independent restore barrier before removing that marker.
         (root/'backup-paused.json').unlink(missing_ok=True)

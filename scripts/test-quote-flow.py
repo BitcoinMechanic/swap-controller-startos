@@ -32,7 +32,7 @@ def absent(name):
     return subprocess.CompletedProcess([],0,'{"controller_absent":true}','')
 
 
-def run(repo,results,prefix,backend,btc,controller,direction,downtime=False,interrupt=False,failure=False,supervise=False,pending=False):
+def run(repo,results,prefix,backend,btc,controller,direction,downtime=False,interrupt=False,failure=False,supervise=False,pending=False,pilot=False):
     if failure and (not downtime or interrupt):raise ValueError("invalid_failure_downtime_mode")
     shared=results/'exchange';shared.mkdir()
     for folder in ('control','jobs'):(shared/folder).mkdir()
@@ -57,7 +57,7 @@ def run(repo,results,prefix,backend,btc,controller,direction,downtime=False,inte
                 '-e','QUOTE_FAILED_DOWNTIME='+('1' if failure else '0'),
                 '-e','QUOTE_SUPERVISED='+('1' if supervise else '0'),
                 '-e','QUOTE_PENDING_DOWNTIME='+('1' if pending else '0'),node,
-                '/usr/bin/python3','/remote-tests/image_quote.py',direction],stdout=output,stderr=subprocess.STDOUT)
+                '/usr/bin/python3','/remote-tests/'+('image_pilot.py' if pilot else 'image_quote.py'),direction],stdout=output,stderr=subprocess.STDOUT)
             end=time.monotonic()+1200
             while fixture.poll() is None:
                 sys.stdout.write(reader.read());sys.stdout.flush()

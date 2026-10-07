@@ -42,7 +42,7 @@ class XbtObservationTests(unittest.TestCase):
         self.assertEqual((self.root/'xbt-gate-observation.json').stat().st_mode&0o777,0o600)
         result=self.inspect();self.assertEqual(result['gate_activation'],'both_profiles_verified')
         self.assertFalse(result['live_ready']);self.assertFalse(result['live_payment_enabled'])
-        for blocker in ('live_execution_not_supported','dedicated_execution_credentials_required','live_amount_fee_expiry_policy_required','live_cross_chain_timing_policy_required'):
+        for blocker in ('general_live_execution_not_supported','dedicated_execution_credentials_required','live_amount_fee_expiry_policy_required','live_cross_chain_timing_policy_required'):
             self.assertIn(blocker,result['blockers'])
         self.assertFalse(any('gate_activation' in b for b in result['blockers']))
         self.assertNotIn('registered_quotes',result['xbt_gate'])
