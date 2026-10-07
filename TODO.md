@@ -84,3 +84,13 @@ registered through a dormant lifecycle daemon; there is no live execution or quo
 
 - [x] Validate server-side exact-channel close and reverse payment-hash restrictions through both funded supervised claim/sweep flows (94797d1).
 - [ ] Validate the packaged hash-bound forward release interface with supervised claims and lost-release-reply recovery before any live credential work.
+
+
+## Swap UX
+
+- [x] Add saved read-only inspection credentials and recipient-bound channel discovery.
+- [x] Preserve completed pilot records and present readable status stages.
+- [ ] Replace single-pilot slots with durable per-swap records and bounded reusable node authorization.
+- [ ] Consolidate authorization and approval into a repeatable invoice-and-confirm flow.
+
+- Repeat UX candidate: saved bounded grants, invoice-only preparation, exact confirmation and retained history implemented; validate packaged funded repeat scenarios before installation.

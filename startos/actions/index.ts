@@ -1,3 +1,5 @@
+import { pairSwapGrants, newForwardSwap, confirmForwardSwap, repeatSwapStatus, cancelSwapDraft } from './repeatSwaps'
+import { saveSwapInspection, findSwapChannels, prepareSwap } from './swapSetup'
 import { prepareForwardPilot, approveForwardPilot, forwardPilotStatus } from './forwardPilot'
 import { inspectForward, inspectReverse } from './preflight'
 import { livePolicy } from './livePolicy'
@@ -46,4 +48,4 @@ const workerStatus = sdk.Action.withInput('worker-status', async () => ({
       result: { type: 'group' as const, value: Object.entries(report).map(([name, value]) => ({ name, description: null,
         type: 'single' as const, value: typeof value === 'object' ? JSON.stringify(value) : String(value), masked: false, copyable: false, qr: false })) } }
   }))
-export const actions = sdk.Actions.of().addAction(pair).addAction(status).addAction(workerStatus).addAction(recoveryStatus).addAction(confirmRecovery).addAction(recoverOnce).addAction(quoteStatus).addAction(reviewQuote).addAction(prepareQuote).addAction(approveQuote).addAction(prepareReverseQuote).addAction(liveReadiness).addAction(pairBtcGate).addAction(pairXbtGate).addAction(livePolicy).addAction(inspectForward).addAction(inspectReverse).addAction(prepareForwardPilot).addAction(approveForwardPilot).addAction(forwardPilotStatus)
+export const actions = sdk.Actions.of().addAction(newForwardSwap).addAction(confirmForwardSwap).addAction(repeatSwapStatus).addAction(pairSwapGrants).addAction(cancelSwapDraft).addAction(saveSwapInspection).addAction(findSwapChannels).addAction(prepareSwap).addAction(pair).addAction(status).addAction(workerStatus).addAction(recoveryStatus).addAction(confirmRecovery).addAction(recoverOnce).addAction(quoteStatus).addAction(reviewQuote).addAction(prepareQuote).addAction(approveQuote).addAction(prepareReverseQuote).addAction(liveReadiness).addAction(pairBtcGate).addAction(pairXbtGate).addAction(livePolicy).addAction(inspectForward).addAction(inspectReverse).addAction(prepareForwardPilot).addAction(approveForwardPilot).addAction(forwardPilotStatus)

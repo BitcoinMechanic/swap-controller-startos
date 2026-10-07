@@ -1930,3 +1930,36 @@ have passed locally. The new funded matrix (normal, lost replies, failure,
 pending close through claim/CSV sweep) must still run on the packaging VM.
 It uses disposable regtest nodes and fixture-only network labels, never live
 credentials. No live payment has been initiated by preparing this release.
+
+
+## Saved inspection setup and channel discovery (0.1.0:14)
+
+Use **Save Swap Inspection Credentials** once with the two dedicated inspection
+credentials. They are stored privately, excluded from backups, and invalidated
+when pairing details or restore state change. This does not grant payment authority.
+
+**Find Swap Channels** takes a 2,000-sat XBT invoice and lists eligible incoming
+BTC channels and direct XBT channels to its recipient. Disconnected channels,
+pending HTLCs, insufficient liquidity, and currently trimmed amounts are excluded.
+
+For an unused pilot slot, **Prepare BTC to XBT Swap** reuses saved inspection
+credentials. Leave channel fields blank only when exactly one eligible channel
+exists for each side. If several qualify, use Find Swap Channels and explicitly
+select the payer's incoming channel or the recipient's outgoing channel. Fresh
+inspection and all existing contract checks run again before preparation.
+
+**Swap Status** displays readable stages and amounts. The original advanced
+preparation action remains available. Node contract authorization and final
+approval are still required. This release does not enable repeat swaps, reset a
+completed pilot, increase limits, or automate node authorization. Existing settled
+records are preserved. No live payment is needed to test discovery.
+
+## Repeat swaps with saved authorization
+
+The repeat flow preserves the original pilot and gives each new swap its own durable record. Save inspection credentials once, then pair bounded grants from both coordinators using **Pair Repeat Swap Grants**. Use **New BTC to XBT Swap** with only a fresh 2,000-sat XBT invoice; **Confirm Swap** fills the reviewed ID automatically and requires explicit confirmation. Pay the resulting 1,000-sat BTC invoice once. **Swap History** retains results and invoices. Payer routing fees are additional.
+
+Each coordinator grant pins one channel, allows 1–10 enrollments (default 5), and expires for new enrollment after 24 hours. Failed and expired enrollments consume slots. Pausing or expiry preserves recovery authority for enrolled contracts. Renewing the budget is an explicit coordinator action after all previous work is terminal. Restart the BTC coordinator once after enabling repeat mode if its action requests it.
+
+Only one swap may be active. Unapproved drafts may be cancelled. Unpaid published invoices are retired only after their deadline and fresh checks prove no incoming HTLC was accepted and no outgoing payment exists. Uncertain or on-chain recovery blocks another swap; a recovery status is not proof of a confirmed claim or sweep. Restore barriers remain enforced, and backups exclude reusable credentials and execution authority.
+
+This is still the fixed 1,000 BTC sat → 2,000 XBT sat direct-channel flow, not a general exchange-rate interface. Local unit and action checks accompany the change; run the disposable funded repeat scenarios before installing the candidate packages.

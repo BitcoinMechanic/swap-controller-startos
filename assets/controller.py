@@ -106,7 +106,7 @@ def pair(root,nodes,confirmed=False,replace=False,factory=Client):
     require(confirmed is True,'confirmation_required')
     nodes=validate(nodes)
     with locked(root), contextlib.ExitStack() as stack:
-        if os.path.lexists(root/'execution'/'forward-pilot'):
+        if os.path.lexists(root/'execution'/'forward-pilot') or os.path.lexists(root/'execution'/'forward-swaps'):
             import lifecycle
             stack.enter_context(lifecycle.locked(root/'execution'))
         old=load_config(root)
@@ -115,6 +115,9 @@ def pair(root,nodes,confirmed=False,replace=False,factory=Client):
             current=private_load(pilot)
             require(current.get('phase') in ('review','settled','failed') or (old is not None and old['nodes']==nodes),
                     'active_pilot_pairing_change_refused')
+        from forward_swaps import paths, TERMINAL
+        for path in paths(root):
+            require(private_load(path/'record.json')['phase'] in TERMINAL or (old is not None and old['nodes']==nodes), 'active_repeat_pairing_change_refused')
         require(old is None or old['nodes']==nodes or replace is True,'replacement_confirmation_required')
         reports=probe(nodes,factory)
         require(paired_report(reports),'pair_verification_failed')

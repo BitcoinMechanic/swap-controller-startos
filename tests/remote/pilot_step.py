@@ -20,7 +20,22 @@ class FixtureInspector(Inspector):
         return value
 stage=sys.argv[1]
 request=private_load(root/'quote-input.json')
-if stage=='prepare':result=pilot.prepare(root,request,factory=FixtureInspector)
+if stage.startswith('repeat-'):
+    import forward_swaps as swaps
+    import swap_setup
+    if stage=='repeat-setup':
+        swap_setup.configure(root,request['inspection'],factory=FixtureInspector)
+        result=swaps.configure(root,request['grants'])
+    elif stage=='repeat-prepare':result=swaps.prepare(root,request,inspector=FixtureInspector)
+    elif stage=='repeat-approve':
+        import lifecycle
+        lifecycle.tick(root/'execution');result=swaps.approve(root,request)
+    elif stage=='repeat-worker':
+        try:swaps.tick(root)
+        except ValueError:pass
+        result=swaps.status(root)
+    else:raise ValueError('unknown_repeat_stage')
+elif stage=='prepare':result=pilot.prepare(root,request,factory=FixtureInspector)
 elif stage=='approve':
     import lifecycle
     lifecycle.tick(root/'execution')

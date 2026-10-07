@@ -33,7 +33,12 @@ class Remote:
         except Exception:raise ValueError('pilot_rpc_refused_or_uncertain') from None
 
 
-def directory(root):return root/'execution'/'forward-pilot'
+def directory(root, swap_id=None):
+    if swap_id is None: return root/'execution'/'forward-pilot'
+    require(hex32(swap_id), 'invalid_swap_id')
+    parent=root/'execution'/'forward-swaps'
+    require(not parent.is_symlink(), 'invalid_pilot_directory')
+    return parent/swap_id
 
 def restore_epoch(root):
     path=root/'execution'/'forward-pilot-restore-epoch.json'
@@ -49,10 +54,10 @@ def allowed(root,r=None):
     # pairing generation. Existing executor/restored.json remains untouched.
 
 
-def record(root):
-    require(not directory(root).is_symlink(),'invalid_pilot_directory')
-    r=private_load(directory(root)/'record.json');validate(r['contract'])
-    require(r['pilot_id']==digest(r['contract']),'contract_changed')
+def record(root, swap_id=None):
+    require(not directory(root, swap_id).is_symlink(),'invalid_pilot_directory')
+    r=private_load(directory(root, swap_id)/'record.json');validate(r['contract'])
+    require(r['pilot_id']==digest(r['contract']) and (swap_id is None or swap_id==r['pilot_id']),'contract_changed')
     pairing=load_config(root)
     require(pairing and pairing['generation']==r['generation'],'pairing_changed')
     require({k:v['node_id'] for k,v in pairing['nodes'].items()}==r['contract']['nodes'],'node_identity_changed')
@@ -75,12 +80,16 @@ def untrimmed(ch,amount):
         and amount>dust+((703*fee+999)//1000)*1000,'htlc_trimmed_at_current_fee')
 
 
-def prepare(root,request,*,factory=Inspector,now=None):
+def prepare(root,request,*,factory=Inspector,now=None,repeat=False):
     now=int(time.time()) if now is None else now
     require(set(request)=={'invoice','incomingChannel','outgoingChannel','btcRune','xbtRune'},'invalid_request')
     with lifecycle.locked(root/'execution'):
         allowed(root)
-        require(not directory(root).exists(),'one_pilot_only')
+        if repeat:
+            from forward_swaps import guard
+            guard(root)
+        else:
+            require(not directory(root).exists(),'one_pilot_only')
         config=load_config(root);require(config,'pair_nodes_first')
         clients={k:factory(config['nodes'][k],request[k+'Rune']) for k in ('btc','xbt')}
         start=time.monotonic()
@@ -103,9 +112,12 @@ def prepare(root,request,*,factory=Inspector,now=None):
             invoice=request['invoice'],payment_hash=d['payment_hash'],payment_secret=d['payment_secret'],recipient=d['payee'],created_at=now,admission_until=now+1800)
         validate(c)
         require(0<=time.monotonic()-start<=120 and load_config(root)==config,'inspection_expired_or_pairing_changed')
-        directory(root).mkdir(mode=0o700)
+        target=directory(root,digest(c) if repeat else None)
+        if repeat: target.parent.mkdir(mode=0o700,exist_ok=True)
+        target.mkdir(mode=0o700)
         r=dict(schema=1,pilot_id=digest(c),contract=c,generation=config['generation'],phase='review',restore_epoch=restore_epoch(root))
-        save(directory(root)/'record.json',r)
+        if repeat: r.update(transport='session',gate_profile='startos-fixed-repeat-v1')
+        save(target/'record.json',r)
         return dict(pilot_id=r['pilot_id'],contract=c,btc_sats=1000,xbt_sats=2000,payment_started=False,
             approval_required=True,admission_until=c['admission_until'])
 
@@ -138,25 +150,31 @@ def preflight(r,obs,now):
         and obs['xbt']['channel'].get('spendable_msat',0)>=2000000,'outgoing_not_ready')
 
 
-def approve(root,request,*,factory=Remote,now=None):
+def approve(root,request,*,factory=Remote,now=None,swap_id=None):
     require(set(request)=={'pilotId','btcRune','xbtRune','confirmed'} and request['confirmed'] is True,'explicit_approval_required')
     now=int(time.time()) if now is None else now
     with lifecycle.locked(root/'execution'):
-        r,config=record(root);allowed(root,r)
+        r,config=record(root,swap_id);allowed(root,r)
         require(request['pilotId']==r['pilot_id'],'review_digest_mismatch')
-        require(r['phase']=='review','already_approved_inspect_status')
+        require(r['phase'] in (('review','authorizing') if swap_id else ('review',)),'already_approved_inspect_status')
         heartbeat=private_load(root/'execution'/'heartbeat.json')
         require(type(heartbeat.get('checked_at')) is int and 0<=now-heartbeat['checked_at']<=30,'worker_heartbeat_required')
+        if swap_id:
+            save(directory(root,swap_id)/'credentials.json',{k:request[k+'Rune'] for k in ('btc','xbt')})
+            r['phase']='authorizing';save(directory(root,swap_id)/'record.json',r)
         clients={k:factory(config['nodes'][k],request[k+'Rune']) for k in ('btc','xbt')}
         obs=observations(r,clients);preflight(r,obs,now)
-        require(obs['btc'].get('gate_profile')==dict(profile='live-pilot-v1',registered_quotes=0)
+        gate=obs['btc'].get('gate_profile',{})
+        require(gate.get('profile')==r.get('gate_profile','live-pilot-v1')
+            and type(gate.get('registered_quotes')) is int and gate['registered_quotes']>=0
+            and (swap_id is not None or gate['registered_quotes']==0)
             and obs['btc']['channel'].get('htlcs')==[],'unused_gate_required')
         # Persist authority before publication. No caller-supplied RPC names or CLI.
-        save(directory(root)/'credentials.json',{k:request[k+'Rune'] for k in clients})
-        r['phase']='publishing';save(directory(root)/'record.json',r)
+        save(directory(root,swap_id)/'credentials.json',{k:request[k+'Rune'] for k in clients})
+        r['phase']='publishing';save(directory(root,swap_id)/'record.json',r)
         result=clients['btc'].call('swap-pilot-step',pilot_id=r['pilot_id'],operation='publish',preimage='')
         require(type(result.get('invoice')) is str and type(result.get('terms')) is dict,'publication_reply_unknown')
-        r.update(phase='waiting_for_btc',invoice=result['invoice'],terms=result['terms']);save(directory(root)/'record.json',r)
+        r.update(phase='waiting_for_btc',invoice=result['invoice'],terms=result['terms']);save(directory(root,swap_id)/'record.json',r)
         return report(r)
 
 
@@ -167,7 +185,7 @@ def held(r,obs):
         type(binding) is list and len(binding)==2 and binding[0]==c['channels']['btc']['short_channel_id']
         and type(binding[1]) is int,'original_held_gate_required')
     expected=dict(payment_hash=c['payment_hash'],binding=binding,btc_amount_msat=1000000,xbt_amount_msat=2000000,
-        xbt_invoice=c['invoice'],pilot='live-pilot-v1')
+        xbt_invoice=c['invoice'],pilot=r.get('gate_profile','live-pilot-v1'))
     require(all(spend.get(k)==v for k,v in expected.items()) and type(spend.get('cltv_expiry')) is int,'held_terms_changed')
     if 'binding' in r:require(r['binding']==binding and r['expiry']==spend['cltv_expiry'],'held_htlc_changed')
     return binding,spend['cltv_expiry']
@@ -190,7 +208,7 @@ def payment(r,obs):
 
 def report(r):
     return {k:r[k] for k in ('pilot_id','phase','invoice') if k in r} | dict(btc_sats=1000,xbt_sats=2000,
-        payment_started=r['phase'] not in ('review','publishing','waiting_for_btc'),
+        payment_started=r['phase'] not in ('review','authorizing','cancelled','expired','retire_intent','publishing','waiting_for_btc'),
         close_requested='close_intent' in r,onchain_claim_verified=False,
         quote_expires_at=r.get('terms',{}).get('expires_at'))
 
@@ -205,16 +223,16 @@ def status(root):
     return result
 
 
-def tick(root,*,factory=Remote,now=None):
+def tick(root,*,factory=Remote,now=None,swap_id=None):
     now=int(time.time()) if now is None else now
-    if not directory(root).exists():return
+    if not directory(root,swap_id).exists():return
     with lifecycle.locked(root/'execution'):
-        r,config=record(root);allowed(root,r)
+        r,config=record(root,swap_id);allowed(root,r)
         if r['phase']=='review':return report(r)
-        creds=private_load(directory(root)/'credentials.json')
+        creds=private_load(directory(root,swap_id)/'credentials.json')
         clients={k:factory(config['nodes'][k],creds[k]) for k in ('btc','xbt')}
         obs=observations(r,clients);gate=obs['btc'].get('gate',{})
-        def persist():save(directory(root)/'record.json',r)
+        def persist():save(directory(root,swap_id)/'record.json',r)
         def mutate(role,operation,preimage=''):
             return clients[role].call('swap-pilot-step',pilot_id=r['pilot_id'],operation=operation,preimage=preimage)
         if r['phase']=='publishing':

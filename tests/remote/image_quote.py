@@ -24,7 +24,7 @@ image_remote.restrictions=quote_restrictions
 
 
 def bridge(stage,request=None):
-    assert stage in ('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-plan','verify-claim','assert-controller-absent')
+    assert stage in ('repeat-setup','repeat-prepare','repeat-approve','repeat-worker','prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-plan','verify-claim','assert-controller-absent')
     root=Path('/exchange/control')
     if request is not None:save(root/'quote-input.json',request)
     mailbox=Path('/exchange/jobs')/(uuid.uuid4().hex+'.request')

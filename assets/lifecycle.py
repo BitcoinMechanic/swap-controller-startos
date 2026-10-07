@@ -56,6 +56,12 @@ def inventory(root):
             phase=private_load(pilot)['phase']
             reports.append(dict(job='forward-pilot',phase=phase,outcome='terminal' if phase in ('settled','failed') else 'pending_recovery'))
         except Exception:reports.append(dict(job='forward-pilot',outcome='unreadable'))
+    from forward_swaps import paths, TERMINAL
+    for path in paths(root.parent):
+        try:
+            phase=private_load(path/'record.json')['phase']
+            reports.append(dict(job=path.name,phase=phase,outcome='terminal' if phase in TERMINAL else 'pending_recovery'))
+        except Exception: reports.append(dict(job=path.name,outcome='unreadable'))
     return reports
 
 
@@ -125,6 +131,12 @@ def tick(root):
         except Exception:
             save(root/'forward-pilot-status.json',dict(needs_attention=True,checked_at=int(time.time())))
             print('{"event":"forward_pilot_needs_attention","details":"withheld"}',flush=True)
+    if mode in ('disabled','restored'):
+        try:
+            from forward_swaps import tick as repeat_tick
+            outcomes['forward-swaps']=repeat_tick(root.parent)
+        except Exception:
+            print('{"event":"repeat_swap_needs_attention","details":"withheld"}',flush=True)
     with locked(root):
         save(root/'heartbeat.json', dict(checked_at=int(time.time()), mode=mode))
     return outcomes

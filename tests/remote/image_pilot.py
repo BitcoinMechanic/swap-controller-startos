@@ -140,11 +140,15 @@ def main():
     os.environ['PILOT_SCENARIO']=sys.argv[1]
     os.umask(0o077);os.chown('/exchange/control',0,0)
     check_bundle('/usr/local/libexec/cln-swap')
-    for name in ('pilot_node.py','pilot_contract.py'):
+    for name in ('pilot_node.py','pilot_contract.py','swap_session.py'):
         assert (Path('/usr/local/libexec/btc-controller')/name).read_bytes()==(Path('/opt/xbt/libexec')/name).read_bytes()
     root=Path(tempfile.mkdtemp(prefix='forward-pilot-',dir='/results'));print('Test directory: '+str(root),flush=True)
     lab=PilotLab(root,'/test-bitcoind','/usr/bin/bitcoin-cli');lab.bound_forward_gate=True
-    try:run(lab)
+    try:
+        if os.environ['PILOT_SCENARIO'].startswith('repeat-'):
+            from image_repeat import run as repeat_run
+            repeat_run(lab)
+        else:run(lab)
     finally:lab.close()
     print('Funded forward pilot OK (fixture-only network labels; isolated HTTPS; regtest only)',flush=True)
 if __name__=='__main__':main()

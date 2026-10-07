@@ -30,3 +30,7 @@
 
 !assets/pilot_contract.py
 !assets/forward_pilot.py
+
+!assets/swap_setup.py
+
+!assets/forward_swaps.py

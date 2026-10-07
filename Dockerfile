@@ -21,3 +21,9 @@ CMD ["python3", "/app/controller.py", "/data", "run"]
 
 COPY assets/pilot_contract.py assets/forward_pilot.py /app/
 RUN python3 -m py_compile /app/pilot_contract.py /app/forward_pilot.py
+
+COPY assets/swap_setup.py /app/
+RUN python3 -m py_compile /app/swap_setup.py
+
+COPY assets/forward_swaps.py /app/
+RUN python3 -m py_compile /app/forward_swaps.py
