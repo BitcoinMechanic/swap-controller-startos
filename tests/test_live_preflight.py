@@ -89,6 +89,64 @@ class PreflightTests(unittest.TestCase):
         self.setup_case();self.responses['xbt']['listpeerchannels']['channels'][0]['spendable_msat']=1999999
         self.assertFalse(self.run_case()['preflight_matches'])
 
+    def test_reported_anchor_channel_passes_both_admission_checks(self):
+        import forward_pilot
+        for reverse in (False,True):
+            self.setup_case(reverse)
+            for role in ('btc','xbt'):
+                ch=self.responses[role]['listpeerchannels']['channels'][0]
+                ch.update(features=['option_static_remotekey','option_anchors'],
+                          feerate=dict(perkw=1255),dust_limit_msat=546000,receivable_msat=243334568)
+                self.assertEqual(p.trim_threshold(ch),546000)
+                forward_pilot.untrimmed(ch,1000000)
+            report=self.run_case()
+            self.assertTrue(report['preflight_matches'],report)
+            self.assertFalse(report['execution_authorized'])
+
+    def test_legacy_and_deprecated_anchors_keep_fee_protection(self):
+        import forward_pilot
+        for features,threshold in [(None,1429000),([],1429000),(['option_static_remotekey'],1429000),
+                                   (['option_anchor_outputs'],1433000)]:
+            self.setup_case();ch=self.responses['btc']['listpeerchannels']['channels'][0]
+            ch['feerate']={'perkw':1255}
+            if features is not None:ch['features']=features
+            self.assertEqual(p.trim_threshold(ch),threshold)
+            self.assertEqual(self.run_case()['reasons'],['amount_trimmed_at_current_fee'])
+            with self.assertRaisesRegex(ValueError,'htlc_trimmed_at_current_fee'):
+                forward_pilot.untrimmed(ch,1000000)
+            # Preserve strict-above admission at the conservative legacy floor.
+            with self.assertRaises(ValueError):forward_pilot.untrimmed(ch,threshold)
+            forward_pilot.untrimmed(ch,threshold+1)
+
+    def test_anchor_dust_boundary_still_refuses(self):
+        import forward_pilot
+        for dust in (1000000,1000001):
+            self.setup_case();ch=self.responses['btc']['listpeerchannels']['channels'][0]
+            ch.update(features=['option_anchors'],feerate={'perkw':1255},dust_limit_msat=dust)
+            self.assertEqual(self.run_case()['reasons'],['amount_trimmed_at_current_fee'])
+            with self.assertRaisesRegex(ValueError,'htlc_trimmed_at_current_fee'):
+                forward_pilot.untrimmed(ch,1000000)
+
+    def test_invalid_features_cannot_get_anchor_fee_exemption(self):
+        import forward_pilot
+        for features in ('option_anchors',{'option_anchors':True},None,[True],
+                         ['option_anchors','option_anchor_outputs']):
+            self.setup_case();ch=self.responses['btc']['listpeerchannels']['channels'][0]
+            ch.update(features=features,feerate={'perkw':1255})
+            self.assertEqual(self.run_case()['reasons'],['invalid_channel_features'])
+            with self.assertRaisesRegex(ValueError,'invalid_channel_features'):
+                forward_pilot.untrimmed(ch,1000000)
+
+    def test_anchor_features_do_not_bypass_numeric_validation(self):
+        import forward_pilot
+        for change in [dict(feerate={'perkw':0}),dict(feerate={'perkw':True}),
+                       dict(feerate={'perkw':'1255'}),dict(dust_limit_msat=-1),
+                       dict(dust_limit_msat=True),dict(dust_limit_msat='546000')]:
+            self.setup_case();ch=self.responses['btc']['listpeerchannels']['channels'][0]
+            ch.update(features=['option_anchors']);ch.update(change)
+            self.assertFalse(self.run_case()['preflight_matches'])
+            with self.assertRaises(ValueError):forward_pilot.untrimmed(ch,1000000)
+
     def test_reserves_confirmed_unreserved_and_strict(self):
         for key,value in [('reserved',True),('reserved',0),('status','unconfirmed'),('amount_msat',49999999),('amount_msat','50000000')]:
             self.setup_case();self.responses['btc']['listfunds']['outputs'][0][key]=value

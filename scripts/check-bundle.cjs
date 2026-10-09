@@ -9,7 +9,7 @@ for (const name of ['forward_swaps.py','swap_setup.py','forward_pilot.py','pilot
 }
 const { manifest, actions } = require('../javascript/index.js')
 assert.equal(manifest.id, 'swap-controller')
-assert.equal(manifest.version, '0.1.0:15')
+assert.equal(manifest.version, '0.1.0:18')
 assert.deepEqual(Object.keys(manifest.images), ['controller'])
 assert.deepEqual(manifest.volumes, ['main'])
 assert.deepEqual(Object.keys(actions.actions), ['new-forward-swap', 'confirm-forward-swap', 'repeat-swap-status', 'pair-swap-grants', 'cancel-swap-draft', 'save-swap-inspection', 'find-swap-channels', 'prepare-forward-swap', 'pair-nodes', 'connection-status', 'worker-status', 'recovery-status', 'confirm-recovery-revocation', 'recover-existing-swap', 'quote-status', 'review-swap-quote', 'prepare-swap-quote', 'approve-swap-quote', 'prepare-reverse-swap-quote', 'live-readiness', 'pair-btc-gate-observation', 'pair-xbt-gate-observation', 'review-live-policy', 'inspect-live-forward', 'inspect-live-reverse', 'prepare-forward-pilot', 'approve-forward-pilot', 'forward-pilot-status'])

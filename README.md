@@ -1963,3 +1963,106 @@ Each coordinator grant pins one channel, allows 1–10 enrollments (default 5), 
 Only one swap may be active. Unapproved drafts may be cancelled. Unpaid published invoices are retired only after their deadline and fresh checks prove no incoming HTLC was accepted and no outgoing payment exists. Uncertain or on-chain recovery blocks another swap; a recovery status is not proof of a confirmed claim or sweep. Restore barriers remain enforced, and backups exclude reusable credentials and execution authority.
 
 This is still the fixed 1,000 BTC sat → 2,000 XBT sat direct-channel flow, not a general exchange-rate interface. Local unit and action checks accompany the change; run the disposable funded repeat scenarios before installing the candidate packages.
+
+
+### Routed forward swap candidate
+
+After the funded candidate tests pass, enable **Allow routed swaps** in Enable
+Repeat Swap Grant on both coordinators. Finish earlier swaps before selecting
+New grant. Leave the channel field empty to snapshot the currently eligible
+local channels (maximum eight); new channels require a fresh explicit grant.
+Pair the two new credentials in Swap Controller. Existing saved read-only
+inspection credentials can be reused if the node pairing has not changed.
+
+The everyday flow stays: paste a fresh 2,000-sat XBT invoice in New BTC to XBT
+Swap, review, Confirm Swap, then pay the generated 1,000-sat BTC invoice once.
+No customer SCID is required. Review shows the coordinator's XBT routing fee.
+The BTC payer pays its own routing fees in addition to the swap amount.
+
+The controller plans one XBT route from the signed invoice, including bounded
+private route hints when needed. Limits are 10 XBT sats in routing fees, four
+hops and 80 blocks outgoing CLTV, with 40 blocks at the recipient. The route,
+amount, recipient, payment hash, secret and first-hop funding identity are bound
+into the approved contract. There is one outgoing attempt and one part. Changed
+routing conditions can cause failure; this candidate never retries payments or
+changes the approved route automatically.
+
+BTC private receiving channels are advertised through invoice hints. A payer
+still needs network reachability and liquidity to a hinted peer. When its HTLC
+arrives, the actual local receiving channel, funding identity, HTLC ID and expiry
+are durably bound before the XBT send. Only that channel can be closed for this
+swap's deadline protection. Other approved incoming channels are not substituted
+after acceptance. Incoming minimum margin remains 288 BTC blocks, the close
+threshold remains 72, and existing post-close recovery semantics are preserved.
+
+Existing direct grants and contracts remain direct. Routed grants require
+explicit opt-in on both coordinators, retain the 24-hour enrollment window and
+1–10 slot budget, and preserve existing recovery rights on pause or expiry.
+Restore invalidates authority. Old journals are retained. Pairing/probe RPCs
+remain read-only; route planning uses a dedicated restricted session operation.
+
+Run `scripts/test-forward-pilot.py BTC_IMAGE XBT_IMAGE CONTROLLER_IMAGE BITCOIND
+--routed` after building all three candidates. Its four scenarios put an
+intermediary on both sides, use private final channels, verify all six balances
+and fee accounting, exercise lost replies and definitive outgoing failure, and
+restart both coordinators with the routed payment pending. Fresh workers must
+retain the exact channel HTLCs, approved route and original outgoing attempt.
+The scenarios also check original records and the exhausted two-slot budget. These funded scenarios
+must pass on the packaging VM before installation; local simulated tests are not
+funded validation. Reverse routed swaps, MPP and blinded routes are not included.
+
+
+Private incoming BTC route hints follow CLN's SCID-alias rules: negotiated
+alias channels require the peer's remote alias; a missing alias is not replaced
+with the funding SCID. Legacy private channels prefer an available remote alias.
+The approved funding pin and the actual incoming HTLC binding remain unchanged.
+The funded routed fixture checks the advertised alias before paying and reports
+the payer's error directly if it exits before the gate accepts its HTLC.
+
+### Grant renewal after a completed swap channel closes
+
+A routed grant snapshots its channel pins when created. Supplying a short channel
+ID restricts that snapshot to that channel; leaving the field empty includes up
+to eight currently normal, connected, idle local channels. Adding or closing
+channels does not modify an existing grant. Finish current swaps, explicitly
+replace the affected coordinator grant, and pair the replacement credential.
+
+Historical completion no longer requires the original channel to remain normal.
+The node still checks the saved contract, outcome, exact funding pin and incoming
+HTLC binding. For retained non-normal channels it additionally verifies the
+original HTLC's terminal wallet state using local `listhtlcs`; missing or
+ambiguous evidence blocks renewal. Once CLN archives a fully resolved channel,
+`listclosedchannels` must match every original pin field. Original journals are
+never rebound or cleared. A recorded deadline close, unresolved outcome, changed
+binding/funding, or restore barrier still blocks renewal. These local reads do
+not expand remote rune permissions. Unpaid retirement must remain unbound.
+
+Preparation distinguishes a usable BTC channel outside the saved grant from
+insufficient liquidity, pending HTLCs, current-fee trimming and other readiness
+failures. Errors contain no channel identifiers or credentials. The routed normal
+funded fixture now closes and replaces the receiving channel after two completed
+swaps and checks renewal before and after archival; run it before installation.
+
+### Anchor-aware fee/dust admission (0.1.0:18)
+
+Both `live_preflight.channel` and `forward_pilot.untrimmed` use the same
+`live_preflight.trim_threshold`. Pinned CLN reports zero-fee HTLC anchor
+channels as `option_anchors`; their local trimming threshold has no
+second-stage transaction fee. Deprecated `option_anchor_outputs` still uses
+a fee, with the 706-weight success transaction. Channels without anchor
+features keep the conservative 703-weight success calculation. Rounding up,
+strict-above admission, numeric validation and missing-feature fallback remain
+conservative; malformed or contradictory feature data is refused.
+
+The reported channel (1255 perkw, 546000 msat dust, `option_anchors`) accepts
+a 1000000-msat HTLC in both admission checks instead of incorrectly requiring
+more than 1429000 msat. This only fixes admission. Authenticated node identity,
+funding pins, reserves, timing, committed incoming HTLC state and actual
+`local_trimmed` checks remain required before outgoing submission.
+
+Routed funded fixtures use actual anchor channels at a fixed 1255 perkw on
+both coordinator sides, assert that the old BTC formula would refuse, and
+check the held incoming HTLC is untrimmed before running the worker. The
+fixed fee is fixture-only and applies again on restart. Run all four routed
+scenarios before installing. This update changes only the controller package;
+existing grants and pairing remain usable.

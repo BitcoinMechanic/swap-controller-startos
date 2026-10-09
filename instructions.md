@@ -1762,3 +1762,90 @@ Each coordinator grant pins one channel, allows 1–10 enrollments (default 5), 
 Only one swap may be active. Unapproved drafts may be cancelled. Unpaid published invoices are retired only after their deadline and fresh checks prove no incoming HTLC was accepted and no outgoing payment exists. Uncertain or on-chain recovery blocks another swap; a recovery status is not proof of a confirmed claim or sweep. Restore barriers remain enforced, and backups exclude reusable credentials and execution authority.
 
 This is still the fixed 1,000 BTC sat → 2,000 XBT sat direct-channel flow, not a general exchange-rate interface. Local unit and action checks accompany the change; run the disposable funded repeat scenarios before installing the candidate packages.
+
+
+### Routed forward swap candidate
+
+After the funded candidate tests pass, enable **Allow routed swaps** in Enable
+Repeat Swap Grant on both coordinators. Finish earlier swaps before selecting
+New grant. Leave the channel field empty to snapshot the currently eligible
+local channels (maximum eight); new channels require a fresh explicit grant.
+Pair the two new credentials in Swap Controller. Existing saved read-only
+inspection credentials can be reused if the node pairing has not changed.
+
+The everyday flow stays: paste a fresh 2,000-sat XBT invoice in New BTC to XBT
+Swap, review, Confirm Swap, then pay the generated 1,000-sat BTC invoice once.
+No customer SCID is required. Review shows the coordinator's XBT routing fee.
+The BTC payer pays its own routing fees in addition to the swap amount.
+
+The controller plans one XBT route from the signed invoice, including bounded
+private route hints when needed. Limits are 10 XBT sats in routing fees, four
+hops and 80 blocks outgoing CLTV, with 40 blocks at the recipient. The route,
+amount, recipient, payment hash, secret and first-hop funding identity are bound
+into the approved contract. There is one outgoing attempt and one part. Changed
+routing conditions can cause failure; this candidate never retries payments or
+changes the approved route automatically.
+
+BTC private receiving channels are advertised through invoice hints. A payer
+still needs network reachability and liquidity to a hinted peer. When its HTLC
+arrives, the actual local receiving channel, funding identity, HTLC ID and expiry
+are durably bound before the XBT send. Only that channel can be closed for this
+swap's deadline protection. Other approved incoming channels are not substituted
+after acceptance. Incoming minimum margin remains 288 BTC blocks, the close
+threshold remains 72, and existing post-close recovery semantics are preserved.
+
+Existing direct grants and contracts remain direct. Routed grants require
+explicit opt-in on both coordinators, retain the 24-hour enrollment window and
+1–10 slot budget, and preserve existing recovery rights on pause or expiry.
+Restore invalidates authority. Old journals are retained. Pairing/probe RPCs
+remain read-only; route planning uses a dedicated restricted session operation.
+
+Run `scripts/test-forward-pilot.py BTC_IMAGE XBT_IMAGE CONTROLLER_IMAGE BITCOIND
+--routed` after building all three candidates. Its four scenarios put an
+intermediary on both sides, use private final channels, verify all six balances
+and fee accounting, exercise lost replies and definitive outgoing failure, and
+restart both coordinators with the routed payment pending. Fresh workers must
+retain the exact channel HTLCs, approved route and original outgoing attempt.
+The scenarios also check original records and the exhausted two-slot budget. These funded scenarios
+must pass on the packaging VM before installation; local simulated tests are not
+funded validation. Reverse routed swaps, MPP and blinded routes are not included.
+
+
+Private incoming BTC route hints follow CLN's SCID-alias rules: negotiated
+alias channels require the peer's remote alias; a missing alias is not replaced
+with the funding SCID. Legacy private channels prefer an available remote alias.
+The approved funding pin and the actual incoming HTLC binding remain unchanged.
+The funded routed fixture checks the advertised alias before paying and reports
+the payer's error directly if it exits before the gate accepts its HTLC.
+
+### After changing channels
+
+Repeat grants keep the channel list approved at creation. If you entered a
+channel short ID, only that channel was approved. After adding or closing a
+channel, finish current swaps and run **Enable Repeat Swap Grant** on the
+affected coordinator. Enable **Allow routed swaps**, leave the channel field
+empty, choose the swap budget and enable **Replace a previous grant with a new
+24-hour budget**. Authorize it, then use **Pair Repeat Swap Grants** in Swap
+Controller with the new credential and the other coordinator's current grant.
+
+A completed swap's closed channel can be checked against its retained history.
+If that history is unavailable or the swap still needs recovery, renewal remains
+blocked. Keep the swap records; opening another channel does not resolve an
+unsettled swap.
+
+Receiving liquidity alone does not satisfy every admission check. Channels must
+be connected and idle, and the fixed 1,000-sat incoming HTLC must pass the current
+fee/dust protection check. The action now distinguishes these failures and a
+usable channel that is outside the grant.
+
+### Anchor-channel admission correction
+
+Swap Controller 0.1.0:18 fixes an incorrect fee/dust refusal on modern anchor
+channels. The fixed swap remains 1,000 BTC sats to 2,000 XBT sats. The
+controller checks the negotiated channel type and still requires an actual
+committed, untrimmed incoming HTLC before paying the recipient.
+
+Only Swap Controller needs this update. Existing paired grants keep their
+current budgets and expiry; updating does not renew or consume a slot. Retry
+New BTC to XBT Swap with a recipient invoice that still has at least 33 minutes
+remaining. A rejection during preparation creates no payable BTC invoice.

@@ -55,7 +55,7 @@ def saved(root):
     return setup, config
 
 
-def candidates(client, amount, incoming, recipient=None):
+def candidates(client, amount, incoming, recipient=None, failures=None):
     rows = client.call('listpeerchannels').get('channels')
     require(type(rows) is list and all(type(row) is dict for row in rows), 'invalid_channels')
     # Evaluate this single observation using the same eligibility rules as prepare.
@@ -69,7 +69,8 @@ def candidates(client, amount, incoming, recipient=None):
             continue
         try:
             channel(Snapshot(), scid, amount, incoming)
-        except Refused:
+        except Refused as error:
+            if failures is not None: failures[scid] = str(error)
             continue
         result.append(scid)
     return sorted(set(result))

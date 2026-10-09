@@ -9,7 +9,7 @@ import forward_pilot as pilot
 import swap_setup
 import lifecycle
 from controller import load_config, private_load, save, require
-from pilot_contract import canonical, hex32
+from pilot_contract import canonical, hex32, routed, sent_amount
 from read_only_rpc import Client
 
 FILE='forward-session-pairing.json'
@@ -23,7 +23,7 @@ class SessionRemote:
                 and type(token['rune']) is str and 0<len(token['rune'])<=16384,'invalid_session_credential')
         self.session_id=token['session_id'];self.client=Client(node['url'],token['rune'],ca_data=node['ca_pem'])
     def request(self,operation,contract='',pilot_id='',preimage=''):
-        require(operation in ('info','enroll','observe','publish','send','close','release','fail','retire'),'operation_refused')
+        require(operation in ('info','plan','enroll','observe','publish','send','close','release','fail','retire'),'operation_refused')
         body=dict(session_id=self.session_id,operation=operation,contract=contract,pilot_id=pilot_id,preimage=preimage)
         req=urllib.request.Request(self.client.url+'/v1/swap-session-call',data=json.dumps(body).encode(),
                                   headers={'Content-Type':'application/json','Rune':self.client.rune},method='POST')
@@ -77,6 +77,7 @@ def info(root,saved,config,*,factory=SessionRemote):
         require(type(row.get('channel')) is dict,'invalid_session_channel');result[role]=row
     require(time.monotonic()-started<=60 and load_config(root)==config
             and all(saved.get(k)==v for k,v in swap_setup.binding(root,config).items()),'repeat_pairing_changed')
+    require(result['btc'].get('routed',False)==result['xbt'].get('routed',False),'grant_modes_differ')
     return result
 
 
@@ -93,19 +94,46 @@ def configure(root,request,*,factory=SessionRemote):
 
 def prepare(root,request,*,factory=SessionRemote,inspector=swap_setup.Inspector):
     require(set(request)=={'invoice'},'invalid_request')
-    saved,config=credentials(root);observed=info(root,saved,config,factory=factory)
+    pilot.allowed(root)
+    saved,config=credentials(root);guard(root)
+    observed=info(root,saved,config,factory=factory)
     def bound_inspector(node,rune):
         require(credentials(root)==(saved,config),'repeat_pairing_changed');return inspector(node,rune)
-    result=swap_setup.prepare(root,dict(invoice=request['invoice'],
-        incomingChannel=observed['btc']['channel']['short_channel_id'],outgoingChannel=observed['xbt']['channel']['short_channel_id']),
-        factory=bound_inspector,repeat=True)
+    if observed['btc'].get('routed') is True:
+        planned=factory(config['nodes']['xbt'],saved['credentials']['xbt']).request('plan',contract=request['invoice'])
+        require(planned.get('channel') in observed['xbt'].get('channels',[]),'route_outside_grant')
+        setup,inspection_config=swap_setup.saved(root)
+        require(inspection_config==config,'repeat_pairing_changed')
+        def routed_inspector(node,rune):
+            require(swap_setup.saved(root)==(setup,config),'inspection_setup_changed_pair_again')
+            return bound_inspector(node,rune)
+        # Select a ready admission channel; the paid HTLC may use any immutable
+        # BTC grant pin and is bound durably when it actually arrives.
+        incoming=observed['btc']['channels']
+        failures={}
+        eligible=swap_setup.candidates(routed_inspector(config['nodes']['btc'],setup['credentials']['btc']),1000000,True,failures=failures)
+        ready=[p for p in incoming if p['short_channel_id'] in eligible]
+        if not ready:
+            require(not eligible,'incoming_channel_outside_grant')
+            reasons={failures.get(p['short_channel_id'],'channel_not_unique') for p in incoming}
+            reason={frozenset(['channel_liquidity_insufficient']):'no_eligible_incoming_channels',
+                    frozenset(['amount_trimmed_at_current_fee']):'incoming_amount_trimmed',
+                    frozenset(['channel_has_pending_htlcs']):'incoming_channels_busy'}.get(frozenset(reasons),'incoming_channels_not_ready')
+            require(False,reason)
+        result=pilot.prepare(root,dict(invoice=request['invoice'],incomingChannel=ready[0]['short_channel_id'],
+            outgoingChannel=planned['channel']['short_channel_id'],btcRune=setup['credentials']['btc'],xbtRune=setup['credentials']['xbt']),
+            factory=routed_inspector,repeat=True,routing=dict(route=planned['route'],incoming_channels=incoming))
+    else:
+        result=swap_setup.prepare(root,dict(invoice=request['invoice'],
+            incomingChannel=observed['btc']['channel']['short_channel_id'],outgoingChannel=observed['xbt']['channel']['short_channel_id']),
+            factory=bound_inspector,repeat=True)
     return review(root,result['pilot_id'])
 
 
 def review(root,swap_id):
     r,_=pilot.record(root,swap_id)
-    return pilot.report(r) | dict(approval_required=r['phase']=='review',recipient=r['contract']['recipient'],
-        incoming_channel=r['contract']['channels']['btc']['short_channel_id'],
+    return pilot.report(r) | dict(routed=routed(r['contract']),routing_fee_msat=sent_amount(r['contract'])-2000000,approval_required=r['phase']=='review',recipient=r['contract']['recipient'],
+        incoming_channel='Detected when payment arrives' if routed(r['contract']) else r['contract']['channels']['btc']['short_channel_id'],
         outgoing_channel=r['contract']['channels']['xbt']['short_channel_id'],admission_until=r['contract']['admission_until'])
 
 
@@ -127,7 +155,11 @@ def approve(root,request,*,factory=SessionRemote):
     require(pending(root)==swap_id,'review_changed')
     if r['phase']=='review':
         saved,config=credentials(root);observed=info(root,saved,config,factory=factory)
-        require(all(observed[k]['channel']==r['contract']['channels'][k] for k in ('btc','xbt')),'session_channel_changed')
+        if routed(r['contract']):
+            require(all(observed[k].get('routed') is True for k in ('btc','xbt')) and
+                    observed['btc']['channels']==r['contract']['incoming_channels'] and
+                    r['contract']['channels']['xbt'] in observed['xbt']['channels'],'session_channel_changed')
+        else: require(all(observed[k].get('routed',False) is False and observed[k]['channel']==r['contract']['channels'][k] for k in ('btc','xbt')),'session_channel_changed')
         creds=saved['credentials']
     else:
         require(r['phase']=='authorizing','swap_already_approved')
@@ -210,7 +242,8 @@ def main():
 if __name__=='__main__':
     try:print(json.dumps(main()))
     except Exception as error:
-        safe={'repeat_setup_required','repeat_pairing_changed','session_inactive_or_restart_required',
+        safe={'incoming_channel_outside_grant','incoming_amount_trimmed','incoming_channels_busy','incoming_channels_not_ready',
+              'grant_modes_differ','bounded_route_unavailable','route_outside_grant','no_eligible_incoming_channels','repeat_setup_required','repeat_pairing_changed','session_inactive_or_restart_required',
               'session_expired_or_exhausted','legacy_pilot_unfinished','finish_current_swap_first',
               'review_changed','no_swap_to_confirm','only_unapproved_draft_can_be_cancelled',
               'session_channel_changed','enrollment_may_have_started','swap_already_approved',

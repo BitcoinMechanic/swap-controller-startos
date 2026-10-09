@@ -73,6 +73,28 @@ def identity(client, node, network):
     return info
 
 
+def trim_threshold(ch):
+    """Conservative local-commitment threshold for the pinned CLN channel type.
+
+    CLN reports zero-fee HTLC anchors as option_anchors. Deprecated
+    option_anchor_outputs still pays a second-stage fee (706 weight for
+    success). Retain success weight, rounding up and strict-above admission
+    for legacy channels; missing features never gets the zero-fee exemption.
+    This does not replace the held HTLC's committed/local_trimmed checks.
+    """
+    fee = number(ch.get('feerate', {}).get('perkw'), 1)
+    dust = number(ch.get('dust_limit_msat'))
+    features = ch.get('features', [])
+    require(type(features) is list and all(type(f) is str for f in features),
+            'invalid_channel_features')
+    anchors = 'option_anchors' in features
+    deprecated = 'option_anchor_outputs' in features
+    require(not (anchors and deprecated), 'invalid_channel_features')
+    weight = 706 if deprecated else 703
+    htlc_fee = 0 if anchors else ((weight * fee + 999) // 1000) * 1000
+    return dust + htlc_fee
+
+
 def channel(client, channel_id, amount, incoming):
     channels = client.call('listpeerchannels').get('channels')
     require(type(channels) is list and all(type(c) is dict for c in channels), 'invalid_channels')
@@ -84,10 +106,7 @@ def channel(client, channel_id, amount, incoming):
     require(type(c.get('htlcs')) is list and not c['htlcs'], 'channel_has_pending_htlcs')
     require(number(c.get('receivable_msat' if incoming else 'spendable_msat')) >= amount,
             'channel_liquidity_insufficient')
-    fee = number(c.get('feerate', {}).get('perkw'), 1)
-    dust = number(c.get('dust_limit_msat'))
-    # Same conservative current-fee non-anchor success weight as pinned live_pilot.
-    require(amount > dust + ((703 * fee + 999) // 1000) * 1000,
+    require(amount > trim_threshold(c),
             'amount_trimmed_at_current_fee')
     return c
 
@@ -188,7 +207,7 @@ def inspect(root, request, *, factory=Inspector, clock=time.time, loader=load_co
             'invoice_invalid_or_wrong_network','invoice_amount_mismatch','invoice_fields_missing','invalid_payee',
             'invoice_from_future','invalid_reserve_observation','confirmed_unreserved_funds_insufficient',
             'invalid_channels','channel_not_unique','channel_not_ready','channel_has_pending_htlcs',
-            'channel_liquidity_insufficient','amount_trimmed_at_current_fee','payment_hash_already_used_or_unknown',
+            'invalid_channel_features','channel_liquidity_insufficient','amount_trimmed_at_current_fee','payment_hash_already_used_or_unknown',
             'direct_recipient_channel_required','chain_height_regressed','numeric_policy_rejected',
             'pairing_changed_during_inspection','preflight_rpc_unavailable'}
         report['reasons'] = [str(exc) if str(exc) in safe else 'preflight_unavailable']

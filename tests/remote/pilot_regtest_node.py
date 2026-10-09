@@ -39,7 +39,7 @@ class FixtureRPC:
             assert result['profile']=='regtest';result=dict(result,profile=swap_session.PROFILE if os.environ.get('PILOT_SCENARIO','').startswith('repeat-') else 'live-pilot-v1')
         if method=='xbt-spend-info':result=dict(result,pilot=swap_session.PROFILE if os.environ.get('PILOT_SCENARIO','').startswith('repeat-') else 'live-pilot-v1')
         if method=='close':pilot_node.save(self.root/'fixture-close.json',result)
-        if os.environ.get('PILOT_SCENARIO') in ('lost-reply','repeat-lost-reply') and method in ('sendpay','xbt-release-bound'):
+        if os.environ.get('PILOT_SCENARIO') in ('lost-reply','repeat-lost-reply','repeat-routed-lost-reply') and method in ('sendpay','xbt-release-bound'):
             raise ValueError('fixture_discarded_mutation_reply')
         return result
 

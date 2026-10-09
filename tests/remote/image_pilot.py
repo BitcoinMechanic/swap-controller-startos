@@ -18,7 +18,13 @@ from pilot_regtest_node import FixtureNode
 class PilotLab(RemoteLab):
     def start(self,args,*rest,**kwargs):
         if str(args[0]).endswith('/bin/lightningd'):
-            args=[*args,'--force-feerates=253'] # Disposable fixed-fee economics only.
+            # Disposable only: routed cases reproduce the live anchor admission
+            # bug at 1255 perkw, including restarts of either coordinator.
+            if os.environ.get('PILOT_SCENARIO','').startswith('repeat-routed-'):
+                # The opener otherwise adds 5 perkw on subsequent fee updates.
+                args=[*args,'--force-feerates=1255','--commit-feerate-offset=0']
+            else:
+                args=[*args,'--force-feerates=253']
         return super().start(args,*rest,**kwargs)
 
 
@@ -140,12 +146,15 @@ def main():
     os.environ['PILOT_SCENARIO']=sys.argv[1]
     os.umask(0o077);os.chown('/exchange/control',0,0)
     check_bundle('/usr/local/libexec/cln-swap')
-    for name in ('pilot_node.py','pilot_contract.py','swap_session.py'):
+    for name in ('pilot_node.py','pilot_contract.py','swap_session.py','routed_plan.py','route_math.py','routed_invoice.py'):
         assert (Path('/usr/local/libexec/btc-controller')/name).read_bytes()==(Path('/opt/xbt/libexec')/name).read_bytes()
     root=Path(tempfile.mkdtemp(prefix='forward-pilot-',dir='/results'));print('Test directory: '+str(root),flush=True)
     lab=PilotLab(root,'/test-bitcoind','/usr/bin/bitcoin-cli');lab.bound_forward_gate=True
     try:
-        if os.environ['PILOT_SCENARIO'].startswith('repeat-'):
+        if os.environ['PILOT_SCENARIO'].startswith('repeat-routed-'):
+            from image_routed import run as routed_run
+            routed_run(lab)
+        elif os.environ['PILOT_SCENARIO'].startswith('repeat-'):
             from image_repeat import run as repeat_run
             repeat_run(lab)
         else:run(lab)

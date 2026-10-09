@@ -13,8 +13,8 @@ import urllib.request
 from controller import load_config, private_load, save, require
 from executor import digest
 import lifecycle
-from live_preflight import Inspector, channel, identity
-from pilot_contract import PIN, PROFILE, hex32, pin_matches, validate
+from live_preflight import Inspector, channel, identity, trim_threshold
+from pilot_contract import PIN, PROFILE, hex32, pin_matches, validate, routed, incoming_pins, sent_amount, ROUTED, FIELDS
 from read_only_rpc import Client
 
 
@@ -75,12 +75,10 @@ def reserve(outputs):
 
 
 def untrimmed(ch,amount):
-    dust=ch.get('dust_limit_msat');fee=ch.get('feerate',{}).get('perkw')
-    require(type(dust) is int and dust>=0 and type(fee) is int and fee>0
-        and amount>dust+((703*fee+999)//1000)*1000,'htlc_trimmed_at_current_fee')
+    require(type(amount) is int and amount>trim_threshold(ch),'htlc_trimmed_at_current_fee')
 
 
-def prepare(root,request,*,factory=Inspector,now=None,repeat=False):
+def prepare(root,request,*,factory=Inspector,now=None,repeat=False,routing=None):
     now=int(time.time()) if now is None else now
     require(set(request)=={'invoice','incomingChannel','outgoingChannel','btcRune','xbtRune'},'invalid_request')
     with lifecycle.locked(root/'execution'):
@@ -106,10 +104,16 @@ def prepare(root,request,*,factory=Inspector,now=None,repeat=False):
             reserve(clients[k].call('listfunds').get('outputs'))
             selected[k]=channel(clients[k],request['incomingChannel' if k=='btc' else 'outgoingChannel'],1000000 if k=='btc' else 2000000,k=='btc')
             require(clients[k].call('listsendpays',payment_hash=d['payment_hash']).get('payments')==[],'payment_hash_already_used')
-        require(selected['xbt']['peer_id']==d['payee'],'direct_recipient_required')
+        if routing is None: require(selected['xbt']['peer_id']==d['payee'],'direct_recipient_required')
         c=dict(profile=PROFILE,source_commit=PIN,nonce=secrets.token_hex(32),nodes={k:v['node_id'] for k,v in config['nodes'].items()},
             channels={k:{f:selected[k][f] for f in ('channel_id','short_channel_id','funding_txid','funding_outnum','peer_id')} for k in clients},
             invoice=request['invoice'],payment_hash=d['payment_hash'],payment_secret=d['payment_secret'],recipient=d['payee'],created_at=now,admission_until=now+1800)
+        if routing is not None:
+            require(repeat and type(routing) is dict and set(routing)=={'route','incoming_channels'},'invalid_routing_request')
+            c.update(profile=ROUTED,**routing)
+            require(c['channels']['btc'] in c['incoming_channels'],'incoming_channel_changed')
+            rows=clients['btc'].call('listpeerchannels').get('channels',[])
+            require(all(sum(pin_matches(row,pin) for row in rows)==1 for pin in c['incoming_channels']), 'incoming_channel_changed')
         validate(c)
         require(0<=time.monotonic()-start<=120 and load_config(root)==config,'inspection_expired_or_pairing_changed')
         target=directory(root,digest(c) if repeat else None)
@@ -128,7 +132,10 @@ def observations(r,clients):
         v=clients[role].call('swap-pilot-observe',pilot_id=r['pilot_id'])
         require(v.get('pilot_id')==r['pilot_id'] and v.get('node_id')==c['nodes'][role]
             and v.get('network')==('bitcoin' if role=='btc' else 'xbt') and type(v.get('blockheight')) is int,'pilot_identity_changed')
-        require(pin_matches(v.get('channel',{}),c['channels'][role]),'pilot_channel_changed')
+        pins=incoming_pins(c) if role=='btc' else [c['channels'][role]]
+        require(any(pin_matches(v.get('channel',{}),pin) for pin in pins),'pilot_channel_changed')
+        if role=='btc' and 'incoming_pin' in r:
+            require(pin_matches(v.get('channel',{}),r['incoming_pin']),'pilot_channel_changed')
         obs[role]=v
     require(0<=time.monotonic()-start<=60,'pilot_observation_expired')
     return obs
@@ -147,7 +154,7 @@ def preflight(r,obs,now):
         require(ch.get('state')=='CHANNELD_NORMAL' and ch.get('peer_connected') is True,'channel_not_ready')
         untrimmed(ch,1000000 if role=='btc' else 2000000)
     require(obs['xbt'].get('payments')==[] and obs['xbt']['channel'].get('htlcs')==[]
-        and obs['xbt']['channel'].get('spendable_msat',0)>=2000000,'outgoing_not_ready')
+        and obs['xbt']['channel'].get('spendable_msat',0)>=sent_amount(c),'outgoing_not_ready')
 
 
 def approve(root,request,*,factory=Remote,now=None,swap_id=None):
@@ -182,7 +189,7 @@ def held(r,obs):
     c=r['contract'];btc=obs['btc'];gate=btc.get('gate',{});spend=btc.get('spend',{})
     binding=gate.get('binding')
     require(gate.get('phase')=='held' and gate.get('payment_hash')==c['payment_hash'] and
-        type(binding) is list and len(binding)==2 and binding[0]==c['channels']['btc']['short_channel_id']
+        type(binding) is list and len(binding)==2 and binding[0]==btc['channel']['short_channel_id']
         and type(binding[1]) is int,'original_held_gate_required')
     expected=dict(payment_hash=c['payment_hash'],binding=binding,btc_amount_msat=1000000,xbt_amount_msat=2000000,
         xbt_invoice=c['invoice'],pilot=r.get('gate_profile','live-pilot-v1'))
@@ -195,7 +202,7 @@ def payment(r,obs):
     rows=obs['xbt'].get('payments')
     require(type(rows) is list and len(rows)==1,'original_attempt_required')
     p=dict(rows[0]);p.setdefault('partid',0)
-    expected=dict(payment_hash=r['contract']['payment_hash'],groupid=1,partid=0,amount_sent_msat=2000000)
+    expected=dict(payment_hash=r['contract']['payment_hash'],groupid=1,partid=0,amount_sent_msat=sent_amount(r['contract']))
     require(all(p.get(k)==v and type(p.get(k)) is type(v) for k,v in expected.items()),'outgoing_attempt_changed')
     require(p.get('status') in ('pending','failed','complete'),'unknown_outgoing_outcome')
     if p['status']!='complete':require(not p.get('payment_preimage'),'contradictory_outgoing_outcome')
@@ -247,7 +254,9 @@ def tick(root,*,factory=Remote,now=None,swap_id=None):
             require(len(hs)==1 and hs[0].get('payment_hash')==r['contract']['payment_hash'] and hs[0].get('amount_msat')==1000000
                 and hs[0].get('expiry')==expiry and hs[0].get('state')=='RCVD_ADD_ACK_REVOCATION'
                 and hs[0].get('local_trimmed',False) is False,'committed_incoming_htlc_required')
-            r.update(phase='send_intent',binding=binding,expiry=expiry);persist()
+            r.update(phase='send_intent',binding=binding,expiry=expiry)
+            if routed(r['contract']): r['incoming_pin']={k:ch[k] for k in FIELDS}
+            persist()
             mutate('xbt','send')
             return report(r)
         p=payment(r,obs)
