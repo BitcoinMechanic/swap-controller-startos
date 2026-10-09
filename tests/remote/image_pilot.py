@@ -12,7 +12,6 @@ from image_pair import check_bundle
 from image_remote import RemoteLab
 from image_quote import bridge
 from smoke_regtest import wait_until
-from pilot_regtest_node import FixtureNode
 
 
 class PilotLab(RemoteLab):
@@ -20,15 +19,18 @@ class PilotLab(RemoteLab):
         if str(args[0]).endswith('/bin/lightningd'):
             # Disposable only: routed cases reproduce the live anchor admission
             # bug at 1255 perkw, including restarts of either coordinator.
-            if os.environ.get('PILOT_SCENARIO','').startswith('repeat-routed-'):
+            if os.environ.get('PILOT_SCENARIO','').startswith(('repeat-routed-','reverse-routed-')):
                 # The opener otherwise adds 5 perkw on subsequent fee updates.
                 args=[*args,'--force-feerates=1255','--commit-feerate-offset=0']
+                if os.environ.get('PILOT_SCENARIO','').startswith('reverse-routed-') and any(str(a).startswith('--lightning-dir=') and Path(str(a).split('=',1)[1]).name in ('btc-prefix','btc-router') for a in args):
+                    args=[*args,'--cltv-delta=80','--fee-base=1000','--fee-per-satoshi=1']
             else:
                 args=[*args,'--force-feerates=253']
         return super().start(args,*rest,**kwargs)
 
 
 def run(lab):
+    from pilot_regtest_node import FixtureNode
     scenario=os.environ['PILOT_SCENARIO']
     assert scenario in ('normal','lost-reply','failure','pending-close')
     btc=lab.node('knots-btc',False);xbt=lab.node('knots-xbt',True)
@@ -146,12 +148,15 @@ def main():
     os.environ['PILOT_SCENARIO']=sys.argv[1]
     os.umask(0o077);os.chown('/exchange/control',0,0)
     check_bundle('/usr/local/libexec/cln-swap')
-    for name in ('pilot_node.py','pilot_contract.py','swap_session.py','routed_plan.py','route_math.py','routed_invoice.py'):
+    for name in ('pilot_node.py','pilot_contract.py','swap_session.py','routed_plan.py','route_math.py','routed_invoice.py','reverse_contract.py','reverse_node.py','reverse_session.py','reverse_plan.py','reverse_invoice.py'):
         assert (Path('/usr/local/libexec/btc-controller')/name).read_bytes()==(Path('/opt/xbt/libexec')/name).read_bytes()
     root=Path(tempfile.mkdtemp(prefix='forward-pilot-',dir='/results'));print('Test directory: '+str(root),flush=True)
     lab=PilotLab(root,'/test-bitcoind','/usr/bin/bitcoin-cli');lab.bound_forward_gate=True
     try:
-        if os.environ['PILOT_SCENARIO'].startswith('repeat-routed-'):
+        if os.environ['PILOT_SCENARIO'].startswith('reverse-routed-'):
+            from image_reverse_routed import run as reverse_run
+            reverse_run(lab)
+        elif os.environ['PILOT_SCENARIO'].startswith('repeat-routed-'):
             from image_routed import run as routed_run
             routed_run(lab)
         elif os.environ['PILOT_SCENARIO'].startswith('repeat-'):
@@ -159,5 +164,5 @@ def main():
             repeat_run(lab)
         else:run(lab)
     finally:lab.close()
-    print('Funded forward pilot OK (fixture-only network labels; isolated HTTPS; regtest only)',flush=True)
+    print('Funded '+os.environ['PILOT_SCENARIO']+' pilot OK (fixture-only network labels; isolated HTTPS; regtest only)',flush=True)
 if __name__=='__main__':main()

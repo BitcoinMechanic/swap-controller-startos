@@ -27,3 +27,6 @@ RUN python3 -m py_compile /app/swap_setup.py
 
 COPY assets/forward_swaps.py /app/
 RUN python3 -m py_compile /app/forward_swaps.py
+
+COPY assets/reverse_contract.py assets/reverse_pilot.py assets/reverse_swaps.py /app/
+RUN python3 -m py_compile /app/reverse_contract.py /app/reverse_pilot.py /app/reverse_swaps.py

@@ -11,10 +11,12 @@ import sys
 import tempfile
 import time
 import uuid
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tests/remote'))
+from quote_protocol import QUOTE_STAGES, validate_job
 
 spec=importlib.util.spec_from_file_location('separated',Path(__file__).with_name('test-separated-controller.py'))
 base=importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
-STAGES=('prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-plan','verify-claim')
+STAGES=QUOTE_STAGES
 
 
 def command(repo,shared,image,network,name,stage):
@@ -68,7 +70,7 @@ def run(repo,results,prefix,backend,btc,controller,direction,downtime=False,inte
                         raise ValueError('invalid_quote_mailbox')
                     try:job=json.loads(request.read_text())
                     except PermissionError:continue
-                    if set(job)!={'stage'} or job['stage'] not in (*STAGES,'assert-controller-absent'):raise ValueError('invalid_quote_job')
+                    validate_job(job,(*STAGES,'assert-controller-absent'))
                     seen.add(request.name)
                     if job['stage']=='assert-controller-absent':
                         if not downtime:raise ValueError('quote_downtime_not_enabled')

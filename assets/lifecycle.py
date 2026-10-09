@@ -62,6 +62,12 @@ def inventory(root):
             phase=private_load(path/'record.json')['phase']
             reports.append(dict(job=path.name,phase=phase,outcome='terminal' if phase in TERMINAL else 'pending_recovery'))
         except Exception: reports.append(dict(job=path.name,outcome='unreadable'))
+    from reverse_swaps import paths as reverse_paths
+    for path in reverse_paths(root.parent):
+        try:
+            phase=private_load(path/'record.json')['phase']
+            reports.append(dict(job=path.name,direction='reverse',phase=phase,outcome='terminal' if phase in TERMINAL else 'pending_recovery'))
+        except Exception:reports.append(dict(job=path.name,direction='reverse',outcome='unreadable'))
     return reports
 
 
@@ -137,6 +143,12 @@ def tick(root):
             outcomes['forward-swaps']=repeat_tick(root.parent)
         except Exception:
             print('{"event":"repeat_swap_needs_attention","details":"withheld"}',flush=True)
+    if mode in ('disabled','restored'):
+        try:
+            from reverse_swaps import tick as reverse_tick
+            outcomes['reverse-swaps']=reverse_tick(root.parent)
+        except Exception:
+            print('{"event":"reverse_swap_needs_attention","details":"withheld"}',flush=True)
     with locked(root):
         save(root/'heartbeat.json', dict(checked_at=int(time.time()), mode=mode))
     return outcomes

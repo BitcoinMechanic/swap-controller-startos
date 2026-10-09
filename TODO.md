@@ -1,3 +1,48 @@
+# Current bidirectional checkpoint
+
+- [x] User reported routed live BTC → XBT settlement: 2,000,000 msat received,
+  paid at 2026-10-09T01:41:09Z; LND payer had no direct coordinator channel.
+- [x] Commit on the tower and sync packaging VM to BTC 1211fcd, XBT 50635bb,
+  controller 910fc28; retain VM stashes.
+- [x] Implement separate reverse grants, routed invoice review and confirmation,
+  incoming funding/HTLC binding, one outgoing attempt and restart recovery.
+- [x] Local reverse/forward unit, gate protocol, action and package checks.
+- [x] Run the four forward routed funded scenarios on the packaging VM for 0056
+  (2026-10-09, `/tmp/cln-forward-pilot-qk3j7ay8`).
+- [x] Fix the reverse test fixture's temporary directory permissions (0056a).
+- [x] Fix the XBT gate test container's import path; isolated-layout gate tests
+  pass all 11 cases (0056b).
+- [x] Audit the full reverse fixture flow; share mailbox stages and isolate
+  direction-specific invoice adapters (0056c).
+- [x] Add process/bridge preflight for normal, lost reply, failure and restart;
+  simulate CLN/transport only, retain the funded VM gate.
+- [x] User reported all four reverse routed funded scenarios passed (0056c).
+- [x] User reported all three 0056c installers built and installed.
+- [x] Explicitly enabled reverse grants; live preparation isolated a 120-block
+  private-hint route exceeding the approved 80-block cap. No live reverse paid.
+- [x] Implement 0057 separately versioned 144-block grants, preserved 80-block
+  authority/recovery, specific safe route refusals and realistic hint regressions.
+- [x] User reported 0057 READY: funded matrices passed and all three installers built.
+- [x] Paired renewed grants; active BTC grant confirmed at 144 blocks, five slots.
+- [x] Read-only live route diagnosis found three hops, 200 blocks and 2,002 msat;
+  higher fees alone did not fit the 144-block cap. No reverse payment submitted.
+- [x] Implement 0058 versioned 288-block grants and actual-cap refusal messages;
+  preserve existing 80/144-block authority and original recovery margins.
+- [x] Validate 0058 locally: 103 focused Python tests and all three package checks.
+- [x] User reported 0058 READY: both updated funded matrices passed and all three
+  installers built (2026-10-09).
+- [x] Install the 0058 packages, explicitly renew and pair both reverse grants.
+- [x] User confirmed live XBT → BTC: customer payment complete, controller settled,
+  LND invoice SETTLED with 1,500 sats received (2026-10-09).
+- [ ] Export 0059 from the packaging VM; commit/push on the tower; retain VM
+  stashes and fast-forward the VM to the GitHub checkpoint.
+
+Both live happy paths are user-confirmed. The 200-block/2,002-msat reverse route
+was observed in read-only preflight; the final route was not separately supplied.
+Live failure/restart and live on-chain recovery success are not claimed.
+The checklist below is retained historical development evidence; its old package
+versions and prior read-only/live-execution descriptions are not current status.
+
 # Integrated forward pilot candidate
 
 - [x] Implement one explicit fixed-price forward contract, node-side restricted authority and persistent worker.

@@ -7,6 +7,7 @@ import sys
 import tempfile
 import time
 import uuid
+from quote_protocol import BRIDGE_STAGES, validate_job
 sys.path.insert(0,'/controller-assets')
 from controller import save,private_load
 sys.path.insert(0,'/pair-fixtures')
@@ -23,11 +24,11 @@ def quote_restrictions(network):
 image_remote.restrictions=quote_restrictions
 
 
-def bridge(stage,request=None):
-    assert stage in ('repeat-setup','repeat-prepare','repeat-approve','repeat-worker','prepare','approve','status','review','worker','worker-interrupt-resolution','supervisor-plan','verify-claim','assert-controller-absent')
-    root=Path('/exchange/control')
+def bridge(stage,request=None,*,exchange=Path('/exchange')):
+    validate_job(dict(stage=stage),BRIDGE_STAGES)
+    root=exchange/'control'
     if request is not None:save(root/'quote-input.json',request)
-    mailbox=Path('/exchange/jobs')/(uuid.uuid4().hex+'.request')
+    mailbox=exchange/'jobs'/(uuid.uuid4().hex+'.request')
     save(mailbox,dict(stage=stage));mailbox.chmod(0o644)
     response=mailbox.with_suffix('.response')
     end=time.monotonic()+100

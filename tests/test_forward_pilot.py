@@ -19,6 +19,7 @@ from controller import private_load,save
 from pilot_contract import digest,PROFILE,PIN
 NODE=REPO.parent/'btc-cln-startos/assets/swaps/pilot_node.py'
 if not NODE.exists():NODE=Path('/node-assets/pilot_node.py')
+sys.path.append(str(NODE.parent))
 spec=importlib.util.spec_from_file_location('pilot_node',NODE)
 node_module=importlib.util.module_from_spec(spec);spec.loader.exec_module(node_module)
 

@@ -1,4 +1,150 @@
-# Swap Controller — read-only pairing pilot
+# Swap Controller
+
+## Live bidirectional checkpoint (0059)
+
+On 2026-10-09 the user confirmed a live XBT → BTC swap: the customer XBT
+payment completed, Reverse Swap History showed settled, and the LND recipient
+invoice was SETTLED with 1,500 sats received. This follows the live BTC → XBT
+result: 2,000,000 XBT msat received at 2026-10-09T01:41:09Z, controller settled,
+and the LND payer reached the coordinator through an independent public peer.
+These are user-reported live happy-path results, without independent node access.
+The earlier reverse read-only route candidate was three hops, 200 blocks and
+2,002 msat; the final executed route was not separately supplied. The reverse
+XBT payer's adjacency was not reconfirmed. Live failure, restart and on-chain
+recovery success have not been demonstrated by these results.
+
+The packaging VM reported 0058 READY: all four reverse and all four forward
+funded scenarios passed, and all three installers were built. The seven-node
+reverse fixture covers non-neighbor customers, a 200-block public BTC prefix
+plus private tail, seven balance changes, exact incoming binding, one outgoing
+attempt, definitive failure, lost replies and pending coordinator restarts.
+Local validation passed 103 focused Python cases and all three package checks.
+These recovery results are regtest evidence, separate from the live settlements.
+
+Installed versions remain BTC 26.6.9:6, XBT 0.1.0:24 and controller 0.1.0:21.
+0059 changes documentation only; its cumulative export includes 0056–0058.
+Export verified source and installer copies from the packaging VM, commit/push
+on the tower, then retain VM stashes and fast-forward from GitHub. Do not pop
+those stashes onto the already-applied checkpoint. The source checkpoint does
+not replace runtime service backups or change existing grants.
+
+## Reverse public-prefix timing update (0058)
+
+0057 reached READY on the packaging VM: both funded matrices passed and all
+three installers were built (user log, 2026-10-09). Its two-hop BTC fixture
+covered only a 120-block private tail. The subsequent live read-only diagnostic
+confirmed an active 144-block grant and found the complete three-hop route at
+200 blocks and 2,002 msat. Increasing only the fee budget did not find a route
+at 144. The later 0058 live settlement is recorded above.
+
+New explicitly requested grants use `startos-reverse-repeat-v3`, with a
+288-block total BTC route cap; their contracts use `startos-reverse-routed-v3`.
+This accommodates three 80-block forwarding deltas plus the fixed 40-block
+recipient delay in a four-hop route (280 total). This is a cap, not a promise
+that arbitrary routes fit. The fee cap stays 10,000 msat, with at most four hops,
+one part and one outgoing attempt. Recipient invoices still require final CLTV
+at most 40 and at least 33 minutes remaining.
+
+Existing v1/v2 grants and contracts retain 80/144 blocks. Retrieval never widens
+a grant; installation rewrites no authority or journal. The default local enable
+API still requests 80, while the explicit StartOS action requests 288. Both
+coordinators enforce the contract profile against the stored grant before
+reserving a slot. Paired limits must match. Unfinished swaps block renewal;
+paused or expired enrolled swaps retain their original recovery authority.
+
+Incoming timing derives from the exact saved outgoing route: BTC delay + 6
+submission blocks + 144 XBT recovery blocks, plus 24 quote-drift blocks in the
+invoice. A 200-block route requires 350 blocks before submission and advertises
+374. The incoming close guard remains 144 blocks. Existing contracts recover
+without replanning, changing bindings or repeating mutations. The relative-chain
+progress assumptions of the existing policy are unchanged.
+
+Route refusal now names the actual paired cap (80, 144 or 288). This value comes
+from the validated grant profile. Only fixed safe reason codes reach the UI;
+raw RPC text, invoice data and credentials remain private. Forward/direct flows
+and their grant namespace are unchanged.
+
+Verified versions: BTC 26.6.9:6, XBT 0.1.0:24, controller 0.1.0:21. The VM
+rebuilt all three images, passed both funded matrices and built the installers.
+The reverse fixture has seven nodes:
+three on XBT and four on BTC, with two public BTC channels and a private final
+channel. Both BTC forwarding nodes advertise 80 blocks, 1,000 msat base and
+1 ppm; the fixture requires 200 blocks, 2,002 msat, all seven balance changes,
+actual incoming binding and one outgoing attempt. The process preflight covers
+the same route for settlement, lost replies, failure and restart. Local tests
+simulate CLN/transport; the native funded and installer checks ran on the VM.
+
+## Historical reverse implementation and validation (0056–0056c)
+
+Packaging validation update (0056a): the four forward funded scenarios passed on
+2026-10-09 using BTC image `64821f81ffda`, XBT `c2e7559cdbec`, controller
+`099f00b2145e`. Reverse authority testing then stopped on EACCES before any reverse
+funded scenario: the host-owned 0700 temporary extraction was unreadable to the
+capability-free container. The launcher now makes only that public image-file
+directory traversable (0755), preserving the read-only mount and dropped
+capabilities. The 0056a resume script verifies source/image identities, runs the
+reverse matrix and packs only after success. Runtime code and versions are unchanged.
+
+Packaging validation update (0056b): the resumed run passed the extraction step
+but stopped importing `gate` in the XBT gate tests. The gate wrapper is installed
+in `/usr/local/libexec`; the test container now includes that directory in
+`PYTHONPATH`. The pinned protocol source remains `/usr/local/libexec/xbt-swap`.
+An isolated copy of the image directory layout reproduced the failure and passed
+all 11 gate tests with the corrected path. Docker-funded reverse validation still
+requires the packaging VM. Apply 0056b after 0056a and use its resume script.
+
+Packaging validation update (0056c): audited the reverse fixture from host
+launcher through mailbox, worker, node plugin and gate. Fixed the bridge's
+missing reverse-stage allowlist by sharing `quote_protocol.py` across these
+boundaries. Load the forward regtest adapter only in the forward branch; its
+eager import had also contaminated the reverse fixture's invoice encoder.
+The new fixture preflight covers every routed stage and fresh worker/plugin
+processes for normal, lost-reply, failure and restart cases, including exact
+bindings, one send and two-slot exhaustion. CLN and HTTP/Unix responses are
+simulated in this preflight; it does not claim TLS/native-chain validation.
+The launcher uses pinned source extracted from the existing XBT image and runs
+this preflight before the four funded Docker scenarios. Apply after 0056b.
+
+Adds a separate XBT → BTC repeat flow at a fixed test price: 3,000 XBT sats in,
+1,500 BTC sats delivered. At 0056 this was a candidate pending the VM funded
+matrix; the current funded and live outcomes are recorded above. The forward live checkpoint is
+retained: BTC `1211fcd`, XBT `50635bb`, controller `910fc28`.
+
+Reverse credentials use only `swap-reverse-call`, with a named session ID and
+exactly five parameters. They cannot call raw payment/close methods or the
+forward authority method. Forward credentials cannot authorize BTC spending.
+Reverse session and swap records use separate `reverse-sessions` and
+`reverse-swaps` directories; grants last 24 hours and consume 1–10 durable slots.
+Recovery rights for an enrolled swap survive expiry, pause and renewal. New
+admission checks unresolved records in both directions under the common lock.
+Restores block old authority; backups omit credentials and executable records.
+
+The signed BTC recipient invoice determines one immutable route: at most four
+hops, 10,000 msat BTC fee, 80 blocks first-hop delay and 40 blocks final delay.
+The incoming XBT invoice advertises approved channels using the peer's remote
+alias where required. The actual committed incoming HTLC/funding pin is persisted
+before BTC submission. There is one part and one outgoing attempt, with no
+payment retry after a missing reply. The actual outgoing BTC HTLC ID and expiry
+are also persisted when observed; route planning is never repeated during recovery.
+
+Reverse timing uses the existing candidate budget: BTC route delay + 6 blocks
+submission slack + 144 XBT blocks recovery reserve; the invoice adds 24 blocks
+quote drift. Independent chains do not guarantee relative progress. At 144 XBT
+blocks remaining an unresolved attempt requests protection of the original
+incoming channel exactly once. Expiry alone never authorizes failure or resend.
+Post-close status remains on-chain recovery, not verified settlement.
+
+The XBT extension retains the pinned reverse gate's existing activation, journal,
+and older quote profiles. `reverse-repeat-register` validates the new exact
+contract, while `reverse-retire-repeat` permanently expires an unpaid quote.
+An accepted replay can only resolve its original binding. The shared anchor
+fee/dust check and actual untrimmed-HTLC checks remain in force.
+
+Packaging workflow: apply/build/test on the packaging VM, export verified source
+to the tower, commit/push there, then stash and fast-forward the VM. Never pop
+checkpoint stashes onto already-applied source. This candidate makes no commits,
+pushes, live activations or live payments automatically.
+
 
 StartOS 0.4 package, SDK 2.0.9, package ID `swap-controller`, version 0.1.0:1.
 This initial package verifies BTC and XBT coordinator connections. It is not

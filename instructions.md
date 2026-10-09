@@ -1,5 +1,78 @@
 # Swap Controller
 
+## Live swap checkpoint (0059)
+
+Both directions have now completed a user-confirmed live swap. The latest
+XBT to BTC swap completed on the customer XBT node, settled in Reverse Swap
+History and delivered 1,500 sats to the LND recipient. The earlier BTC to XBT
+swap delivered 2,000 XBT sats. Failure and restart recovery were tested in
+regtest; those live recovery outcomes are not claimed.
+
+Keep the installed BTC 26.6.9:6, XBT 0.1.0:24 and Swap Controller 0.1.0:21.
+This documentation/source checkpoint needs no rebuild, reinstall or grant
+renewal. Existing grants keep their saved limits and remaining budget.
+For another swap, use invoice → confirm → pay and verify both the recipient
+amount and the corresponding Swap History result.
+
+## Reverse public-prefix timing update (0058)
+
+Install BTC 26.6.9:6, XBT 0.1.0:24 and Swap Controller 0.1.0:21 after the 0058
+packaging script reports READY. New reverse grants allow a maximum 288-block
+BTC route. Existing grants retain their original 80- or 144-block limit.
+The earlier read-only three-hop route needed 200 blocks and 2.002 sats in fees;
+review the actual planned route for each new swap.
+
+After existing swaps finish, use **Enable Reverse Swap Grant** on BOTH
+coordinators. Enable **Replace a previous grant with a new 24-hour budget**,
+select the swap count and explicitly confirm the displayed bounds. Check
+**Maximum BTC route delay (blocks)** is **288** on both results. Retrieval with
+replacement off preserves the old budget. Pair the new credentials under
+**Pair Reverse Swap Grants**; its result must also show 288. Retain the existing
+node pairing and inspection credentials.
+
+Use a fresh 1,500-sat BTC invoice with at least 33 minutes remaining, final CLTV
+at most 40 and private hints where needed. Review the amounts, routing fee and
+planned delay before confirming and paying the XBT invoice. The previously
+observed route was 200 blocks and 2,002 msat; a newly selected route can differ.
+The maximum routing fee remains 10 BTC sats, with four hops, one part and one
+outgoing attempt. A refusal displays your actual saved timing limit.
+
+Pending or uncertain swaps must finish/recover before renewal. Their original
+payment attempts and incoming bindings remain intact; no automatic retries or
+multipart payments are added. Existing BTC to XBT grants and history remain
+available.
+
+## XBT to BTC swaps
+
+The 0058 packaging-VM test script reported READY for the installed packages. Existing BTC to XBT grants and history remain available.
+
+On each coordinator use **Enable Reverse Swap Grant**. The XBT coordinator must
+already have its gate explicitly activated and running. Review the fixed price
+(3,000 XBT sats for 1,500 BTC sats), the maximum 10 BTC sats routing fee, the
+24-hour enrollment window and the chosen 1–10 swap budget. Eligible channels
+are selected automatically; no short channel ID is required. Leave replacement
+off when retrieving an existing grant. Pausing or expiration stops new swaps
+while preserving recovery of already approved ones.
+
+In Swap Controller, retain the existing read-only pairing and inspection setup.
+Use **Pair Reverse Swap Grants** for the two new credentials. Then:
+
+1. Generate a 1,500-sat BTC recipient invoice, including private routing hints
+   if needed, with at least 33 minutes remaining and final CLTV at most 40.
+2. Use **New XBT to BTC Swap** and review the recipient, price and BTC routing fee.
+3. Open **Confirm XBT to BTC Swap** and explicitly approve that reviewed swap.
+4. Pay the returned XBT invoice once before its deadline. Payer routing fees
+   are additional. Keep both coordinators and the controller running.
+5. Check **Reverse Swap History** and the recipient's paid invoice/received amount.
+
+Only one swap may be active across both directions. Finish it, or cancel its
+unapproved draft, before starting another. Do not repeat a payment because a
+reply was lost. Restarts preserve the original attempt and incoming channel.
+Deadline protection may force-close that XBT channel and incur on-chain costs;
+on-chain recovery requires further verification and is not a settled status.
+This release does not add automatic retries or multipart swaps.
+
+
 This first version monitors your BTC and XBT coordinator nodes using read-only
 credentials. It cannot quote swaps, send payments or move funds. It can run on
 either StartOS box as long as that box can reach both HTTPS endpoints.
