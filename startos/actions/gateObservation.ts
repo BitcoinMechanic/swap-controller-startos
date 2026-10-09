@@ -1,9 +1,9 @@
 import { sdk } from '../sdk'
 import { mounts, rootDir } from '../utils'
 export const pairBtcGate = sdk.Action.withInput('pair-btc-gate-observation', async () => ({
-  name: 'Pair BTC Gate Observation', group: 'Pairing',
+  name: 'Pair BTC Gate Observation', group: 'Advanced / Legacy',
   description: 'Use the separate BTC gate observation rune with the saved BTC HTTPS endpoint and certificate.',
-  warning: null, allowedStatuses: 'only-running' as const, visibility: 'enabled' as const,
+  warning: null, allowedStatuses: 'only-running' as const, visibility: 'hidden' as const,
 }), sdk.InputSpec.of({
   rune: sdk.Value.text({ name: 'BTC gate observation rune', masked: true, required: true, default: null, placeholder: null }),
   confirmed: sdk.Value.toggle({ name: 'Save this verified read-only gate credential', default: false }),

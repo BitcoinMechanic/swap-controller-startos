@@ -24,7 +24,7 @@ module.exports = async function () {
   const report = await action.handler({ effects: {} })
   assert.deepEqual(Array.from(command), ['python3', '/app/readiness.py', '/data'])
   assert.equal(options, undefined); assert.equal(JSON.stringify(report).includes('PRIVATE'), false)
-  assert.ok(report.message.includes('cannot execute live swaps'))
+  assert.ok(report.message.includes('Use Swap Status'))
   result = { exitCode: 1, stdout: 'PRIVATE' }
   await assert.rejects(action.handler({ effects: {} }), e => !e.message.includes('PRIVATE'))
   result = { exitCode: 1, stdout: '{"error":"PRIVATE"}' }

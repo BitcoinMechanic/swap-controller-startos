@@ -3,7 +3,7 @@ import { invoke } from './forwardPilot'
 import { mounts, rootDir } from '../utils'
 const text = (name: string, masked = false, required = true) => sdk.Value.text({ name, masked, required, default: null, placeholder: null })
 const meta = (name: string, description: string) => async () => ({ name, description,
-  group: 'Swaps', warning: null, allowedStatuses: 'only-running' as const, visibility: 'enabled' as const })
+  group: name === 'Save Swap Inspection Credentials' ? 'Swap Setup' : 'Advanced / Legacy', warning: null, allowedStatuses: 'only-running' as const, visibility: name === 'Save Swap Inspection Credentials' ? 'enabled' as const : 'hidden' as const })
 const errors: Record<string,string> = {
   inspection_setup_required: 'Run Save Swap Inspection Credentials once before checking a recipient invoice.',
   inspection_setup_changed_pair_again: 'Your node pairing or restore state changed. Save fresh inspection credentials.',
@@ -11,7 +11,7 @@ const errors: Record<string,string> = {
   choose_outgoing_channels: 'Several channels to this recipient qualify. Run Find Swap Channels and select one.',
   no_eligible_incoming_channels: 'No connected BTC channel has enough incoming liquidity and an eligible HTLC amount.',
   no_eligible_outgoing_channels: 'No connected, eligible XBT channel goes directly to this invoice recipient.',
-  one_pilot_only: 'A pilot already exists. Open Swap Status. Repeat swaps are not enabled in this version.',
+  one_pilot_only: 'A pilot already exists. Open Swap Status. Use the current BTC to XBT swap actions for additional swaps.',
 }
 async function readAction(effects: any, mode: string, input: object) {
   return sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'swap-setup', async sub => {

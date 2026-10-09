@@ -1,9 +1,9 @@
 import { sdk } from '../sdk'
 import { mounts, rootDir } from '../utils'
 export const pairXbtGate = sdk.Action.withInput('pair-xbt-gate-observation', async () => ({
-  name: 'Pair XBT Gate Observation', group: 'Pairing',
+  name: 'Pair XBT Gate Observation', group: 'Advanced / Legacy',
   description: 'Use the separate XBT gate observation rune with the saved XBT HTTPS endpoint and certificate.',
-  warning: null, allowedStatuses: 'only-running' as const, visibility: 'enabled' as const,
+  warning: null, allowedStatuses: 'only-running' as const, visibility: 'hidden' as const,
 }), sdk.InputSpec.of({
   rune: sdk.Value.text({ name: 'XBT gate observation rune', masked: true, required: true, default: null, placeholder: null }),
   confirmed: sdk.Value.toggle({ name: 'Save this verified read-only gate credential', default: false }),

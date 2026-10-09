@@ -34,8 +34,21 @@
 - [x] Install the 0058 packages, explicitly renew and pair both reverse grants.
 - [x] User confirmed live XBT → BTC: customer payment complete, controller settled,
   LND invoice SETTLED with 1,500 sats received (2026-10-09).
-- [ ] Export 0059 from the packaging VM; commit/push on the tower; retain VM
+- [x] Export 0059 from the packaging VM; commit/push on the tower; retain VM
   stashes and fast-forward the VM to the GitHub checkpoint.
+
+- [x] Implement 0060 menu grouping, conditional legacy access, read-only grant
+  status and specific safe errors without changing payment algorithms or grants.
+- [x] User reported 0060 READY: both funded matrices passed; all three packages
+  built and installed.
+- [x] Check the cleaned menus and Swap Status against the existing installed
+  grants; preserve their budgets and old records.
+- [x] Retest 0060 live: forward recipient paid after explicit channel hints;
+  reverse customer complete, controller settled and LND received.
+- [ ] Export 0061 from the packaging VM; checkpoint/push on the tower; retain
+  VM stashes and sync from GitHub.
+- [ ] Expose fixed, privacy-safe forward planning refusal codes at the node
+  boundary; keep mutation and unknown errors opaque. Improve invoice-hint guidance.
 
 Both live happy paths are user-confirmed. The 200-block/2,002-msat reverse route
 was observed in read-only preflight; the final route was not separately supplied.

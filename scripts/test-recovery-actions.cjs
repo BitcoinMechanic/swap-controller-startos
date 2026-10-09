@@ -18,6 +18,7 @@ module.exports = async function () {
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
   vm.runInNewContext(code, { exports: {}, require: name => {
     if (name === '../sdk') return { sdk }
+    if (name === './legacy') return { legacyVisibility: async () => 'enabled' }
     if (name === '../utils') return { mounts: {}, rootDir: '/data' }
     throw new Error('Unexpected module')
   } })
@@ -25,7 +26,7 @@ module.exports = async function () {
   assert.deepEqual(Object.keys(registered), ids)
   for (const id of ids) {
     const action = registered[id]
-    assert.equal((await action.meta()).group, 'Recovery')
+    assert.equal((await action.meta()).group, 'Advanced / Recovery')
     assert.equal(await action.prefill(), undefined)
     if (id !== 'recovery-status') {
       assert.equal(action.spec.btcRune.masked, true)

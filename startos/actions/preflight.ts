@@ -22,11 +22,11 @@ const common = {
   btcRune: text('BTC inspection credential', true), xbtRune: text('XBT inspection credential', true),
 }
 const meta = (reverse: boolean) => async () => ({
-  name: reverse ? 'Inspect XBT to BTC Candidate' : 'Inspect BTC to XBT Candidate', group: 'Readiness',
+  name: reverse ? 'Inspect XBT to BTC Candidate' : 'Inspect BTC to XBT Candidate', group: 'Development',
   description: reverse
     ? 'Read-only direct-channel inspection for a 1,500-sat BTC recipient invoice and your proposed XBT price.'
     : 'Read-only direct-channel inspection for a 2,000-sat XBT recipient invoice and fixed 1,000-sat BTC price.',
-  warning: null, allowedStatuses: 'only-running' as const, visibility: 'enabled' as const,
+  warning: null, allowedStatuses: 'only-running' as const, visibility: 'hidden' as const,
 })
 async function invoke(effects: any, direction: 'forward' | 'reverse', input: object) {
   return sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'live-preflight', async sub => {

@@ -1,3 +1,4 @@
+import { legacyVisibility } from './legacy'
 import { T } from '@start9labs/start-sdk'
 import { sdk } from '../sdk'
 import { mounts, rootDir } from '../utils'
@@ -13,7 +14,7 @@ const fields = {
 }
 const meta = (name: string, description: string) => async () => ({
   name, description, warning: null, allowedStatuses: 'only-running' as const,
-  group: 'Recovery', visibility: 'enabled' as const,
+  group: 'Advanced / Recovery', visibility: name.includes('(Regtest)') ? 'hidden' as const : await legacyVisibility('jobs'),
 })
 async function invoke(effects: T.Effects, mode: 'status' | 'confirm' | 'recover', request: object) {
   return sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'recovery-action', async sub => {
@@ -28,7 +29,7 @@ async function invoke(effects: T.Effects, mode: 'status' | 'confirm' | 'recover'
     }
     return {
       version: '1' as const, title: 'Recovery',
-      message: 'Live recovery is disabled. Saved confirmations require fresh verification before any recovery step.',
+      message: 'This action covers legacy regtest recovery only. Current swaps recover through their worker and directional histories. Saved confirmations require fresh verification before any recovery step.',
       result: { type: 'group' as const, value: Object.entries(report).map(([name, value]) => ({
         name, description: null, type: 'single' as const,
         value: typeof value === 'object' ? JSON.stringify(value) : String(value),
@@ -38,7 +39,7 @@ async function invoke(effects: T.Effects, mode: 'status' | 'confirm' | 'recover'
   })
 }
 export const recoveryStatus = sdk.Action.withInput('recovery-status',
-  meta('Recovery Status', 'Inspect saved recovery records locally. Does not contact either coordinator or start a payment.'),
+  meta('Legacy Recovery Status', 'Inspect saved recovery records locally. Does not contact either coordinator or start a payment.'),
   sdk.InputSpec.of({}), async () => {}, async ({ effects }) => invoke(effects, 'status', {}))
 
 export const confirmRecovery = sdk.Action.withInput('confirm-recovery-revocation',

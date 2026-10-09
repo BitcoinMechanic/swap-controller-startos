@@ -1,5 +1,84 @@
 # Swap Controller
 
+## Installed interface checkpoint (0061)
+
+The user reported 0060 READY on 2026-10-09: operator/status checks, both four-case
+funded matrices and all three installers passed. The packages were installed
+and the cleaned menus appeared correct. Versions remain BTC 26.6.9:7,
+XBT 0.1.0:25 and Swap Controller 0.1.0:22. 0061 changes documentation only;
+its source export checkpoints the full 0060 implementation without rebuilding.
+
+Live retesting: the user confirmed the forward customer XBT invoice was paid.
+That test requested 1,000 BTC sats -> 2,000 XBT sats. The final received-amount
+field and forward controller terminal status were not separately pasted for
+this retest. The reverse test requested 3,000 XBT sats -> 1,500 BTC sats; the
+user reported customer payment complete, controller settled and receipt in LND.
+Final routes, fees, adjacency and payment timestamps were not supplied for these
+retests. These are user-reported happy paths; no new live failure, restart or
+on-chain recovery claim is made. Earlier 0059 evidence remains recorded below.
+
+The first forward recipient invoice had zero hints despite requesting private
+hints. Read-only coordinator diagnosis passed history checks and refused route
+planning with bounded_route_unavailable (2,000,000 msat, final CLTV 40, 6,763
+seconds remaining). A replacement invoice explicitly selected eligible local
+channel hints on the customer VM, without manual SCID entry, and payment then
+worked. CLN can filter dead-end peers even when exposeprivatechannels=true;
+this is a possible explanation, not a separately observed warning in this run.
+
+Known UI limitation: forward node-side planning refusals still cross the plugin
+boundary as an opaque error. The controller can therefore show a generic
+coordinator-request error for a missing bounded route. Reverse planning already
+has a fixed, privacy-safe refusal protocol. A follow-up should extend that
+protocol to forward planning while keeping mutation/unknown errors private.
+Swap Status intentionally checks grants/setup, not invoice-specific routes.
+
+Export source and installer copies from the packaging VM; commit/tag/push on the
+tower; then retain VM stashes and fast-forward from GitHub. Do not pop retained
+stashes onto an already-applied checkpoint. Service backups remain separate.
+
+## Operator interface cleanup (0060)
+
+Candidate versions: BTC 26.6.9:7, XBT 0.1.0:25 and Swap Controller 0.1.0:22.
+0059 was committed/pushed from the tower and the packaging VM was synced, with
+stashes retained (user confirmation, 2026-10-09). Apply 0060 against that exact
+checkpoint tree. Build/test on the VM, export to the tower for commits/pushes,
+then retain a VM stash and fast-forward from GitHub as before.
+
+The controller normally presents 15 actions, grouped into Swaps, Swap Setup,
+Status and Advanced / Recovery. Both directions have explicit preparation,
+confirmation, history and draft-cancellation names. Setup credentials and grant
+pairing are grouped together. Legacy quote/record inspection is shown only when
+records exist (or cannot be inspected). An existing single pilot keeps its
+approval and status actions. Old preparation, readiness, policy, gate-observer
+pairing and regtest commands remain registered with hidden menu visibility;
+visibility is not an authorization boundary. Their handlers and test entry
+points retain all existing authorization and regtest guards.
+
+Swap Status reads connections, the worker heartbeat, inspection binding and each
+saved grant through its info operation. It reports remaining slots, enrollment
+expiry, pause/replacement/exhaustion, exact direct/routed fee/hop/timing limits
+and blockers for new preparation. It never plans a route, enrolls, advances,
+renews, publishes or pays. Expired/paused grants remain inspectable. Responses
+are bound to the saved session, node identity, network, pairing and restore
+epoch; changed or stale observations are discarded. Output uses fixed fields
+and reason codes, never endpoints, runes, certificates, invoices or raw RPC text.
+The existing read-only pairing client gains no write methods. No report is
+payment authority, and recipient-specific route/liquidity checks still happen
+when preparing a swap. Existing enrolled recovery is unaffected by the report.
+
+The coordinator grant controls are named by direction under Swap Grants, with
+preparation and credentials under Swap Setup. Single-pilot authorization stays
+under Advanced / Legacy so an older reviewed contract can still be authorized.
+The old standalone gate-observer credential menu is hidden. Current inspection
+credentials, grant retrieval, direct mode and all wallet/channel actions remain.
+
+Known reserve, inspection, stale-worker, changed-channel, expired-review and
+uncertain-request failures now have specific explanations. Unknown errors still
+withhold private details. Existing internal pilot module names, journal paths,
+contract profiles and action IDs are retained. No records, grants, restoration
+barriers, payment algorithms or approval defaults are migrated. New swaps still
+use one part and one outgoing attempt, with the same fixed prices and bounds.
+
 ## Live bidirectional checkpoint (0059)
 
 On 2026-10-09 the user confirmed a live XBT → BTC swap: the customer XBT

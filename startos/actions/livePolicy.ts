@@ -9,9 +9,9 @@ const labels: Record<string, string> = {
   outstanding: 'Integration still required',
 }
 export const livePolicy = sdk.Action.withInput('review-live-policy', async () => ({
-  name: 'Review Live Pilot Policy', group: 'Readiness',
+  name: 'Review Live Pilot Policy', group: 'Development',
   description: 'Review the proposed amount, routing fee, quote expiry and block timing limits for both gate profiles.',
-  warning: null, allowedStatuses: 'only-running' as const, visibility: 'enabled' as const,
+  warning: null, allowedStatuses: 'only-running' as const, visibility: 'hidden' as const,
 }), sdk.InputSpec.of({}), async () => {}, async ({ effects }) =>
   sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'live-policy-review', async sub => {
     const res = await sub.exec(['python3', '/app/live_policy.py', 'review'])

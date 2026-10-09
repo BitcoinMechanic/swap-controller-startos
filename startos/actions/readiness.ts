@@ -12,9 +12,9 @@ const labels: Record<string, string> = {
   nodes: 'Fresh node observations', blockers: 'Requirements still outstanding', checked_at: 'Checked at (Unix seconds)',
 }
 export const liveReadiness = sdk.Action.withInput('live-readiness', async () => ({
-  name: 'Live Swap Readiness', group: 'Readiness',
+  name: 'Live Swap Readiness', group: 'Development',
   description: 'Check paired identities and channels over read-only HTTPS and report outstanding live-swap requirements.',
-  warning: null, allowedStatuses: 'only-running' as const, visibility: 'enabled' as const,
+  warning: null, allowedStatuses: 'only-running' as const, visibility: 'hidden' as const,
 }), sdk.InputSpec.of({}), async () => {}, async ({ effects }) =>
   sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'readiness-action', async sub => {
     const res = await sub.exec(['python3', '/app/readiness.py', rootDir])
@@ -23,7 +23,7 @@ export const liveReadiness = sdk.Action.withInput('live-readiness', async () => 
     catch { throw new Error('Readiness unavailable; private details withheld.') }
     if (res.exitCode !== 0) throw new Error('Readiness unavailable; private details withheld.')
     return { version: '1' as const, title: 'Live Swap Readiness',
-      message: 'Observation only. This release cannot execute live swaps. Each gate observation uses its own restricted credential. Verified gate profiles do not authorize execution. Channel counts do not establish a route or sufficient liquidity. The restore barrier is unchanged.',
+      message: 'Observation only. This legacy diagnostic does not assess current repeat-swap grants. Use Swap Status for those. Each gate observation uses its own restricted credential. Verified gate profiles do not authorize execution. Channel counts do not establish a route or sufficient liquidity. The restore barrier is unchanged.',
       result: { type: 'group' as const, value: Object.entries(report).filter(([key]) => key in labels).map(([key, value]) => ({
         name: labels[key], description: null, type: 'single' as const,
         value: typeof value === 'object' ? JSON.stringify(value) : String(value),

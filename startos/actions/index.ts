@@ -1,3 +1,4 @@
+import { swapStatus } from './swapStatus'
 import { pairReverseGrants, newReverseSwap, confirmReverseSwap, reverseSwapStatus, cancelReverseDraft } from './reverseSwaps'
 import { pairSwapGrants, newForwardSwap, confirmForwardSwap, repeatSwapStatus, cancelSwapDraft } from './repeatSwaps'
 import { saveSwapInspection, findSwapChannels, prepareSwap } from './swapSetup'
@@ -14,7 +15,7 @@ import { sdk } from '../sdk'
 import { mounts, rootDir } from '../utils'
 const text = (name: string, masked = false) => sdk.Value.text({ name, masked, required: true, default: null, placeholder: null })
 const ca = (name: string) => sdk.Value.textarea({ name, description: 'Paste the complete PEM root CA downloaded from this node’s authenticated StartOS session.', required: true, default: null, maxLength: 65536 })
-const meta = (name: string) => async () => ({ name, description: 'Certificate-verified, read-only connections. No payment authority.', warning: null, allowedStatuses: 'only-running' as const, group: 'Pairing', visibility: 'enabled' as const })
+const meta = (name: string) => async () => ({ name, description: 'Certificate-verified, read-only connections. No payment authority.', warning: null, allowedStatuses: 'only-running' as const, group: name === 'Connection Status' ? 'Status' : 'Swap Setup', visibility: 'enabled' as const })
 async function invoke(effects: T.Effects, mode: 'pair' | 'status', request?: object): Promise<T.ActionResult & { version: '1' }> {
   return sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'pairing-action', async sub => {
     const res = await sub.exec(['python3', '/app/controller.py', rootDir, mode], { input: request ? JSON.stringify(request) : '' })
@@ -37,16 +38,16 @@ const pair = sdk.Action.withInput('pair-nodes', meta('Pair Coordinator Nodes'), 
 }))
 const status = sdk.Action.withInput('connection-status', meta('Connection Status'), sdk.InputSpec.of({}), async () => {}, async ({ effects }) => invoke(effects, 'status'))
 const workerStatus = sdk.Action.withInput('worker-status', async () => ({
-  name: 'Worker Status', description: 'Inspect execution lifecycle and filtered per-swap status. The forward pilot has separate explicit approval and credentials.',
-  warning: null, allowedStatuses: 'only-running' as const, group: 'Execution', visibility: 'enabled' as const,
+  name: 'Worker Status', description: 'Inspect the worker heartbeat and counts of records needing attention. Use Swap Status and the directional histories for current swaps.',
+  warning: null, allowedStatuses: 'only-running' as const, group: 'Advanced / Recovery', visibility: 'enabled' as const,
 }), sdk.InputSpec.of({}), async () => {}, async ({ effects }) =>
   sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'worker-status', async sub => {
     const res = await sub.exec(['python3', '/app/lifecycle.py', rootDir + '/execution', 'status'])
     if (res.exitCode !== 0) throw new Error('Worker status unavailable; private details withheld.')
     let report: any
     try { report = JSON.parse(String(res.stdout)) } catch { throw new Error('Worker status unavailable.') }
-    return { version: '1' as const, title: 'Execution Worker', message: 'Inspect Forward Pilot Status for the separately approved pilot. Restored execution records cannot run automatically.',
-      result: { type: 'group' as const, value: Object.entries(report).map(([name, value]) => ({ name, description: null,
+    return { version: '1' as const, title: 'Execution Worker', message: 'The worker services approved swaps in both directions. Use the corresponding swap history for outcomes. Restored authority remains blocked.',
+      result: { type: 'group' as const, value: Object.entries({worker_fresh: report.worker_fresh === true, restore_barrier_present: report.restored_block === true, backup_paused: report.backup_paused === true, saved_records: Array.isArray(report.jobs) ? report.jobs.length : 'Unknown', records_needing_attention: Array.isArray(report.jobs) ? report.jobs.filter((j: any) => ['unreadable','launch_uncertain','pending_recovery'].includes(j?.outcome)).length : 'Unknown'}).map(([name, value]) => ({ name, description: null,
         type: 'single' as const, value: typeof value === 'object' ? JSON.stringify(value) : String(value), masked: false, copyable: false, qr: false })) } }
   }))
-export const actions = sdk.Actions.of().addAction(newReverseSwap).addAction(confirmReverseSwap).addAction(reverseSwapStatus).addAction(pairReverseGrants).addAction(cancelReverseDraft).addAction(newForwardSwap).addAction(confirmForwardSwap).addAction(repeatSwapStatus).addAction(pairSwapGrants).addAction(cancelSwapDraft).addAction(saveSwapInspection).addAction(findSwapChannels).addAction(prepareSwap).addAction(pair).addAction(status).addAction(workerStatus).addAction(recoveryStatus).addAction(confirmRecovery).addAction(recoverOnce).addAction(quoteStatus).addAction(reviewQuote).addAction(prepareQuote).addAction(approveQuote).addAction(prepareReverseQuote).addAction(liveReadiness).addAction(pairBtcGate).addAction(pairXbtGate).addAction(livePolicy).addAction(inspectForward).addAction(inspectReverse).addAction(prepareForwardPilot).addAction(approveForwardPilot).addAction(forwardPilotStatus)
+export const actions = sdk.Actions.of().addAction(swapStatus).addAction(newReverseSwap).addAction(confirmReverseSwap).addAction(reverseSwapStatus).addAction(pairReverseGrants).addAction(cancelReverseDraft).addAction(newForwardSwap).addAction(confirmForwardSwap).addAction(repeatSwapStatus).addAction(pairSwapGrants).addAction(cancelSwapDraft).addAction(saveSwapInspection).addAction(findSwapChannels).addAction(prepareSwap).addAction(pair).addAction(status).addAction(workerStatus).addAction(recoveryStatus).addAction(confirmRecovery).addAction(recoverOnce).addAction(quoteStatus).addAction(reviewQuote).addAction(prepareQuote).addAction(approveQuote).addAction(prepareReverseQuote).addAction(liveReadiness).addAction(pairBtcGate).addAction(pairXbtGate).addAction(livePolicy).addAction(inspectForward).addAction(inspectReverse).addAction(prepareForwardPilot).addAction(approveForwardPilot).addAction(forwardPilotStatus)

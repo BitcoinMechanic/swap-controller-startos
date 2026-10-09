@@ -18,6 +18,7 @@ module.exports = async function () {
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
   vm.runInNewContext(code, { exports: {}, require: name => {
     if (name === '../sdk') return { sdk }
+    if (name === './legacy') return { legacyVisibility: async () => 'enabled' }
     if (name === '../utils') return { mounts: {}, rootDir: '/data' }
     throw new Error('Unexpected module')
   } })
@@ -38,7 +39,7 @@ module.exports = async function () {
   const input = { job: 'swap', xbtInvoice: 'PRIVATE-INVOICE', btcSats: 100000, expectedDigest: 'a'.repeat(64), confirmed: true }
   for (const [index, id] of ids.entries()) {
     const action = registered[id]
-    assert.equal((await action.meta()).group, 'Quotes')
+    assert.equal((await action.meta()).group, 'Advanced / Legacy')
     assert.equal(await action.prefill(), undefined)
     const report = await action.handler({ effects: {}, input })
     assert.equal(JSON.stringify(report).includes('PRIVATE'), false)

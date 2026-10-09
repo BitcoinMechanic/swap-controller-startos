@@ -1,3 +1,4 @@
+import { legacyVisibility } from './legacy'
 import { T } from '@start9labs/start-sdk'
 import { sdk } from '../sdk'
 import { mounts, rootDir } from '../utils'
@@ -7,7 +8,7 @@ const text = (name: string, masked = false) => sdk.Value.text({
 })
 const meta = (name: string, description: string) => async () => ({
   name, description, warning: null, allowedStatuses: 'only-running' as const,
-  group: 'Quotes', visibility: 'enabled' as const,
+  group: 'Advanced / Legacy', visibility: name.includes('(Regtest)') ? 'hidden' as const : await legacyVisibility('jobs'),
 })
 const labels: Record<string, string> = {
   job: 'Quote ID', phase: 'Saved state', direction: 'Direction',
@@ -31,7 +32,7 @@ async function invoke(effects: T.Effects, mode: 'status' | 'review' | 'prepare' 
     try { report = JSON.parse(String(res.stdout)) }
     catch { throw new Error('Quote action interrupted. Check Quote Status before repeating.') }
     if (res.exitCode !== 0) {
-      if (report.reason === 'regtest_only') throw new Error('Quote preparation and approval are regtest-only in this release. Live swap execution is disabled.')
+      if (report.reason === 'regtest_only') throw new Error('Quote preparation and approval are regtest-only in this release. Use the New Swap actions for live swaps.')
       throw new Error('Quote action blocked. Check Quote Status and retain the saved quote; private details withheld.')
     }
     return {
@@ -39,8 +40,8 @@ async function invoke(effects: T.Effects, mode: 'status' | 'review' | 'prepare' 
       message: mode === 'approve'
         ? 'Disposable regtest only. Pay the returned invoice before expiry. The worker sends the reviewed recipient amount after the matching incoming payment is committed. Payer routing fees are additional.'
         : mode === 'prepare' || mode === 'prepare-reverse' || mode === 'review'
-          ? 'Review the recipient, amounts and expiry. Preparation does not register a quote or start a payment. Approval authorizes this exact swap when the matching incoming payment arrives. Live execution is disabled.'
-          : 'Local saved status only; no coordinator RPC. Live swaps are disabled. A recorded incoming release is not independent proof of payer settlement.',
+          ? 'Review the recipient, amounts and expiry. Preparation does not register a quote or start a payment. Approval authorizes this exact swap when the matching incoming payment arrives. This action belongs to the legacy regtest flow.'
+          : 'Local saved status only; no coordinator RPC. These are legacy regtest records; current swaps have separate directional histories. A recorded incoming release is not independent proof of payer settlement.',
       result: { type: 'group' as const, value: Object.entries(report).filter(([key]) => key in labels).map(([key, value]) => ({
         name: labels[key], description: null, type: 'single' as const,
         value: typeof value === 'object' ? JSON.stringify(value) : String(value),
@@ -51,11 +52,11 @@ async function invoke(effects: T.Effects, mode: 'status' | 'review' | 'prepare' 
   })
 }
 export const quoteStatus = sdk.Action.withInput('quote-status',
-  meta('Quote Status', 'Inspect saved quote summaries locally, without contacting coordinators or starting payments.'),
+  meta('Legacy Quote Status', 'Inspect saved quote summaries locally, without contacting coordinators or starting payments.'),
   sdk.InputSpec.of({}), async () => {}, async ({ effects }) => invoke(effects, 'status', {}))
 
 export const reviewQuote = sdk.Action.withInput('review-swap-quote',
-  meta('Review Saved Quote', 'Read one saved quote and its review code. Does not publish an invoice or authorize spending.'),
+  meta('Review Legacy Quote', 'Read one saved quote and its review code. Does not publish an invoice or authorize spending.'),
   sdk.InputSpec.of({ job: text('Quote ID') }), async () => {},
   async ({ effects, input }) => invoke(effects, 'review', input))
 

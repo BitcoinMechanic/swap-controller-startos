@@ -1,17 +1,18 @@
+import { legacyVisibility } from './legacy'
 import { sdk } from '../sdk'
 import { mounts, rootDir } from '../utils'
 const text = (name: string, masked = false) => sdk.Value.text({ name, masked, required: true, default: null, placeholder: null })
 const meta = (name: string) => async () => ({
-  name, group: 'Forward Pilot',
+  name, group: 'Advanced / Legacy',
   description: 'One direct 1,000 BTC sat to 2,000 XBT sat pilot. Explicit approval is required before publishing its BTC invoice.',
   warning: 'This is a fixed-price pilot. Deadline recovery can force-close the selected BTC channel and incur on-chain fees. Keep both coordinators and the controller running.',
-  allowedStatuses: 'only-running' as const, visibility: 'enabled' as const,
+  allowedStatuses: 'only-running' as const, visibility: name === 'Prepare Forward Pilot' ? 'hidden' as const : await legacyVisibility('pilot'),
 })
 export async function invoke(effects: any, mode: string, input: object = {}, script = "/app/forward_pilot.py") {
   return sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'forward-pilot', async sub => {
     const res = await sub.exec(['python3', script, rootDir, mode], { input: JSON.stringify(input) })
     let report: any
-    try { report = JSON.parse(String(res.stdout)) } catch { throw new Error('Pilot operation interrupted. Inspect Forward Pilot Status; do not repeat a payment.') }
+    try { report = JSON.parse(String(res.stdout)) } catch { throw new Error('Pilot operation interrupted. Inspect Legacy Pilot Status; do not repeat a payment.') }
     if (res.exitCode !== 0) {
       const reason = typeof report?.reason === 'string' && /^[a-z_]{1,80}$/.test(report.reason)
         ? report.reason : 'pilot_refused_or_uncertain'
@@ -23,7 +24,7 @@ export async function invoke(effects: any, mode: string, input: object = {}, scr
     return { version: '1' as const, title: 'Forward Pilot',
       message: mode === 'prepare'
         ? 'Review the fixed amounts and channels in this contract. Authorize the same contract on both coordinators, then approve its pilot ID here with the returned credentials. Preparation does not publish an invoice.'
-        : report.phase === 'settled' ? 'Swap complete. The XBT recipient was paid and both channels have cleared their HTLCs. Keep this settlement record. Repeat swaps are not enabled in this version.' : 'Pay only the BTC invoice shown for this approved pilot. Status “settled” requires the original outgoing payment to complete and both channel HTLC sets to clear. “onchain_recovery” is not a verified claim or sweep.',
+        : report.phase === 'settled' ? 'Swap complete. The XBT recipient was paid and both channels have cleared their HTLCs. Keep this settlement record. Use New BTC to XBT Swap for additional swaps.' : 'Pay only the BTC invoice shown for this approved pilot. Status “settled” requires the original outgoing payment to complete and both channel HTLC sets to clear. “onchain_recovery” is not a verified claim or sweep.',
       result: { type: 'group' as const, value: Object.entries(report).filter(([key]) => permitted.includes(key)).map(([key,value]) => ({
         name: labels[key] || key, description: null, type: 'single' as const,
         value: key === 'phase' ? (stages[String(value)] || 'Needs inspection') : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : typeof value === 'object' ? JSON.stringify(value) : String(value),
@@ -41,5 +42,5 @@ export const approveForwardPilot = sdk.Action.withInput('approve-forward-pilot',
   pilotId: text('Reviewed pilot ID'), btcRune: text('BTC forward pilot credential',true), xbtRune: text('XBT forward pilot credential',true),
   confirmed: sdk.Value.toggle({ name: 'Approve this exact 1,000 BTC sat to 2,000 XBT sat swap and its deadline protection', default: false }),
 }), async () => {}, async ({effects,input}) => invoke(effects,'approve',input))
-export const forwardPilotStatus = sdk.Action.withInput('forward-pilot-status', meta('First Pilot Status'), sdk.InputSpec.of({}),
+export const forwardPilotStatus = sdk.Action.withInput('forward-pilot-status', meta('Legacy Pilot Status'), sdk.InputSpec.of({}),
   async () => {}, async ({effects}) => invoke(effects,'status'))

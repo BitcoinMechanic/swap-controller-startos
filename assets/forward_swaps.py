@@ -253,5 +253,6 @@ if __name__=='__main__':
               'inspection_setup_required','inspection_setup_changed_pair_again','recipient_invoice_needs_33_minutes',
               'backup_in_progress','restored_pilot_authority_blocked','confirmed_reserve_insufficient',
               'invalid_recipient_invoice','selected_channel_unavailable'}
+        safe.update(['admission_expired', 'explicit_approval_required', 'pair_nodes_first', 'recipient_invoice_expiring', 'reserve_unavailable', 'session_identity_changed', 'session_rpc_refused_or_uncertain', 'worker_heartbeat_required'])
         reason=str(error) if isinstance(error,ValueError) and str(error) in safe else 'repeat_swap_refused_or_uncertain'
         print(json.dumps(dict(reason=reason)));raise SystemExit(1) from None

@@ -38,3 +38,5 @@
 !assets/reverse_contract.py
 !assets/reverse_pilot.py
 !assets/reverse_swaps.py
+
+!assets/swap_status.py
