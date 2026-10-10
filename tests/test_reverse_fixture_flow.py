@@ -73,7 +73,9 @@ def subprocess_entry(mode,args):
         adapt_backend()
         if mode=='--enable':
             from reverse_regtest_node import FixtureSession
-            print(json.dumps(FixtureSession(Path(args[0]),args[1]).enable('',2,True,routed_grant=True,max_delay=288)))
+            from market_fixture import LIMITS
+            limits=LIMITS if os.environ.get('MARKET_FIXTURE')=='1' else None
+            print(json.dumps(FixtureSession(Path(args[0]),args[1]).enable('',2,True,routed_grant=True,max_delay=288,market_limits=limits)))
         else:
             import runpy
             sys.argv=[str(REMOTE/'reverse_regtest_node.py'),*args,'plugin']
@@ -140,7 +142,8 @@ class SimulatedCLN(PublicPrefixRPC):
         if method == 'signinvoice':
             from swap_invoice import CHARSET
             value = params['invstring']; hrp, encoded = value.rsplit('1',1)
-            assert hrp == 'lnxbtrt30000000p', hrp
+            amount=self.last['xbt_amount_msat']
+            assert hrp == ('lnxbtrt1m' if amount==100000000 else 'lnxbtrt'+str(amount*10)+'p'), hrp
             words = [CHARSET.index(c) for c in encoded][7:-110]; tags = {}
             while words:
                 letter=CHARSET[words[0]]; size=words[1]*32+words[2]
@@ -155,7 +158,7 @@ class SimulatedCLN(PublicPrefixRPC):
             assert tags['r'], 'actual incoming encoder must include route hints'
             self.signed[value] = dict(valid=True,currency='xbtrt',payee=self.id,
                 payment_hash=self.last['payment_hash'],payment_secret=self.last['payment_secret'],
-                amount_msat=3000000,min_final_cltv_expiry=integer(tags['c'][0]))
+                amount_msat=amount,min_final_cltv_expiry=integer(tags['c'][0]))
             return {'bolt11':value}  # Signature verification belongs to funded CLN tests.
         if method in ('reverse-release','reverse-fail'):raise AssertionError('unreachable')
         result = super().__call__(method,**params)
@@ -168,6 +171,7 @@ class SimulatedCLN(PublicPrefixRPC):
 
 
 class FlowTests(unittest.TestCase):
+    market=False
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(prefix='fixture-flow-');self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name);self.old_umask=os.umask(0o077);self.addCleanup(os.umask,self.old_umask)
@@ -177,6 +181,9 @@ class FlowTests(unittest.TestCase):
                ROOT.parent/'xbt-cln-startos/assets/xbt',PINNED]
         self.env=dict(os.environ,BTC_XBT_DISPOSABLE_CONTAINER='1',PYTHONDONTWRITEBYTECODE='1',
                       PYTHONPATH=os.pathsep.join(map(str,paths)),PILOT_SCENARIO='reverse-routed-normal')
+        if self.market:
+            self.env['MARKET_FIXTURE']='1'
+            save(self.control/'market-fixture.json',{'enabled':True})
         self.plugins={};self.errors=[];self.seen=set();self.commands=[]
         self.transport_dir=self.root/'transport';self.transport_dir.mkdir();self.env['FIXTURE_TRANSPORT']=str(self.transport_dir)
         self.transport_stop=threading.Event();self.transport_threads=[]
@@ -282,12 +289,17 @@ class FlowTests(unittest.TestCase):
             self.assertEqual(prepared['max_delay_blocks'],288);self.assertEqual(prepared['route_delay_blocks'],200)
             approved=self.step('reverse-approve',dict(pilotId=swap,confirmed=True));self.assertEqual(approved['phase'],'waiting_for_xbt')
             term=self.gate.call('reverse-status',{'payment_hash':h})['terms'];expiry=1000+term['min_cltv_delta']+24
+            amount=term['xbt_amount_msat']
+            if self.market:
+                self.assertNotEqual(amount,3000000)
+                self.assertEqual(term['contract']['pricing']['markup_bps'],0)
+                self.assertEqual(term['contract']['pricing']['pair'],'BTCB2_BTC')
             hook=dict(htlc=dict(short_channel_id=self.rpc['xbt'].ch['short_channel_id'],id=index+1,payment_hash=h,
-                amount_msat=3000000,cltv_expiry=expiry,cltv_expiry_relative=expiry-1000),
-                onion=dict(type='tlv',payment_secret=term['payment_secret'],forward_msat=3000000,total_msat=3000000,outgoing_cltv_value=expiry))
+                amount_msat=amount,cltv_expiry=expiry,cltv_expiry_relative=expiry-1000),
+                onion=dict(type='tlv',payment_secret=term['payment_secret'],forward_msat=amount,total_msat=amount,outgoing_cltv_value=expiry))
             self.gate.call('htlc_accepted',hook,wait=False)
             self.assertEqual(self.gate.call('reverse-status',{'payment_hash':h})['phase'],'held')
-            self.rpc['xbt'].ch['htlcs']=[dict(id=index+1,direction='in',payment_hash=h,amount_msat=3000000,expiry=expiry,state='RCVD_ADD_ACK_REVOCATION',local_trimmed=False)]
+            self.rpc['xbt'].ch['htlcs']=[dict(id=index+1,direction='in',payment_hash=h,amount_msat=amount,expiry=expiry,state='RCVD_ADD_ACK_REVOCATION',local_trimmed=False)]
             self.step('reverse-worker');self.step('reverse-worker')
             record=self.control/'execution/reverse-swaps'/swap/'record.json';before=private_load(record)
             self.assertEqual(before['phase'],'send_intent');self.assertIn('outgoing_htlc',before)
@@ -317,6 +329,10 @@ class FlowTests(unittest.TestCase):
     def test_lost_reply(self):self.flow('lost-reply')
     def test_failure(self):self.flow('failure')
     def test_restart(self):self.flow('restart')
+
+
+class MarketFlowTests(FlowTests):
+    market=True
 
 
 class AdmissionTests(unittest.TestCase):

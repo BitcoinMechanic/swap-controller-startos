@@ -141,7 +141,14 @@ class LifecycleTests(unittest.TestCase):
             try:
                 limit=time.monotonic()+3
                 while not (self.root/'heartbeat.json').exists() and time.monotonic()<limit:time.sleep(.02)
-                self.assertIsNone(proc.poll());self.assertEqual(l.snapshot(self.root)['worker_mode'],'restored')
+                # The heartbeat is saved while the worker still owns its lock.
+                # Wait for that short critical section, not just file creation.
+                while True:
+                    try:observed=l.snapshot(self.root);break
+                    except BlockingIOError:
+                        if time.monotonic()>=limit:raise
+                        time.sleep(.02)
+                self.assertIsNone(proc.poll());self.assertEqual(observed['worker_mode'],'restored')
             finally:proc.terminate();proc.communicate(timeout=3)
             (self.root/'heartbeat.json').unlink()
 

@@ -24,6 +24,8 @@ const reasons: Record<string, string> = {
   xbt_grant_blocked: i18n('XBT grant needs attention; see its details below.'),
   btc_grant_unavailable: i18n('BTC grant could not be read. Check connectivity and the saved credential.'),
   xbt_grant_unavailable: i18n('XBT grant could not be read. Check connectivity and the saved credential.'),
+  market_grant_mismatch: i18n('Both grants must use the same pricing mode. Finish current swaps before explicitly replacing grants.'),
+  market_budget_exhausted: i18n('The market grant amount budget is exhausted. Finish current swaps before explicitly renewing and pairing grants.'),
   grant_modes_differ: i18n('The paired grants use different direct/routed modes.'),
   grant_timing_limits_differ: i18n('The paired grants have different route timing limits.'),
   configuration_changed: i18n('Setup changed or the observations took too long. Run Swap Status again.'),
@@ -73,6 +75,13 @@ export const swapStatus = sdk.Action.withInput('swap-status', async () => ({
         add(prefix + ' — ' + i18n('Routing fee cap'), number(grant.max_fee_msat) + ' ' + asset + ' msat')
         add(prefix + ' — ' + i18n('Route delay cap (blocks)'), number(grant.max_delay_blocks))
         add(prefix + ' — ' + i18n('Maximum hops'), number(grant.max_hops))
+        if(grant.market_priced===true) {
+          add(prefix + ' — Market pricing', 'Neoxa')
+          add(prefix + ' — Maximum BTC sats per swap', number(grant.max_btc_sats))
+          add(prefix + ' — Maximum XBT sats per swap', number(grant.max_xbt_sats))
+          add(prefix + ' — Remaining BTC budget (millisats)', number(grant.remaining_btc_msat))
+          add(prefix + ' — Remaining XBT budget (millisats)', number(grant.remaining_xbt_msat))
+        }
         if (grant.blockers?.length) add(prefix + ' — ' + i18n('Next step'), reasonText(grant.blockers))
       }
     }

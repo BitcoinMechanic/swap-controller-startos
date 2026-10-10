@@ -1,62 +1,66 @@
 # Swap Controller
 
-## Swapping with 0062
+## Market pricing (0064)
 
-After the packaging-VM script reports READY, install BTC 26.6.9:8, XBT 0.1.0:26
-and Swap Controller 0.1.0:23. Keep your saved pairing, inspection credentials and
-grants. This update does not require grant renewal or a new test payment.
-Finish any active swap before updating the installed services.
+After the packaging VM reports READY, finish any active swap and install all
+three packages: BTC 26.6.9:9, XBT 0.1.0:27 and Swap Controller 0.1.0:24.
+Existing fixed-price grants and historical records retain their original terms.
 
-In **Swap Controller → Swaps**, open **Swap Status** to check connections,
-remaining grant slots, expiry and any setup problem. It is read-only. A ready
-status means you can check an invoice; it does not guarantee a usable route.
-Then use the actions for the direction you want:
+To use Neoxa pricing for a direction, explicitly create new grants on **both**
+coordinators under **Swap Grants**. Enable **Neoxa market-priced swaps**, choose
+matching per-swap and total BTC/XBT limits, and enable **New grant** when replacing
+an existing grant. Finish all existing swaps first. Leave the channel field empty
+for the normal routed flow. Follow any requested coordinator restart, then pair
+both credentials for that direction in **Swap Controller → Swap Setup**.
+Do not delete old swap records or reuse an old grant as market authority.
 
-- **New BTC to XBT Swap** → **Confirm BTC to XBT Swap** → pay the BTC invoice.
-  Check **BTC to XBT Swap History** and the XBT recipient receipt.
-- **New XBT to BTC Swap** → **Confirm XBT to BTC Swap** → pay the XBT invoice.
-  Check **XBT to BTC Swap History** and the BTC recipient receipt.
+In **Swap Setup → Market Pricing**, operator markup defaults to **0%**. The field
+uses basis points: 0 = 0%, 100 = 1%, 500 = 5%. Changes affect new quotes only.
+The coordinator's selected outgoing routing fee is included before markup and
+whole-satoshi rounding. Fees paid by your sending wallet are additional. The
+exchange bid/ask spread still applies at 0% markup. No exchange account or
+trading credentials are needed; this does not place a trade on Neoxa.
 
-The fixed prices remain 1,000 BTC sats → 2,000 XBT sats and 3,000 XBT sats →
-1,500 BTC sats. Payer routing fees are additional. Use a fresh recipient invoice
-with at least 33 minutes remaining and final CLTV at most 40. Include private
-routing hints where needed. Review the recipient, amounts and route fee before
-confirming. Only an unapproved draft can be cancelled.
+Use a fresh recipient invoice for a whole number of sats, within the saved
+grant limits, with at least 33 minutes remaining and final CLTV at most 40.
+Include private routing hints where needed. Then:
 
-**Swap Setup** contains node pairing, inspection credentials, **Pair BTC to XBT
-Grants** and **Pair XBT to BTC Grants**. On each coordinator, **Swap Grants**
-contains **Enable BTC to XBT Grant**, **Enable XBT to BTC Grant** and each
-direction's pause control. Keep replacement off to retrieve a grant using its
-original settings. Expiry or pause stops new enrollment while already enrolled
-swaps retain recovery rights. Explicitly replace grants only after existing
-swaps finish; this update does not widen an old grant or replenish its slots.
+- **New BTC to XBT Swap** → review → **Confirm BTC to XBT Swap** → pay BTC.
+- **New XBT to BTC Swap** → review → **Confirm XBT to BTC Swap** → pay XBT.
 
-The controller normally shows 15 actions. Regtest and old pilot-creation tools
-are hidden from the menu. **Legacy Pilot Status** and its approval action appear
-if an older record exists. Legacy quote/recovery inspection appears when its
-records exist. **Advanced / Recovery → Worker Status** remains available.
-Coordinator single-pilot authorization is retained under **Advanced / Legacy**
-for an older reviewed contract. Current direct swaps still work through the
-normal swap actions and existing direct grants.
+Review both amounts, the Neoxa price, markup, route fee and expiry. A quote lasts
+**two minutes from the price fetch**, including review and payment. Confirm and
+pay before that deadline. An expired unapproved draft can be cancelled and a
+new quote requested; it is never silently repriced. No SCID entry is needed in
+the controller. One payment part and one outgoing attempt are supported.
 
-If **New BTC to XBT Swap** reports that no XBT route fits the grant, the
-limits remain 10 XBT sats in routing fees, 80 blocks total delay and four hops.
-For a recipient behind a private channel, create a fresh recipient invoice with
-private routing hints. Hints must actually be present in the invoice, and do
-not guarantee a route within those limits. No channel ID entry is needed in the
-controller. A route-planning refusal has not enrolled a swap or used a slot.
-It does not require renewing an otherwise valid grant.
+BTC → XBT uses available Neoxa asks; XBT → BTC uses bids. Quotes require enough
+ordinary order-book depth and fresh, plausible ticker data. Synthetic AMM levels
+are excluded. Stale/unavailable data or insufficient depth stops new market
+quotes; there is no fallback to the old fixed rate. This price is a reference
+for the swap, not an exchange fill guarantee or an automatically hedged trade.
 
-A grant's 24-hour expiry is independent of its remaining slots. If its enrollment
-has expired, finish active swaps, explicitly replace that direction's grants on
-both coordinators and pair the new credentials. A valid grant for the other
-direction does not need replacement. The read-only Connection Status field
-`live_payment_enabled: false` describes that connection probe, not swap authority.
+Default market limits are 10,000 BTC sats / 500,000 XBT sats per swap and
+50,000 BTC sats / 2,500,000 XBT sats over the grant. Outgoing fees count toward
+these limits. Choose smaller limits if appropriate. Approval reserves one slot
+and the quoted amounts; failed or expired approved swaps do not replenish them.
+Grant enrollment still expires after 24 hours. Pause/expiry blocks new swaps
+while preserving the recovery rights of already enrolled swaps.
 
-If an action reports an uncertain response, check Swap Status and that swap's
-history. Keep the existing record and let its worker recover the original
-attempt. Do not pay a second time because a reply was lost. On-chain recovery
-requires separate claim/sweep verification; it is not a settled result.
+**Swap Status** is read-only and shows expiry, slots, market limits and remaining
+amount budgets. It does not guarantee a route. Route limits remain four hops,
+10 sats of the outgoing asset, and 80 blocks forward / 288 blocks for new
+reverse grants. Existing direct/fixed grants keep their old caps and fixed
+1,000 BTC → 2,000 XBT or 3,000 XBT → 1,500 BTC amounts.
+
+Check the appropriate swap history and recipient receipt after paying. If a
+reply is uncertain, preserve the record and let the worker recover the original
+attempt; do not repeat the payment. Accepted payments keep their saved amounts,
+route and incoming-channel binding across restarts and price-source outages.
+On-chain recovery requires separate claim/sweep verification; it is not a
+settled result. Historical pilot tools remain hidden unless an older record
+requires inspection. **Advanced / Recovery → Worker Status** remains available.
+
 
 
 ## Pair your nodes

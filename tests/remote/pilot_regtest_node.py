@@ -14,6 +14,7 @@ sys.path.insert(0,'/usr/local/libexec/cln-swap')
 import pilot_node
 import swap_invoice
 import swap_session
+import market_terms as mt
 REAL=pilot_node.Node
 encode=swap_invoice.unsigned_invoice
 
@@ -29,7 +30,12 @@ class FixtureRPC:
     def __call__(self,method,**params):
         info=self.rpc('getinfo');assert info['network']==self.network
         if method=='xbt-register':
-            params=dict(params,quote=dict(params['quote']));assert params['quote'].pop('pilot') in ('live-pilot-v1',swap_session.PROFILE)
+            params=dict(params,quote=dict(params['quote']))
+            if params['quote'].get('pilot')==mt.GATE:
+                assert os.environ.get('MARKET_FIXTURE')=='1'
+                from market_gate import validate_terms
+                validate_terms(params['quote']);params['quote'].pop('contract')
+            assert params['quote'].pop('pilot') in ('live-pilot-v1',swap_session.PROFILE,mt.GATE)
         result=self.rpc(method,**params)
         if method=='getinfo':result=dict(result,network='bitcoin' if self.role=='btc' else 'xbt')
         if method=='decode':
@@ -38,6 +44,8 @@ class FixtureRPC:
         if method=='xbt-pilot-info':
             assert result['profile']=='regtest';result=dict(result,profile=swap_session.PROFILE if os.environ.get('PILOT_SCENARIO','').startswith('repeat-') else 'live-pilot-v1')
         if method=='xbt-spend-info':result=dict(result,pilot=swap_session.PROFILE if os.environ.get('PILOT_SCENARIO','').startswith('repeat-') else 'live-pilot-v1')
+        if method in ('xbt-pilot-info','xbt-spend-info') and os.environ.get('MARKET_FIXTURE')=='1':
+            result=dict(result,**{'profile' if method=='xbt-pilot-info' else 'pilot':mt.GATE})
         if method=='close':pilot_node.save(self.root/'fixture-close.json',result)
         if os.environ.get('PILOT_SCENARIO') in ('lost-reply','repeat-lost-reply','repeat-routed-lost-reply') and method in ('sendpay','xbt-release-bound'):
             raise ValueError('fixture_discarded_mutation_reply')

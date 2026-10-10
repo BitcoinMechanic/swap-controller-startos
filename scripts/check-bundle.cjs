@@ -3,16 +3,16 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
-for (const name of ['swap_status.py','reverse_contract.py','reverse_pilot.py','reverse_swaps.py','forward_swaps.py','swap_setup.py','forward_pilot.py','pilot_contract.py','recovery.py','recovery_inspection.py','recovery_workflow.py','recovery_actions.py','quote_workflow.py','quote_actions.py', 'reverse_quote_workflow.py','readiness.py','gate_observation.py','live_policy.py','quote_policy.py','live_preflight.py','preflight_actions.py','regtest_supervisor.py','protection_credentials.py','deadline_boundary.py','deadline_recovery.py','claim_verification.py']) {
+for (const name of ['market_terms.py','market_pricing.py','swap_status.py','reverse_contract.py','reverse_pilot.py','reverse_swaps.py','forward_swaps.py','swap_setup.py','forward_pilot.py','pilot_contract.py','recovery.py','recovery_inspection.py','recovery_workflow.py','recovery_actions.py','quote_workflow.py','quote_actions.py', 'reverse_quote_workflow.py','readiness.py','gate_observation.py','live_policy.py','quote_policy.py','live_preflight.py','preflight_actions.py','regtest_supervisor.py','protection_credentials.py','deadline_boundary.py','deadline_recovery.py','claim_verification.py']) {
  assert.ok(fs.readFileSync('Dockerfile','utf8').includes('assets/'+name))
  assert.ok(fs.readFileSync('.dockerignore','utf8').includes('!assets/'+name))
 }
 const { manifest, actions } = require('../javascript/index.js')
 assert.equal(manifest.id, 'swap-controller')
-assert.equal(manifest.version, '0.1.0:23')
+assert.equal(manifest.version, '0.1.0:24')
 assert.deepEqual(Object.keys(manifest.images), ['controller'])
 assert.deepEqual(manifest.volumes, ['main'])
-assert.deepEqual(Object.keys(actions.actions), ['swap-status','new-reverse-swap','confirm-reverse-swap','reverse-swap-status','pair-reverse-grants','cancel-reverse-draft','new-forward-swap', 'confirm-forward-swap', 'repeat-swap-status', 'pair-swap-grants', 'cancel-swap-draft', 'save-swap-inspection', 'find-swap-channels', 'prepare-forward-swap', 'pair-nodes', 'connection-status', 'worker-status', 'recovery-status', 'confirm-recovery-revocation', 'recover-existing-swap', 'quote-status', 'review-swap-quote', 'prepare-swap-quote', 'approve-swap-quote', 'prepare-reverse-swap-quote', 'live-readiness', 'pair-btc-gate-observation', 'pair-xbt-gate-observation', 'review-live-policy', 'inspect-live-forward', 'inspect-live-reverse', 'prepare-forward-pilot', 'approve-forward-pilot', 'forward-pilot-status'])
+assert.deepEqual(Object.keys(actions.actions), ['market-pricing','swap-status','new-reverse-swap','confirm-reverse-swap','reverse-swap-status','pair-reverse-grants','cancel-reverse-draft','new-forward-swap', 'confirm-forward-swap', 'repeat-swap-status', 'pair-swap-grants', 'cancel-swap-draft', 'save-swap-inspection', 'find-swap-channels', 'prepare-forward-swap', 'pair-nodes', 'connection-status', 'worker-status', 'recovery-status', 'confirm-recovery-revocation', 'recover-existing-swap', 'quote-status', 'review-swap-quote', 'prepare-swap-quote', 'approve-swap-quote', 'prepare-reverse-swap-quote', 'live-readiness', 'pair-btc-gate-observation', 'pair-xbt-gate-observation', 'review-live-policy', 'inspect-live-forward', 'inspect-live-reverse', 'prepare-forward-pilot', 'approve-forward-pilot', 'forward-pilot-status'])
 assert.equal(manifest.images.controller.source.dockerBuild.dockerfile, 'Dockerfile')
 const { Daemons } = require(path.join(path.dirname(require.resolve('@start9labs/start-sdk')), 'mainFn/Daemons.js'))
 function load(file, modules) {

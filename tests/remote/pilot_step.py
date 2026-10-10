@@ -21,6 +21,12 @@ def run(stage,root=Path('/controller-state')):
     assert os.environ.get('BTC_XBT_DISPOSABLE_CONTAINER')=='1'
     if stage not in PILOT_STAGES:raise ValueError('invalid_pilot_stage')
     request=private_load(root/'quote-input.json')
+    if (root/'market-fixture.json').exists():
+        assert private_load(root/'market-fixture.json')=={'enabled':True}
+        import market_pricing
+        from market_fixture import read
+        original_make=market_pricing.make
+        market_pricing.make=lambda root,direction,route:original_make(root,direction,route,reader=read)
     if stage.startswith(('repeat-','reverse-')):
         if stage.startswith('reverse-'):
             import reverse_swaps as swaps

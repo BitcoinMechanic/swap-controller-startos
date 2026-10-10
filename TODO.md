@@ -1,3 +1,14 @@
+# Neoxa pricing candidate (0064)
+
+- [x] Add explicit bounded market grants in both directions; preserve old authority.
+- [x] Use Neoxa BTCB2_BTC ordinary depth with 0% default configurable markup.
+- [x] Freeze source data, quote amounts, route and expiry in the reviewed contract.
+- [x] Verify price arithmetic, budget isolation, gate journals and saved recovery locally.
+- [ ] Run all sixteen original/market funded regtest scenarios on the packaging VM.
+- [ ] Install the three candidates after READY; explicitly opt into new grants.
+- [ ] Verify one small market swap in each direction and both recipient receipts.
+- [ ] Export checkpoint to the tower; commit/push there; stash and sync the VM.
+
 # Current bidirectional checkpoint
 
 - [x] User reported routed live BTC → XBT settlement: 2,000,000 msat received,

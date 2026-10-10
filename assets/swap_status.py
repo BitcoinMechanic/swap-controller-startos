@@ -9,6 +9,7 @@ import controller
 import forward_swaps
 import reverse_swaps
 import swap_setup
+import market_terms as mt
 from reverse_contract import GRANT_LIMITS
 
 
@@ -33,7 +34,18 @@ def grant_row(row, node, token, role, reverse):
             and row.get('max_delay_blocks', cap) == cap, 'invalid_grant_status')
     else:
         cap = 80 if routed else 40
-    return dict(state='available', **{k: row[k] for k in ('remaining', 'expires_at', 'paused', 'current', 'gate_ready')},
+    extra={}
+    if row.get('market_limits') is not None:
+        caps=mt.limits(row['market_limits']);reserved=row.get('market_reserved',{})
+        controller.require(type(reserved) is dict and len(reserved)<=10,'invalid_grant_status')
+        controller.require(all(type(v) is dict and set(v)=={'btc','xbt'} and all(whole(v[k],maximum=mt.CAPS[k]) for k in v) for v in reserved.values()),'invalid_grant_status')
+        extra['market_priced']=True
+        for k in ('btc','xbt'):
+            remaining=caps['total_'+k+'_msat']-sum(v[k] for v in reserved.values())
+            controller.require(remaining>=0,'invalid_grant_status')
+            extra['max_'+k+'_sats']=caps['max_'+k+'_msat']//1000
+            extra['remaining_'+k+'_msat']=remaining
+    return dict(state='available',**extra, **{k: row[k] for k in ('remaining', 'expires_at', 'paused', 'current', 'gate_ready')},
                 routed=routed, max_delay_blocks=cap, max_hops=4 if routed else 1,
                 max_fee_msat=10000 if routed else 0)
 
@@ -119,6 +131,7 @@ def summary(root, *, factories=None, now=None):
                 if clean['paused']: reasons.append('grant_paused')
                 if not clean['gate_ready']: reasons.append('gate_not_ready')
                 if clean['remaining'] == 0: reasons.append('grant_exhausted')
+                if clean.get('market_priced') and any(clean['remaining_'+k+'_msat']<1000 for k in ('btc','xbt')): reasons.append('market_budget_exhausted')
                 if clean['expires_at'] <= now: reasons.append('grant_expired')
                 clean['blockers'] = reasons
                 if reasons: direction['blockers'].append(role+'_grant_blocked')
@@ -127,6 +140,7 @@ def summary(root, *, factories=None, now=None):
                 direction['blockers'].append(role+'_grant_unavailable')
         rows = list(direction['nodes'].values())
         if all(r['state']=='available' for r in rows):
+            if rows[0].get('market_priced',False) != rows[1].get('market_priced',False): direction['blockers'].append('market_grant_mismatch')
             if rows[0]['routed'] != rows[1]['routed']: direction['blockers'].append('grant_modes_differ')
             if rows[0]['max_delay_blocks'] != rows[1]['max_delay_blocks']: direction['blockers'].append('grant_timing_limits_differ')
         # Re-check the saved credential pair as well as the coordinator pairing.

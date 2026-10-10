@@ -92,6 +92,13 @@ class StatusTests(unittest.TestCase):
         result=self.report()['directions']
         self.assertIn('grant_modes_differ',result['forward']['blockers'])
         self.assertIn('grant_timing_limits_differ',result['reverse']['blockers'])
+    def test_market_budget_and_mode_are_reported_without_private_ids(self):
+        limits=dict(max_btc_msat=1000000,max_xbt_msat=2000000,total_btc_msat=1000000,total_xbt_msat=2000000)
+        self.rows['forward']['btc'].update(market_limits=limits,market_reserved={'PRIVATE_ID':{'btc':1000000,'xbt':2000000}})
+        report=self.report()['directions']['forward']
+        self.assertIn('market_grant_mismatch',report['blockers'])
+        self.assertIn('market_budget_exhausted',report['nodes']['btc']['blockers'])
+        self.assertEqual(report['nodes']['btc']['remaining_btc_msat'],0)
     def test_missing_setup_and_old_pairing_do_not_contact_grants(self):
         for module in (forward,reverse):(self.root/module.FILE).unlink()
         self.assertTrue(all('grants_not_paired' in r['blockers'] for r in self.report()['directions'].values()))

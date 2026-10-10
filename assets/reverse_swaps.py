@@ -1,3 +1,4 @@
+import market_terms as mt
 """Repeat reverse swaps with a bounded grant and exact per-swap confirmation."""
 import json
 import os
@@ -23,7 +24,7 @@ class SessionRemote:
                 and type(token['rune']) is str and 0<len(token['rune'])<=16384,'invalid_session_credential')
         self.session_id=token['session_id'];self.client=Client(node['url'],token['rune'],ca_data=node['ca_pem'])
     def request(self,operation,contract='',pilot_id='',preimage=''):
-        require(operation in ('info','plan','enroll','observe','publish','send','close','release','fail','retire'),'operation_refused')
+        require(operation in ('info','plan','enroll','expire','observe','publish','send','close','release','fail','retire'),'operation_refused')
         body=dict(session_id=self.session_id,operation=operation,contract=contract,pilot_id=pilot_id,preimage=preimage)
         req=urllib.request.Request(self.client.url+'/v1/swap-reverse-call',data=json.dumps(body).encode(),
                                   headers={'Content-Type':'application/json','Rune':self.client.rune},method='POST')
@@ -92,6 +93,8 @@ def info(root,saved,config,*,factory=SessionRemote):
             and all(saved.get(k)==v for k,v in swap_setup.binding(root,config).items()),'repeat_pairing_changed')
     require(result['xbt'].get('routed',False)==result['btc'].get('routed',False),'grant_modes_differ')
     require(result['xbt']['max_delay_blocks']==result['btc']['max_delay_blocks'],'grant_timing_limits_differ')
+    require(result['btc'].get('market_limits')==result['xbt'].get('market_limits'),'market_grant_mismatch')
+    if result['btc'].get('market_limits') is not None:mt.limits(result['btc']['market_limits'])
     return result
 
 
@@ -128,9 +131,17 @@ def prepare(root,request,*,factory=SessionRemote,inspector=swap_setup.Inspector)
             return bound_inspector(node,rune)
         # Select a ready admission channel; the paid HTLC may use any immutable
         # XBT grant pin and is bound durably when it actually arrives.
+        pricing=None
+        if observed['btc'].get('market_limits') is not None:
+            from market_pricing import make
+            pricing=make(root,'reverse',planned['route'])
+            draft=dict(profile=mt.REVERSE if True else mt.FORWARD,pricing=pricing,route=planned['route'])
+            for row in observed.values():
+                authority=dict(market_limits=row['market_limits'],market_reserved=dict(row.get('market_reserved',{})))
+                mt.grant_check(authority,draft);mt.reserve(authority,draft,'preflight')
         incoming=observed['xbt']['channels']
         failures={}
-        eligible=swap_setup.candidates(routed_inspector(config['nodes']['xbt'],setup['credentials']['xbt']),3000000,True,failures=failures)
+        eligible=swap_setup.candidates(routed_inspector(config['nodes']['xbt'],setup['credentials']['xbt']),pricing['xbt_msat'] if pricing is not None else 3000000,True,failures=failures)
         ready=[p for p in incoming if p['short_channel_id'] in eligible]
         if not ready:
             require(not eligible,'incoming_channel_outside_grant')
@@ -142,18 +153,18 @@ def prepare(root,request,*,factory=SessionRemote,inspector=swap_setup.Inspector)
         result=pilot.prepare(root,dict(invoice=request['invoice'],incomingChannel=ready[0]['short_channel_id'],
             outgoingChannel=planned['channel']['short_channel_id'],xbtRune=setup['credentials']['xbt'],btcRune=setup['credentials']['btc']),
             factory=routed_inspector,repeat=True,routing=dict(route=planned['route'],incoming_channels=incoming,
-                max_delay_blocks=observed['btc']['max_delay_blocks']))
+                max_delay_blocks=observed['btc']['max_delay_blocks']),pricing=pricing)
     else: raise ValueError('routed_reverse_required')
     return review(root,result['pilot_id'])
 
 
 def review(root,swap_id):
     r,_=pilot.record(root,swap_id)
-    return pilot.report(r) | dict(routed=routed(r['contract']),routing_fee_msat=sent_amount(r['contract'])-1500000,
+    return pilot.report(r) | dict(routed=routed(r['contract']),routing_fee_msat=sent_amount(r['contract'])-mt.amounts(r['contract'])['btc'],
         max_delay_blocks=route_limit(r['contract']),route_delay_blocks=r['contract']['route'][0]['delay'],
         approval_required=r['phase']=='review',recipient=r['contract']['recipient'],
         incoming_channel='Detected when payment arrives' if routed(r['contract']) else r['contract']['channels']['xbt']['short_channel_id'],
-        outgoing_channel=r['contract']['channels']['btc']['short_channel_id'],admission_until=r['contract']['admission_until'])
+        outgoing_channel=r['contract']['channels']['btc']['short_channel_id'],admission_until=r['contract'].get('pricing',{}).get('expires_at',r['contract']['admission_until']))
 
 
 def pending(root):
@@ -173,6 +184,7 @@ def approve(root,request,*,factory=SessionRemote):
     swap_id=request['pilotId'];r,config=pilot.record(root,swap_id);pilot.allowed(root,r)
     require(pending(root)==swap_id,'review_changed')
     if r['phase']=='review':
+        mt.live(r['contract'],int(time.time()))
         saved,config=credentials(root);observed=info(root,saved,config,factory=factory)
         if routed(r['contract']):
             require(all(route_limit(r['contract'])<=observed[k]['max_delay_blocks'] for k in ('xbt','btc')),
@@ -226,13 +238,30 @@ def retire_unpaid(root,swap_id,*,factory=SessionRemote):
         return True
 
 
+def retire_expired_preparation(root,swap_id,*,factory=SessionRemote):
+    with lifecycle.locked(root/'execution'):
+        r,config=pilot.record(root,swap_id);pilot.allowed(root,r);c=r['contract']
+        if not mt.market(c) or r['phase'] not in ('authorizing','publishing','expiring_preparation'):return False
+        if int(time.time())<c['pricing']['expires_at']:return False
+        creds=private_load(pilot.directory(root,swap_id)/'credentials.json')
+        clients={k:factory(config['nodes'][k],creds[k]) for k in ('btc','xbt')}
+        result=clients['xbt'].request('expire',contract=canonical(c),pilot_id=swap_id)
+        if result=={'accepted':True}:return False
+        require(result=={'retired':True},'retirement_unknown')
+        r['phase']='expiring_preparation';save(pilot.directory(root,swap_id)/'record.json',r)
+        require(clients['btc'].request('expire',contract=canonical(c),pilot_id=swap_id)=={'retired':True},'retirement_unknown')
+        r['phase']='expired';save(pilot.directory(root,swap_id)/'record.json',r)
+        return True
+
+
 def tick(root,*,factory=SessionRemote):
     results={}
     for path in paths(root):
         r=private_load(path/'record.json')
         if r['phase'] in (*TERMINAL,'review'):continue
         try:
-            if r['phase']=='authorizing':results[path.name]=approve(root,dict(pilotId=path.name,confirmed=True),factory=factory)
+            if retire_expired_preparation(root,path.name,factory=factory):results[path.name]=review(root,path.name)
+            elif r['phase']=='authorizing':results[path.name]=approve(root,dict(pilotId=path.name,confirmed=True),factory=factory)
             elif retire_unpaid(root,path.name,factory=factory):results[path.name]=review(root,path.name)
             else:results[path.name]=pilot.tick(root,factory=factory,swap_id=path.name)
             save(path/'attention.json',dict(needs_attention=False))
@@ -247,7 +276,7 @@ def status(root):
     for path in paths(root):
         r=private_load(path/'record.json')
         attention=private_load(path/'attention.json').get('needs_attention') is True if (path/'attention.json').exists() else False
-        rows.append(pilot.report(r) | dict(restore_blocked=r.get('restore_epoch')!=pilot.restore_epoch(root),needs_attention=attention))
+        rows.append(pilot.report(r) | dict(restore_blocked=r.get('restore_epoch')!=pilot.restore_epoch(root),needs_attention=attention or type(r.get('contract')) is not dict))
     return dict(swaps=rows)
 
 
@@ -274,5 +303,6 @@ if __name__=='__main__':
               'invalid_recipient_invoice','selected_channel_unavailable'}
         safe.update('bounded_route_unavailable_'+str(limit) for limit in GRANT_LIMITS.values())
         safe.update(['admission_expired', 'explicit_approval_required', 'pair_nodes_first', 'recipient_invoice_expiring', 'reserve_unavailable', 'session_identity_changed', 'session_rpc_refused_or_uncertain', 'worker_heartbeat_required'])
+        safe.update(mt.ERRORS)
         reason=str(error) if isinstance(error,ValueError) and str(error) in safe else 'repeat_swap_refused_or_uncertain'
         print(json.dumps(dict(reason=reason)));raise SystemExit(1) from None

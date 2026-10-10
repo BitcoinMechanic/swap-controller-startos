@@ -21,7 +21,8 @@ quote.command=command
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ('btc_image','xbt_image','controller_image'):parser.add_argument(name)
-    parser.add_argument('bitcoind',type=Path);parser.add_argument('--repeat',action='store_true');parser.add_argument('--routed',action='store_true');parser.add_argument('--reverse-routed',action='store_true');args=parser.parse_args()
+    parser.add_argument('bitcoind',type=Path);parser.add_argument('--repeat',action='store_true');parser.add_argument('--routed',action='store_true');parser.add_argument('--reverse-routed',action='store_true');parser.add_argument('--market',action='store_true');args=parser.parse_args()
+    if args.market and not args.routed and not args.reverse_routed:parser.error('--market requires a routed direction')
     if args.reverse_routed:args.routed=True
     if args.routed:args.repeat=True
     if args.repeat:quote.STAGES=(*quote.STAGES,*REPEAT_STAGES,*REVERSE_STAGES)
@@ -92,5 +93,5 @@ def main():
                 check=True)
         for scenario in (('reverse-routed-normal','reverse-routed-lost-reply','reverse-routed-failure','reverse-routed-restart') if args.reverse_routed else ('repeat-routed-normal','repeat-routed-lost-reply','repeat-routed-failure','repeat-routed-restart') if args.routed else ('repeat-normal','repeat-lost-reply','repeat-failure') if args.repeat else ('normal','lost-reply','failure','pending-close')):
             work=results/scenario;work.mkdir()
-            quote.run(repo,work,prefix,backend,btc,controller,scenario,pilot=True)
+            quote.run(repo,work,prefix,backend,btc,controller,('market-' if args.market else '')+scenario,pilot=True)
 if __name__=='__main__':main()

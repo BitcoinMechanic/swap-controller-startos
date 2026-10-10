@@ -1,5 +1,56 @@
 # Swap Controller
 
+## Neoxa market-pricing candidate (0064)
+
+Candidate versions: BTC 26.6.9:9, XBT 0.1.0:27, controller 0.1.0:24. Baseline is
+`forward-plan-errors-20261009`. Build on the packaging VM; export/commit/push on
+the tower, then stash and sync the VM. The build script runs both original
+four-case funded matrices and both new market matrices before replacing any
+installer. No 0064 funded or live result is claimed until those runs complete.
+
+New explicitly opted-in market grants authorize variable, whole-sat amounts
+within per-swap and cumulative BTC/XBT caps. Old fixed and direct authority is
+unchanged. Both coordinators must have matching market policies. Reservations
+are durable before enrollment; failed/expired swaps never refund budget. The
+hard per-swap limits remain 10,000 BTC sats / 500,000 XBT sats. Cumulative limits
+are at most ten times those caps, independently of the 1–10 slot budget.
+
+The controller fetches only verified-HTTPS public GETs:
+`https://neoxa.exchange/api/exchange/ticker/BTCB2_BTC` and
+`https://neoxa.exchange/api/exchange/orderbook/BTCB2_BTC`.
+API symbol BTCB2 is this project's XBT; prices are BTC per whole XBT.
+See `https://neoxa.exchange/api-docs`. No private invoice, amount, credentials
+or exchange orders are sent to these endpoints. Redirects, oversized responses,
+invalid numbers, duplicate keys and unexpected identities are refused.
+
+Pricing uses ordinary asks forward and bids reverse, excluding synthetic
+`isAmm` levels. Exact Fraction/Decimal arithmetic covers outgoing route fees,
+configurable 0–500 basis-point markup (default **0**) and upward whole-sat input
+rounding. Spread, book/reference gap, weighted slippage and available depth are
+bounded. Ticker age is at most 30 seconds; acquisition at most 15 seconds; a
+quote expires 120 seconds after fetching. The book provides no source timestamp
+and the two REST responses are not atomic: freshness of the book cannot be
+proved independently. This is reference pricing, with no exchange execution,
+exchange trading/withdrawal fee allowance, or automatic hedging.
+
+The contract stores the exact normalized source levels, timestamps, markup,
+computed amounts, selected route and quote expiry. Both nodes and gates validate
+it independently without fetching another price. A held payment can recover
+using the original quote after price expiry, subject to the original admission,
+recipient-invoice and HTLC timing checks. New expired admission is refused.
+Published invoice bytes, node reservations, original attempt and incoming
+funding/HTLC binding are retained; recovery never reprices or retries a payment.
+Unaccepted expired partial enrollment is retired through an exact-contract
+operation. Unknown gate outcomes remain blocked for inspection.
+
+Local checks cover arithmetic/API refusal, both state machines, actual gate
+journals, isolated fixture subprocesses, old-grant isolation, lost replies,
+restart, immutable price/markup, expiry and durable budgets. Funded fixtures
+inject public API-shaped data only through test scripts, never production
+configuration; they exercise variable amounts over real regtest channels.
+The VM must run all sixteen funded scenarios before installation.
+
+
 ## Forward error reporting checkpoint (0063)
 
 The user reported 0062 READY on 2026-10-09 (America/Vancouver): both four-case

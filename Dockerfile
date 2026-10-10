@@ -19,6 +19,7 @@ COPY assets/quote_workflow.py assets/quote_actions.py assets/reverse_quote_workf
 RUN python3 -m py_compile /app/controller.py /app/read_only_rpc.py /app/recovery.py /app/recovery_inspection.py
 CMD ["python3", "/app/controller.py", "/data", "run"]
 
+COPY assets/market_terms.py assets/market_pricing.py /app/
 COPY assets/pilot_contract.py assets/forward_pilot.py /app/
 RUN python3 -m py_compile /app/pilot_contract.py /app/forward_pilot.py
 

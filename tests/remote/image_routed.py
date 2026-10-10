@@ -18,6 +18,9 @@ from pilot_regtest_node import FixtureSession
 def run(lab):
     scenario=os.environ['PILOT_SCENARIO']
     assert scenario in ('repeat-routed-normal','repeat-routed-lost-reply','repeat-routed-failure','repeat-routed-restart')
+    market=os.environ.get('MARKET_FIXTURE')=='1'
+    from market_fixture import LIMITS
+    import market_terms as mt
     restart_pending=scenario.endswith('restart')
     btc=lab.node('knots-btc',False);xbt=lab.node('knots-xbt',True)
     source=Path('/usr/local/libexec/cln-swap');gate=lab.root/'quote_plugin.py'
@@ -69,7 +72,7 @@ def run(lab):
     inspection={};grants={}
     for role,n in (('btc',incoming),('xbt',outgoing)):
         inspection[role+'Rune']=rpc(n,'createrune','null',json.dumps([['method='+m for m in ('getinfo','listpeerchannels','listfunds','decode','listsendpays')]]))['rune']
-        grant=FixtureSession(n['data'],role).enable('',2,True,routed_grant=True)
+        grant=FixtureSession(n['data'],role).enable('',2,True,routed_grant=True,market_limits=LIMITS if market else None)
         grants[role+'Credential']=grant['credential'];token=json.loads(grant['credential'])
         good=dict(session_id=token['session_id'],operation='info',contract='',pilot_id='',preimage='')
         assert rpc(n,'-k','checkrune','rune='+token['rune'],'method=swap-session-call','params='+json.dumps(good))['valid']
@@ -82,13 +85,17 @@ def run(lab):
     def balance(n):return sum(c['to_us_msat'] for c in rows(n))
     preserved=None;ids=[]
     for index in range(2):
-        label='routed-'+str(index);invoice=rpc(recipient,'invoice','2000000msat',label,'Routed swap regtest','3600')
+        label='routed-'+str(index);invoice=rpc(recipient,'invoice','100000000msat' if market else '2000000msat',label,'Routed swap regtest','3600')
         assert rpc(recipient,'decode',invoice['bolt11']).get('routes'),'recipient did not supply private route hint'
         before={n['id']:balance(n) for n in (*btc_nodes,*xbt_nodes)}
         prepared=bridge('repeat-prepare',dict(invoice=invoice['bolt11']));swap_id=prepared['pilot_id'];ids.append(swap_id)
         assert prepared['approval_required'] and prepared['routed'] and 0<=prepared['routing_fee_msat']<=10000
         record_path=Path('/exchange/control/execution/forward-swaps')/swap_id/'record.json'
         c=private_load(record_path)['contract'];assert len(c['route'])==2 and c['route'][-1]['id']==recipient['id']
+        amounts=mt.amounts(c)
+        if market:
+            assert c['pricing']['markup_bps']==0 and c['pricing']['pair']=='BTCB2_BTC'
+            assert amounts['btc']==prepared['btc_sats']*1000 and amounts['xbt']==prepared['xbt_sats']*1000
         assert rpc(outgoing,'listsendpays',invoice['bolt11'])['payments']==[]
         approved=bridge('repeat-approve',dict(pilotId=swap_id,confirmed=True));assert approved['phase']=='waiting_for_btc'
         incoming_channel=channel(incoming,btc_router)
@@ -173,15 +180,15 @@ def run(lab):
         pay.wait(timeout=30);assert (pay.returncode!=0)==(expected=='failed')
         attempts=rpc(outgoing,'listsendpays',invoice['bolt11'])['payments'];assert len(attempts)==1
         assert attempts[0]['amount_sent_msat']==c['route'][0]['amount_msat']
-        xbt_fee=c['route'][0]['amount_msat']-2000000
+        xbt_fee=c['route'][0]['amount_msat']-amounts['xbt']
         payer_payments=rpc(payer,'-k','listsendpays','payment_hash='+invoice['payment_hash'])['payments']
         completed=[p for p in payer_payments if p['status']=='complete']
         if expected=='settled':assert len(completed)==1
-        btc_fee=completed[0]['amount_sent_msat']-1000000 if expected=='settled' else 0
+        btc_fee=completed[0]['amount_sent_msat']-amounts['btc'] if expected=='settled' else 0
         received=rpc(recipient,'listinvoices',label)['invoices'][0]
         assert received['status']==('paid' if expected=='settled' else 'unpaid')
-        if expected=='settled':assert received['amount_received_msat']==2000000
-        deltas=(-1000000-btc_fee,btc_fee,1000000,-2000000-xbt_fee,xbt_fee,2000000)
+        if expected=='settled':assert received['amount_received_msat']==amounts['xbt']
+        deltas=(-amounts['btc']-btc_fee,btc_fee,amounts['btc'],-amounts['xbt']-xbt_fee,xbt_fee,amounts['xbt'])
         for n,delta in zip((*btc_nodes,*xbt_nodes),deltas):
             if expected=='failed':delta=0
             wait_until(lambda:balance(n)==before[n['id']]+delta and all(c['htlcs']==[] for c in rows(n)),n['proc'])
@@ -213,7 +220,7 @@ def run(lab):
                 mine(btc,btc_nodes,110)
                 wait_until(lambda:any(c['channel_id']==old['channel_id'] for c in rpc(incoming,'listclosedchannels')['closedchannels']),incoming['proc'],timeout=90)
                 assert all(c['channel_id']!=old['channel_id'] for c in rows(incoming))
-            new=FixtureSession(incoming['data'],'btc').enable('',2,True,new_grant=True,routed_grant=True)
+            new=FixtureSession(incoming['data'],'btc').enable('',2,True,new_grant=True,routed_grant=True,market_limits=LIMITS if market else None)
             token=json.loads(new['credential'])
             session=FixtureSession(incoming['data'],'btc').call(token['session_id'],'info','','','')
             assert [c['channel_id'] for c in session['channels']]==[replacement['channel_id']]

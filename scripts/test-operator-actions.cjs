@@ -17,10 +17,14 @@ module.exports=async function(){
  load('startos/actions/index.ts')
  const hidden=['prepare-forward-pilot','approve-forward-pilot','forward-pilot-status','find-swap-channels','prepare-forward-swap','prepare-swap-quote','approve-swap-quote','prepare-reverse-swap-quote','quote-status','review-swap-quote','recovery-status','confirm-recovery-revocation','recover-existing-swap','live-readiness','review-live-policy','inspect-live-forward','inspect-live-reverse','pair-btc-gate-observation','pair-xbt-gate-observation']
  for(const id of hidden)assert.equal((await actions[id].meta({effects:{}})).visibility,'hidden',id)
- const expected={'swap-status':'Swaps','new-forward-swap':'Swaps','new-reverse-swap':'Swaps','confirm-forward-swap':'Swaps','confirm-reverse-swap':'Swaps','pair-swap-grants':'Swap Setup','pair-reverse-grants':'Swap Setup','save-swap-inspection':'Swap Setup','pair-nodes':'Swap Setup','connection-status':'Status','worker-status':'Advanced / Recovery'}
+ const expected={'market-pricing':'Swap Setup','swap-status':'Swaps','new-forward-swap':'Swaps','new-reverse-swap':'Swaps','confirm-forward-swap':'Swaps','confirm-reverse-swap':'Swaps','pair-swap-grants':'Swap Setup','pair-reverse-grants':'Swap Setup','save-swap-inspection':'Swap Setup','pair-nodes':'Swap Setup','connection-status':'Status','worker-status':'Advanced / Recovery'}
  for(const [id,group] of Object.entries(expected)){const m=await actions[id].meta({effects:{}});assert.equal(m.visibility,'enabled',id);assert.equal(m.group,group,id)}
- assert.equal(Object.keys(actions).length-hidden.length,15)
+ assert.equal(Object.keys(actions).length-hidden.length,16)
  assert.equal((await actions['confirm-forward-swap'].meta({effects:{}})).name,'Confirm BTC to XBT Swap')
+ assert.equal(actions['market-pricing'].spec.markupBps.default,0)
+ assert.equal(actions['market-pricing'].spec.markupBps.integer,true)
+ report={markupBps:125};await actions['market-pricing'].handler({effects:{},input:{markupBps:125}})
+ assert.equal(command[1],'/app/market_pricing.py');assert.equal(JSON.parse(options.input).markupBps,125)
  pilot=jobs=true
  for(const id of ['forward-pilot-status','approve-forward-pilot','quote-status','review-swap-quote','recovery-status'])assert.equal((await actions[id].meta({effects:{}})).visibility,'enabled',id)
  for(const id of ['prepare-forward-pilot','prepare-swap-quote','recover-existing-swap'])assert.equal((await actions[id].meta({effects:{}})).visibility,'hidden',id)
@@ -47,7 +51,7 @@ module.exports=async function(){
  for(const [reason,fragments] of [
   ['bounded_route_unavailable',['10 XBT sats','80 blocks','4 hops','private routing hints','do not guarantee']],
   ['route_planning_refused',['XBT grant','Swap Status']],
-  ['invalid_recipient_invoice',['2,000-sat XBT','40 blocks']],
+  ['invalid_recipient_invoice',['XBT BOLT11','grant amount limits','40 blocks']],
   ['route_outside_grant',['outside the saved grant']],
  ]){
   report={reason,private:'PRIVATE'}
@@ -56,6 +60,6 @@ module.exports=async function(){
  for(const reason of ['__proto__','constructor','bounded_route_unavailable PRIVATE']){
   report={reason};await assert.rejects(actions['new-forward-swap'].handler({effects:{},input:{}}),e=>e.message.includes('private details withheld')&&!e.message.includes('PRIVATE'))
  }
- console.log('Operator menus: 15 normal actions, conditional legacy access, retained hidden fixture IDs, read-only status rendering and safe errors OK')
+ console.log('Operator menus: 16 normal actions, conditional legacy access, retained hidden fixture IDs, read-only status rendering and safe errors OK')
 }
 if(require.main===module)module.exports().catch(e=>{console.error(e);process.exit(1)})

@@ -16,7 +16,7 @@ def unsigned(*args,**kwargs):
     assert kwargs['currency']=='xbt';kwargs['currency']='xbtrt'
     return encode(*args,**kwargs)
 swap_invoice.unsigned_invoice=unsigned
-reverse_invoice.unsigned=lambda h,s,cltv:encode(h,s,3000000,120,currency='xbtrt',final_cltv=cltv)
+reverse_invoice.unsigned=lambda h,s,cltv,amount_msat=3000000,expiry=120:encode(h,s,amount_msat,expiry,currency='xbtrt',final_cltv=cltv)
 
 class FixtureRPC:
     def __init__(self,root,role):

@@ -145,10 +145,14 @@ def run(lab):
 
 def main():
     assert os.environ.get('BTC_XBT_DISPOSABLE_CONTAINER')=='1' and os.environ.get('SEPARATE_CONTROLLER')=='1'
-    os.environ['PILOT_SCENARIO']=sys.argv[1]
+    scenario=sys.argv[1]
+    if scenario.startswith('market-'):
+        os.environ['MARKET_FIXTURE']='1';scenario=scenario[7:]
+        save(Path('/exchange/control/market-fixture.json'),dict(enabled=True))
+    os.environ['PILOT_SCENARIO']=scenario
     os.umask(0o077);os.chown('/exchange/control',0,0)
     check_bundle('/usr/local/libexec/cln-swap')
-    for name in ('pilot_node.py','pilot_contract.py','swap_session.py','routed_plan.py','route_math.py','routed_invoice.py','reverse_contract.py','reverse_node.py','reverse_session.py','reverse_plan.py','reverse_invoice.py'):
+    for name in ('market_terms.py','pilot_node.py','pilot_contract.py','swap_session.py','routed_plan.py','route_math.py','routed_invoice.py','reverse_contract.py','reverse_node.py','reverse_session.py','reverse_plan.py','reverse_invoice.py'):
         assert (Path('/usr/local/libexec/btc-controller')/name).read_bytes()==(Path('/opt/xbt/libexec')/name).read_bytes()
     root=Path(tempfile.mkdtemp(prefix='forward-pilot-',dir='/results'));print('Test directory: '+str(root),flush=True)
     lab=PilotLab(root,'/test-bitcoind','/usr/bin/bitcoin-cli');lab.bound_forward_gate=True

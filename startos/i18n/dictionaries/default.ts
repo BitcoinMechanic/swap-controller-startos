@@ -64,6 +64,8 @@ const dict = {
   'Route delay cap (blocks)': 58,
   'Maximum hops': 59,
   'Read-only observations; no payment or route search. A recipient invoice is still needed to check its route, liquidity, fee and timing. Expiry or pause stops new enrollments; already enrolled swaps retain their recovery rights.': 60,
+  'Both grants must use the same pricing mode. Finish current swaps before explicitly replacing grants.': 61,
+  'The market grant amount budget is exhausted. Finish current swaps before explicitly renewing and pairing grants.': 62,
 } as const
 
 /**
