@@ -9,7 +9,7 @@ import forward_pilot as pilot
 import swap_setup
 import lifecycle
 from controller import load_config, private_load, save, require
-from pilot_contract import canonical, hex32, routed, sent_amount
+from pilot_contract import canonical, hex32, routed, sent_amount, PLAN_ERRORS
 from read_only_rpc import Client
 
 FILE='forward-session-pairing.json'
@@ -30,8 +30,13 @@ class SessionRemote:
         try:
             with self.client.opener.open(req,timeout=20) as response:raw=response.read(1048577)
             require(len(raw)<=1048576,'session_rpc_unavailable');result=json.loads(raw)
-            require(type(result) is dict and 'error' not in result,'session_rpc_unavailable');return result
+            require(type(result) is dict and 'error' not in result,'session_rpc_unavailable')
         except Exception:raise ValueError('session_rpc_refused_or_uncertain') from None
+        if 'route_error' in result:
+            require(operation=='plan' and set(result)=={'route_error'} and type(result['route_error']) is str
+                    and result['route_error'] in PLAN_ERRORS,'session_rpc_refused_or_uncertain')
+            raise ValueError(result['route_error'])
+        return result
     def call(self,method,**params):
         if method=='swap-pilot-observe':
             require(set(params)=={'pilot_id'},'invalid_parameters');return self.request('observe',**params)
@@ -254,5 +259,6 @@ if __name__=='__main__':
               'backup_in_progress','restored_pilot_authority_blocked','confirmed_reserve_insufficient',
               'invalid_recipient_invoice','selected_channel_unavailable'}
         safe.update(['admission_expired', 'explicit_approval_required', 'pair_nodes_first', 'recipient_invoice_expiring', 'reserve_unavailable', 'session_identity_changed', 'session_rpc_refused_or_uncertain', 'worker_heartbeat_required'])
+        safe.update(PLAN_ERRORS)
         reason=str(error) if isinstance(error,ValueError) and str(error) in safe else 'repeat_swap_refused_or_uncertain'
         print(json.dumps(dict(reason=reason)));raise SystemExit(1) from None

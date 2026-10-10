@@ -22,8 +22,9 @@ Object.assign(errors, {
   "pair_nodes_first": "Pair Coordinator Nodes under Swap Setup before creating grants or swaps.",
   "explicit_approval_required": "Review the swap and turn on its explicit confirmation before continuing.",
   "selected_channel_unavailable": "A selected channel is unavailable. Check the coordinator channel state and the saved grant.",
-  "invalid_recipient_invoice": "Use a fresh 2,000-sat XBT BOLT11 invoice for the recipient.",
-  "bounded_route_unavailable": "No XBT route fits the saved grant: at most 10 XBT sats routing fee, 80 blocks total delay and 4 hops. Check recipient route hints.",
+  "invalid_recipient_invoice": "Use a fresh 2,000-sat XBT BOLT11 invoice with final CLTV at most 40 blocks.",
+  "route_planning_refused": "The XBT grant cannot plan a new route. Check Swap Status for expiry, pause or replacement, and check that both grants use routed mode.",
+  "bounded_route_unavailable": "No XBT route fits the saved grant: at most 10 XBT sats routing fee, 80 blocks total delay and 4 hops. If the recipient uses a private channel, create a fresh invoice with private routing hints. Hints do not guarantee a route within these limits.",
   "route_outside_grant": "The outgoing XBT route starts on a channel outside the saved grant. Finish existing swaps before explicitly renewing and pairing the grant."
 })
 const stages:Record<string,string>={review:'Ready for confirmation',authorizing:'Authorizing this swap',publishing:'Creating BTC invoice',waiting_for_btc:'Awaiting BTC payment',send_intent:'Paying recipient',release_intent:'Completing settlement',settled:'Settled',fail_intent:'Returning incoming payment',failed:'Failed',expired:'Expired without payment',retire_intent:'Retiring unpaid invoice',cancelled:'Cancelled before approval',close_intent:'Protecting funds on-chain',onchain_recovery:'On-chain recovery — verification required'}

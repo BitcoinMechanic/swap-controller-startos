@@ -1,5 +1,63 @@
 # Swap Controller
 
+## Forward error reporting checkpoint (0063)
+
+The user reported 0062 READY on 2026-10-09 (America/Vancouver): both four-case
+funded regtest matrices and all three installer builds passed. Build versions:
+BTC 26.6.9:8, XBT 0.1.0:26 and Swap Controller 0.1.0:23. After the installation
+step, user-supplied read-only status confirmed ready pairing, saved inspection
+credentials, a fresh worker, no backup pause and ready coordinator gates.
+
+Initially both forward grants had expired with eight unused slots each; reverse
+grants remained ready with three slots. The operator explicitly replaced and
+paired only the forward grants. At checked_at 1791591029, both directions were
+ready_to_prepare with no blockers, no active swaps and no records requiring
+attention: ten forward slots per coordinator, three reverse slots. Forward
+caps remained 80 blocks, four hops and 10,000 XBT msat; reverse caps remained
+288 blocks, four hops and 10,000 BTC msat. The existing restore barrier remained
+present. Readiness does not establish a route or constitute payment authority.
+No new live swap, live route refusal, live restart or on-chain recovery result
+was requested or reported for this update; prior live evidence remains below.
+
+The UI summary did not make the individual grant reasons easy to locate during
+this review; the packaged read-only CLI identified grant_expired on both nodes.
+The Connection Status field live_payment_enabled=false describes that read-only
+probe, not the separate swap grants. These presentation issues remain follow-up
+work; no UI or runtime change is introduced by this checkpoint.
+
+0063 changes seven documentation files only and exports the complete 0062 delta
+from the synced swap-interface-live-20261009 tag with the exact tested installer
+hashes. Keep those installers; no rebuild is required. Export on the packaging
+VM, commit/tag/push on the tower, then retain VM stashes and fast-forward from
+GitHub. The checkpoint scripts do not access live grants or payment records.
+
+## Forward planning error fix (0062)
+
+Candidate versions: BTC 26.6.9:8, XBT 0.1.0:26, Swap Controller 0.1.0:23.
+The 0061 checkpoint was committed/pushed from the tower and synced on the
+packaging VM, with stashes retained (user confirmation, 2026-10-09).
+Apply against tag `swap-interface-live-20261009`; continue building/exporting
+on the VM and committing/pushing on the tower.
+
+Forward `plan` responses now carry only four fixed refusal codes: no bounded
+route, route outside the grant, planning refused, or invalid recipient invoice.
+The controller accepts only an exact one-field response during `plan`, and the
+preparation action explains the applicable XBT fee, delay and hop limits. It
+suggests private routing hints when the recipient has a private channel, without
+claiming hints are missing or guaranteeing that they make a route possible.
+Transport failures, malformed/unknown replies and all mutation errors remain
+opaque. An older node still produces the generic uncertainty message until it
+is updated. Reverse error behavior is retained.
+
+This changes error reporting only: route selection, approved channel pins,
+fee/delay/hop caps, one part/attempt, grant budgets, confirmation, invoice
+publication, payment and restart recovery retain their existing rules. No state
+migration or grant renewal is required. Refused preparation neither enrolls a
+swap nor reserves a slot. Swap Status still checks setup rather than routes.
+The earlier forward UI limitation described below applies to the 0061 release.
+The subsequent user-reported funded build and post-update readiness checks
+are recorded in the 0063 checkpoint above.
+
 ## Installed interface checkpoint (0061)
 
 The user reported 0060 READY on 2026-10-09: operator/status checks, both four-case

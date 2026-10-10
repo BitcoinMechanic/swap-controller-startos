@@ -5,6 +5,8 @@ import re
 
 PROFILE = 'startos-forward-pilot-v1'
 ROUTED = 'startos-forward-routed-v1'
+PLAN_ERRORS = frozenset({'bounded_route_unavailable', 'route_outside_grant',
+                         'route_planning_refused', 'invalid_recipient_invoice'})
 FIELDS = ('channel_id','short_channel_id','funding_txid','funding_outnum','peer_id')
 
 def routed(c): return c.get('profile') == ROUTED

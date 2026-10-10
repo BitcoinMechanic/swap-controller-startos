@@ -45,10 +45,16 @@
   grants; preserve their budgets and old records.
 - [x] Retest 0060 live: forward recipient paid after explicit channel hints;
   reverse customer complete, controller settled and LND received.
-- [ ] Export 0061 from the packaging VM; checkpoint/push on the tower; retain
+- [x] Export 0061 from the packaging VM; checkpoint/push on the tower; retain
   VM stashes and sync from GitHub.
-- [ ] Expose fixed, privacy-safe forward planning refusal codes at the node
+- [x] Expose fixed, privacy-safe forward planning refusal codes at the node
   boundary; keep mutation and unknown errors opaque. Improve invoice-hint guidance.
+- [x] User reported 0062 READY: both funded matrices and all three installers passed.
+- [x] Verify post-update status; identify expired forward grants, explicitly renew
+  and pair those grants, then confirm both directions ready without a new payment.
+- [ ] Export 0063 on the VM; commit/tag/push on the tower; retain VM stashes and sync.
+- [ ] Make per-coordinator grant reasons easier to find in Swap Status and clarify
+  the read-only Connection Status live_payment_enabled field.
 
 Both live happy paths are user-confirmed. The 200-block/2,002-msat reverse route
 was observed in read-only preflight; the final route was not separately supplied.

@@ -1,9 +1,9 @@
 # Swap Controller
 
-## Swapping with 0060
+## Swapping with 0062
 
-After the packaging-VM script reports READY, install BTC 26.6.9:7, XBT 0.1.0:25
-and Swap Controller 0.1.0:22. Keep your saved pairing, inspection credentials and
+After the packaging-VM script reports READY, install BTC 26.6.9:8, XBT 0.1.0:26
+and Swap Controller 0.1.0:23. Keep your saved pairing, inspection credentials and
 grants. This update does not require grant renewal or a new test payment.
 Finish any active swap before updating the installed services.
 
@@ -38,6 +38,20 @@ records exist. **Advanced / Recovery → Worker Status** remains available.
 Coordinator single-pilot authorization is retained under **Advanced / Legacy**
 for an older reviewed contract. Current direct swaps still work through the
 normal swap actions and existing direct grants.
+
+If **New BTC to XBT Swap** reports that no XBT route fits the grant, the
+limits remain 10 XBT sats in routing fees, 80 blocks total delay and four hops.
+For a recipient behind a private channel, create a fresh recipient invoice with
+private routing hints. Hints must actually be present in the invoice, and do
+not guarantee a route within those limits. No channel ID entry is needed in the
+controller. A route-planning refusal has not enrolled a swap or used a slot.
+It does not require renewing an otherwise valid grant.
+
+A grant's 24-hour expiry is independent of its remaining slots. If its enrollment
+has expired, finish active swaps, explicitly replace that direction's grants on
+both coordinators and pair the new credentials. A valid grant for the other
+direction does not need replacement. The read-only Connection Status field
+`live_payment_enabled: false` describes that connection probe, not swap authority.
 
 If an action reports an uncertain response, check Swap Status and that swap's
 history. Keep the existing record and let its worker recover the original

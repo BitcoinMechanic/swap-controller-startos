@@ -44,6 +44,18 @@ module.exports=async function(){
   }
   report={reason:'PRIVATE_RAW_ERROR'};await assert.rejects(actions[id].handler({effects:{},input:{}}),e=>!e.message.includes('PRIVATE'))
  }
+ for(const [reason,fragments] of [
+  ['bounded_route_unavailable',['10 XBT sats','80 blocks','4 hops','private routing hints','do not guarantee']],
+  ['route_planning_refused',['XBT grant','Swap Status']],
+  ['invalid_recipient_invoice',['2,000-sat XBT','40 blocks']],
+  ['route_outside_grant',['outside the saved grant']],
+ ]){
+  report={reason,private:'PRIVATE'}
+  await assert.rejects(actions['new-forward-swap'].handler({effects:{},input:{invoice:'PRIVATE'}}),e=>fragments.every(s=>e.message.includes(s))&&!e.message.includes('PRIVATE'))
+ }
+ for(const reason of ['__proto__','constructor','bounded_route_unavailable PRIVATE']){
+  report={reason};await assert.rejects(actions['new-forward-swap'].handler({effects:{},input:{}}),e=>e.message.includes('private details withheld')&&!e.message.includes('PRIVATE'))
+ }
  console.log('Operator menus: 15 normal actions, conditional legacy access, retained hidden fixture IDs, read-only status rendering and safe errors OK')
 }
 if(require.main===module)module.exports().catch(e=>{console.error(e);process.exit(1)})
