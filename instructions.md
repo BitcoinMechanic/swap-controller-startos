@@ -1,5 +1,12 @@
 # Swap Controller
 
+## Migration development branch
+
+0066 prepares and tests compatibility with the new XBT engine. It produces no
+installer and requires no changes to your installed services or saved grants.
+Continue using the checkpointed packages while this port is tested. Pairing the
+new engine for real swaps will be enabled in a later, validated package.
+
 ## Market pricing (0064)
 
 After the packaging VM reports READY, finish any active swap and install all

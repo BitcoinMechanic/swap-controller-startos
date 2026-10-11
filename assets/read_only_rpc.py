@@ -87,3 +87,27 @@ class Client:
                         payment_started=False)
         except Exception:
             raise ProbeError('invalid_channel_response') from None
+
+    def inspect_profile(self, node_id, profile, environment):
+        """Explicit new-protocol probe; does not alter saved pairing/authority.
+
+        Kept separate until the grant and recovery port is complete. Existing
+        inspect() callers retain their original network contract. No fallback
+        from a failed new-profile check to the legacy path is permitted.
+        """
+        from chain_identity import IdentityError, binding, node
+        try:
+            binding(profile, environment, node_id)
+            identity = node(self.call('getinfo'), profile, environment, expected_id=node_id)
+        except IdentityError:
+            raise ProbeError('operator_identity_mismatch') from None
+        channels = self.call('listpeerchannels').get('channels')
+        if not isinstance(channels, list) or any(type(row) is not dict for row in channels):
+            raise ProbeError('invalid_channel_response')
+        if any(type(row.get('htlcs', [])) is not list for row in channels):
+            raise ProbeError('invalid_channel_response')
+        return dict(read_only=True, identity_matches=True, chain_binding=identity,
+                    network=identity['network'], warning_present=False,
+                    normal_channels=sum(row.get('state') == 'CHANNELD_NORMAL' for row in channels),
+                    pending_htlcs=sum(len(row.get('htlcs', [])) for row in channels),
+                    payment_started=False)

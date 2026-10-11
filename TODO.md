@@ -4,10 +4,21 @@
 - [x] Use Neoxa BTCB2_BTC ordinary depth with 0% default configurable markup.
 - [x] Freeze source data, quote amounts, route and expiry in the reviewed contract.
 - [x] Verify price arithmetic, budget isolation, gate journals and saved recovery locally.
-- [ ] Run all sixteen original/market funded regtest scenarios on the packaging VM.
-- [ ] Install the three candidates after READY; explicitly opt into new grants.
+- [x] User reported all sixteen original/market funded regtest scenarios passed on the packaging VM.
+- [x] User reported all three candidates installed and market grants paired.
 - [ ] Verify one small market swap in each direction and both recipient receipts.
-- [ ] Export checkpoint to the tower; commit/push there; stash and sync the VM.
+- [x] Checkpoint 0064 as pre-privkeyio-port-20261010 on the tower; user confirmed pushes and VM sync.
+
+## Privkeyio migration (0066)
+
+- [x] User confirmed all four migration branches and separate VM source checkouts.
+- [x] Add explicit protocol identities and BOLT11 feature checks without network normalization.
+- [x] Add unsigned one-part invoices carrying XBT's compulsory bit 512.
+- [x] Add a separate read-only controller adapter; keep existing execution paths unchanged.
+- [ ] Run the pinned real-engine identity/invoice/unified-channel fixture on the packaging VM.
+- [ ] Port versioned grants, gates, controller execution and recovery; run both funded swap matrices.
+- [ ] Complete XBT package identity, backend guard, UI 26.09 and full-node backup/restore integration.
+- [ ] Validate an explicit migration path before replacing any installed XBT service.
 
 # Current bidirectional checkpoint
 

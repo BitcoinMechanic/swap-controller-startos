@@ -1,5 +1,27 @@
 # Swap Controller
 
+## Privkeyio migration branch (0066, source tests only)
+
+The installed 0064 baseline is preserved at `pre-privkeyio-port-20261010`.
+This branch adds `chain_identity.py` (byte-identical to the engine's
+`tools/swap/chain_identity.py`) and the explicit read-only
+`Client.inspect_profile()` adapter. It distinguishes BTC/new XBT despite their
+shared network names and BOLT11 prefixes, requires the fork's feature bits, and
+provides strict identity bindings for the upcoming authority port.
+
+The new adapter is not connected to pairing or execution yet. Existing callers
+retain their network contract; there is no automatic legacy fallback, network
+renaming, grant upgrade or journal rewrite. Probe rune restrictions remain
+`getinfo` and `listpeerchannels` with no parameters. No 0066 installer is built.
+Run `tests/test_chain_profile.py` and `tests/test_controller.py`; the matching
+engine tests and disposable real-binary fixture are in `lightning/tools/swap/`.
+UI/full-package and funded swap acceptance remain subsequent migration gates.
+
+0064 evidence: the user reported all original/market funded regtest matrices
+passed and all three installers were installed. A market-priced live swap had
+not settled before this migration; the latest attempt exceeded the approved
+XBT channel's outgoing liquidity. Historical candidate notes below are retained.
+
 ## Neoxa market-pricing candidate (0064)
 
 Candidate versions: BTC 26.6.9:9, XBT 0.1.0:27, controller 0.1.0:24. Baseline is
