@@ -15,8 +15,12 @@
 - [x] Add explicit protocol identities and BOLT11 feature checks without network normalization.
 - [x] Add unsigned one-part invoices carrying XBT's compulsory bit 512.
 - [x] Add a separate read-only controller adapter; keep existing execution paths unchanged.
-- [ ] Run the pinned real-engine identity/invoice/unified-channel fixture on the packaging VM.
-- [ ] Port versioned grants, gates, controller execution and recovery; run both funded swap matrices.
+- [x] User confirmed engine identity, signed invoices and funded unified-channel restart (0066e).
+- [x] User confirmed gate, plugin-crash, routing, bounded grants, remote/customer and cross-chain recovery matrices through 0080.
+- [x] User confirmed six native HTTPS cases plus eighteen retained peer cases (0082c), tower checkpoint and VM sync (0083).
+- [x] Add separate 0084 regtest service actions, immutable per-swap pairings and automatic recovery.
+- [ ] Run the six funded 0084 service cases; retain exact 0083 runtime evidence.
+- [ ] Register migrated service actions, lifecycle and backup hooks after node-package integration.
 - [ ] Complete XBT package identity, backend guard, UI 26.09 and full-node backup/restore integration.
 - [ ] Validate an explicit migration path before replacing any installed XBT service.
 

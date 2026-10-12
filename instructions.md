@@ -130,3 +130,16 @@ setting. Select from current connected, normal channels with sufficient receivin
 liquidity and verify that the new invoice contains a hint; never invent a SCID.
 This does not widen grant authority or route limits. The forward preparation UI
 can still mask a specific route refusal as a generic coordinator-request error.
+
+## Migration development checkpoint
+
+0084 adds a separate regtest controller service for invoice → confirm → pay,
+automatic recovery and saved history. It does not add or change installed StartOS
+actions yet. Run only the supplied packaging-VM fixture; do not point it at an
+installed node or copy existing payment state into it. After the funded service
+matrix passes, the next integration work is the full XBT node package and UI.
+
+The candidate keeps old swaps attached to their original grants when a pairing
+is renewed. Pause affects new swaps; an enrolled swap continues recovery. A
+markup change affects new quotes only, with 0% as the default. Status and history
+are cached read-only views. An approved swap cannot be cancelled as a draft.

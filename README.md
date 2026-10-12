@@ -2422,3 +2422,32 @@ check the held incoming HTLC is untrimmed before running the worker. The
 fixed fee is fixture-only and applies again on restart. Run all four routed
 scenarios before installing. This update changes only the controller package;
 existing grants and pairing remain usable.
+
+## Migrated controller service candidate (0084)
+
+The separate `migration/service_cli.py` entry point uses the 0083 HTTPS worker
+and private state format `swap-controller-service-v1`. It is disposable-regtest
+only and is not registered in the installed StartOS menus or Docker entrypoint.
+The existing installed service is unchanged.
+
+Its finite actions are pairing, invoice preparation, exact confirmation, payment
+invoice retrieval, draft cancellation, configuration and cached status/history.
+The background process acquires one lifetime lock and advances only approved
+swaps. A single atomic journal stores immutable pairing generations and exact
+per-swap worker records. Pause prevents new admissions while enrolled recovery
+continues. Markup defaults to zero and changes affect only new quotes. Pairing
+renewal never changes an old swap's saved credentials or grants. Status/history
+construct no network clients and omit endpoints, credentials and preimages.
+
+Start it only through the supplied disposable VM fixture for now. The runner
+requires the exact synced `privkeyio-https-worker-20261012` checkpoint, reuses the
+compiled engines, verifies retained 0083 export receipts and runs six new funded
+service scenarios. Local tests cover process locking, TLS/reply-loss recovery,
+restore refusal, journal uncertainty and admission bounds; they do not establish
+funded success. READY from the VM is still required. No installer is produced.
+
+A missing journal is never recreated by startup. A `restored.json` barrier blocks
+execution and invoice retrieval while leaving cached history readable. This is
+not backup restoration or on-chain recovery support. StartOS backup hooks, full
+XBT UI/backend packaging and an explicit funded legacy-channel migration remain
+separate release gates. No automatic payment retries or multipart payments.
