@@ -15,6 +15,7 @@ import cross_contract as cc
 import cross_worker as cw
 import customer_https as https
 import held_gate as hg
+import restore_barrier
 import worker_pairing as wp
 
 FORMAT = 'swap-controller-service-v1'
@@ -59,6 +60,7 @@ def validate(r):
 def initialize(directory):
     directory=Path(directory)
     hg.need(not any(p.is_symlink() for p in (directory,*directory.parents)), 'service_path_refused')
+    hg.need(not restore_barrier.blocked(directory), "service_restored")
     directory.mkdir(mode=0o700)  # Refuse existing state; never auto-initialize recovery.
     fd=os.open(directory/'state.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'w') as f:
@@ -117,7 +119,7 @@ class Service:
 
     def guard(self, *, admission=False):
         hg.need(not self.blocked and self.journal.lock_fd is not None,'service_blocked')
-        hg.need(not os.path.lexists(self.journal.directory/'restored.json'),'service_restored')
+        hg.need(not restore_barrier.blocked(self.journal.directory),'service_restored')
         if admission: hg.need(not self.record['paused'],'service_paused')
 
     def commit(self,r):
@@ -163,14 +165,14 @@ class Service:
         v.update(generation=j['generation'],selected=self.record['selected'][v['direction']]==j['generation'],
                  cancelled=j['cancelled'],error=j['error'])
         if j['cancelled']: v.update(state='cancelled',terminal=True)
-        v['blocked'] |= self.blocked or os.path.lexists(self.journal.directory/'restored.json')
+        v['blocked'] |= self.blocked or restore_barrier.blocked(self.journal.directory)
         return v
 
     def status(self):
         h=self.record['heartbeat']; now=int(self.clock())
         fresh=h is not None and 0<=now-h['at']<=120 and runner_alive(self.journal.directory)
         return dict(format=FORMAT,read_only=True,regtest_only=True,paused=self.record['paused'],
-                    restored=os.path.lexists(self.journal.directory/'restored.json'),worker_fresh=fresh,
+                    restored=restore_barrier.blocked(self.journal.directory),worker_fresh=fresh,
                     markup_bps=self.record['markup_bps'],selected=copy.deepcopy(self.record['selected']),
                     grants={direction: None if gid is None else {kind:dict(
                         expires_at=node['grant']['expires_at'],expired=now>=node['grant']['expires_at'],

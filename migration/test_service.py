@@ -72,6 +72,18 @@ class Tests(unittest.TestCase):
         self.prepare();self.live();self.s.confirm(self.cid,self.cid,confirmed=True)
         for _ in range(3):self.s.tick('11'*32);self.open()
 
+    def test_parent_restore_fence_preserves_pending_history_but_blocks_every_execution(self):
+        import restore_barrier
+        self.enrolled(); before=copy.deepcopy(self.s.record); calls=copy.deepcopy(self.remote.calls)
+        restore_barrier.fence(self.root.parent)
+        status=self.s.status()
+        self.assertTrue(status['restored']);self.assertTrue(all(s['blocked'] for s in status['swaps']))
+        for action in (lambda:self.s.tick('11'*32),lambda:self.s.confirm(self.cid,self.cid,confirmed=True),
+                       lambda:self.s.configure(paused=False,markup_bps=0),lambda:self.s.pair(self.bind,confirmed=True)):
+            with self.assertRaisesRegex(ValueError,'service_restored'):action()
+        self.assertEqual(self.remote.calls,calls);self.assertEqual(self.s.record,before)
+        with self.assertRaisesRegex(ValueError,'service_restored'):service.initialize(self.root.parent/'new-service')
+
     def test_invoice_confirm_pay_and_lost_replies_reload_exact_records(self):
         self.enrolled();original=self.s.record['jobs'][self.cid]['worker']['swaps'][self.cid]['contract']
         invoice=self.s.worker(self.cid).payment_invoice(self.cid)

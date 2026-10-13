@@ -2451,3 +2451,25 @@ execution and invoice retrieval while leaving cached history readable. This is
 not backup restoration or on-chain recovery support. StartOS backup hooks, full
 XBT UI/backend packaging and an explicit funded legacy-channel migration remain
 separate release gates. No automatic payment retries or multipart payments.
+
+## 0092 local grant administration and restore boundary
+
+The migrated service uses the same price snapshot adapter with configurable
+0–500 basis-point margin, default 0. Saved swaps are not repriced during recovery.
+This patch adds shared parent restore-marker protection to service execution,
+while keeping cached history readable. It remains a regtest-only migration
+service; installed legacy actions are unchanged.
+
+The matching engine adds automatically selected, locally reviewed bounded grants
+and exact confirmation recovery. The disposable fixture creates and renews those
+grants through fresh CLI processes, then runs six funded forward/reverse service
+cases with lost replies, pending restart, failure and exact balances. It fences
+stopped journals afterward and verifies refusal before RPC with history retained.
+Historical funded receipts retain their original sources and image provenance;
+they are not represented as reruns of this changed runtime. The VM must pass the
+new matrix before this checkpoint is accepted. No installer is produced.
+
+The operator has reported successful fresh 0090b XBT node/UI payments and
+post-restart payments on two StartOS boxes. Coordinator mainnet activation,
+deadline/on-chain protection and coordinator-aware backups remain subsequent
+work. Mainnet guards are intentionally retained until that work is validated.
