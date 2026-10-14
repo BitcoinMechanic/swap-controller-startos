@@ -19,9 +19,16 @@
 - [x] User confirmed gate, plugin-crash, routing, bounded grants, remote/customer and cross-chain recovery matrices through 0080.
 - [x] User confirmed six native HTTPS cases plus eighteen retained peer cases (0082c), tower checkpoint and VM sync (0083).
 - [x] Add separate 0084 regtest service actions, immutable per-swap pairings and automatic recovery.
-- [ ] Run the six funded 0084 service cases; retain exact 0083 runtime evidence.
+- [x] User confirmed six funded 0084 service cases and the 0085 checkpoint; historical provenance retained.
 - [ ] Register migrated service actions, lifecycle and backup hooks after node-package integration.
-- [ ] Complete XBT package identity, backend guard, UI 26.09 and full-node backup/restore integration.
+- [x] User confirmed packaged node/UI (0086), funded regtest recovery (0088b),
+  fresh empty StartOS acceptance (0090b/0091), and fresh-node channel payments.
+- [x] User confirmed reviewed coordinator grants and six service cases (0092a),
+  tower checkpoint and VM sync (0093).
+- [x] Implement the 0094 explicit deadline grant, local watchdog and on-chain evidence candidate.
+- [ ] Pass the 0094 original-binary controls, six funded deadline cases and service regression on the VM.
+- [ ] Integrate coordinator-aware backup/restore before live swap activation.
+- [ ] Add reviewed retirement of fully recovered on-chain history; do not silently renew blocked grants.
 - [ ] Validate an explicit migration path before replacing any installed XBT service.
 
 # Current bidirectional checkpoint
