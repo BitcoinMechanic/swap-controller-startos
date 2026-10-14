@@ -199,3 +199,14 @@ service cases on the new engines. Local unit checks are not funded acceptance.
 The existing 0093 evidence keeps its original provenance. This is a source/test
 candidate only: no installer, production activation, coordinator backup support,
 legacy-channel migration, multipart payments or automatic payment retries.
+
+
+### Migration recovery retirement (0096)
+
+The migration source adds explicit local review and confirmation after a
+protected channel has fully resolved on chain. The coordinator verifies the
+original funding and claim or timeout; the controller separately verifies the
+original outgoing payment. History and used grant budgets remain saved. New
+grants use eligible open channels and require their own confirmation. Existing
+runes do not gain retirement authority. The packaging VM's 0096 regtest matrix
+is required for acceptance; no installer or installed-node action is included.

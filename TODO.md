@@ -28,7 +28,7 @@
 - [x] Implement the 0094 explicit deadline grant, local watchdog and on-chain evidence candidate.
 - [ ] Pass the 0094 original-binary controls, six funded deadline cases and service regression on the VM.
 - [ ] Integrate coordinator-aware backup/restore before live swap activation.
-- [ ] Add reviewed retirement of fully recovered on-chain history; do not silently renew blocked grants.
+- [ ] Accept 0096 reviewed retirement on both regtests: local coordinator and controller confirmations, original attempts, closed-history restarts and new-funding grant renewal. Implementation and fixture are present; packaging VM funded acceptance remains required.
 - [ ] Validate an explicit migration path before replacing any installed XBT service.
 
 # Current bidirectional checkpoint

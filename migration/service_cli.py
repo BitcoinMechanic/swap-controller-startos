@@ -25,7 +25,8 @@ def execute(directory,request,**options):
     hg.need(type(request) is dict and type(request.get('action')) is str,'service_request_invalid')
     action=request['action']; fields={'status':set(),'history':set(),'pair':{'binding','confirmed'},
         'prepare':{'direction','invoice'},'confirm':{'cid','confirmation','confirmed'},
-        'cancel':{'cid','confirmation'},'invoice':{'cid'},'configure':{'paused','markup_bps'}}
+        'cancel':{'cid','confirmation'},'invoice':{'cid'},'configure':{'paused','markup_bps'},
+        'recovery_review':{'cid'},'recovery_confirm':{'cid','confirmation','confirmed'}}
     hg.need(action in fields and set(request)==fields[action]|{'action'},'service_request_invalid')
     j=hg.Journal(directory)
     try:

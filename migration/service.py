@@ -166,6 +166,9 @@ class Service:
                  cancelled=j['cancelled'],error=j['error'])
         if j['cancelled']: v.update(state='cancelled',terminal=True)
         v['blocked'] |= self.blocked or restore_barrier.blocked(self.journal.directory)
+        if 'recovery_retirement' in j['worker']['swaps'][cid] and j['error'] is not None:
+            v['blocked'] = True
+            v['recovery_recheck_required'] = True
         return v
 
     def status(self):
@@ -186,7 +189,9 @@ class Service:
         self.guard(admission=True); hg.need(direction in DIRECTIONS,'service_direction_invalid')
         hg.need(type(invoice) is str and 1<=len(invoice)<=20000,'service_invoice_invalid')
         for cid,j in self.record['jobs'].items():
-            c=j['worker']['swaps'][cid]['contract']
+            saved=j['worker']['swaps'][cid]
+            if 'recovery_retirement' in saved: self.worker(cid).check_recovery(cid)
+            c=saved['contract']
             if c['direction']==direction and c['outgoing']['invoice']==invoice:
                 hg.need(not j['cancelled'],'service_invoice_reused'); return self.cached(cid)
             hg.need(c['direction']!=direction or self.cached(cid)['terminal'],'service_previous_swap_active')
@@ -232,11 +237,20 @@ class Service:
             hg.need(hg.integer(markup_bps,0,500),'service_settings_invalid'); r['markup_bps']=markup_bps
         self.commit(r); return dict(paused=r['paused'],markup_bps=r['markup_bps'],new_swaps_only=True)
 
+    def recovery_review(self,cid):
+        self.guard()
+        return self.worker(cid).recovery_review(cid)
+
+    def recovery_confirm(self,cid,confirmation,confirmed):
+        self.guard()
+        return self.worker(cid).recovery_confirm(cid,confirmation,confirmed)
+
     def tick(self,run_id):
         self.guard(); r=copy.deepcopy(self.record); r['heartbeat']=dict(run_id=run_id,at=int(self.clock())); self.commit(r)
         for cid in list(self.record['jobs']):
             j=self.record['jobs'][cid]
-            if self.cached(cid)['terminal'] or 'approval' not in j['worker']['swaps'][cid]: continue
+            saved=j['worker']['swaps'][cid]
+            if (self.cached(cid)['terminal'] and 'recovery_retirement' not in saved) or 'approval' not in saved: continue
             error=None
             try: self.worker(cid).step(cid)
             except hg.StorageError: raise  # Fresh process must reread uncertain disk state.
