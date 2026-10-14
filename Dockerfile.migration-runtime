@@ -1,0 +1,8 @@
+# Separate migrated runtime; existing installed recipes do not select it.
+FROM debian:bookworm-slim
+RUN apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates python3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY runtime/ /usr/local/libexec/swap-controller/
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+RUN python3 -B -I -c "import sys; sys.path.insert(0,'/usr/local/libexec/swap-controller'); import package_verify; package_verify.verify('/usr/local/libexec/swap-controller','controller')"
+ENTRYPOINT ["/usr/local/libexec/swap-controller/package_service.py"]

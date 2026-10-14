@@ -26,9 +26,10 @@
 - [x] User confirmed reviewed coordinator grants and six service cases (0092a),
   tower checkpoint and VM sync (0093).
 - [x] Implement the 0094 explicit deadline grant, local watchdog and on-chain evidence candidate.
-- [ ] Pass the 0094 original-binary controls, six funded deadline cases and service regression on the VM.
-- [ ] Integrate coordinator-aware backup/restore before live swap activation.
-- [ ] Accept 0096 reviewed retirement on both regtests: local coordinator and controller confirmations, original attempts, closed-history restarts and new-funding grant renewal. Implementation and fixture are present; packaging VM funded acceptance remains required.
+- [x] User confirmed the 0094a deadline and service matrices, checkpoint and VM sync.
+- [ ] Wire migrated runtimes into StartOS after the 0098 package-content continuity fixture; preserve existing restore refusal fences.
+- [x] User confirmed 0096a reviewed retirement, BTC fee repair and service regressions, then the 0097 checkpoint and VM sync.
+- [ ] Pass 0098 six packaged-runtime swaps and ordinary restart/image-content replacement on the VM; no restore/close exercise.
 - [ ] Validate an explicit migration path before replacing any installed XBT service.
 
 # Current bidirectional checkpoint

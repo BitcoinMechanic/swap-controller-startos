@@ -1,3 +1,10 @@
+## Migration runtime validation (0098)
+
+This source checkpoint adds isolated regtest runtime-image validation. It does
+not change your installed service or provide a new installer. Normal restarts
+and image replacement are tested with the original data and open channels.
+No backup restore or force-close exercise is part of this step.
+
 # Swap Controller
 
 ## Migration development branch
