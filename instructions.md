@@ -217,3 +217,21 @@ original outgoing payment. History and used grant budgets remain saved. New
 grants use eligible open channels and require their own confirmation. Existing
 runes do not gain retirement authority. The packaging VM's 0096 regtest matrix
 is required for acceptance; no installer or installed-node action is included.
+
+
+## StartOS action integration candidate (0100)
+
+`startos/migration/` contains a separate set of real SDK forms and handlers for
+the accepted packaged swap runtime. It is not registered by `startos/index.ts`
+and does not change the installed menus, node startup, restore policy or UI.
+The protocol and candidate commands still require disposable regtest.
+
+The 0100 runner compiles the handlers and exercises them around the unchanged
+0098a runtime images. Its six funded cases cover both directions, failure,
+ordinary restart and executable-image replacement on the same volumes, with
+original channels, credentials, HTLCs and payment attempts retained. The
+StartOS effects boundary is a subprocess fixture: this is not host installation
+or upgrade acceptance. No installer is produced.
+
+See the controller repository's `docs/migrated-startos-actions.md` for the
+candidate action flow, retained boundaries and remaining activation work.
