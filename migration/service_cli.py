@@ -21,7 +21,7 @@ SAFE={'confirmation_required','service_pairing_required','service_previous_swap_
       'contract_admission_expired','bounded_route_unavailable','market_unavailable','market_data_invalid'}
 
 
-def execute(directory,request,**options):
+def execute(directory,request,*,expected_environment=None,**options):
     hg.need(type(request) is dict and type(request.get('action')) is str,'service_request_invalid')
     action=request['action']; fields={'status':set(),'history':set(),'pair':{'binding','confirmed'},
         'prepare':{'direction','invoice'},'confirm':{'cid','confirmation','confirmed'},
@@ -30,7 +30,9 @@ def execute(directory,request,**options):
     hg.need(action in fields and set(request)==fields[action]|{'action'},'service_request_invalid')
     j=hg.Journal(directory)
     try:
-        s=service.Service(j,**options); args={k:v for k,v in request.items() if k!='action'}
+        s=service.Service(j,**options)
+        hg.need(expected_environment is None or service.environment(s.record)==expected_environment,'service_environment_changed')
+        args={k:v for k,v in request.items() if k!='action'}
         if action in ('status','history'): return s.status()
         if action=='invoice':
             s.guard(); return s.worker(args['cid']).payment_invoice(args['cid'])
@@ -38,7 +40,7 @@ def execute(directory,request,**options):
     finally: j.close()
 
 
-def run(directory,*,factory=service.https.Client,clock=service.time.time,interval=1,stop=None):
+def run(directory,*,factory=service.https.Client,clock=service.time.time,interval=1,stop=None,expected_environment=None):
     stop=stop or threading.Event(); deadline=service.time.monotonic()+120
     while True:
         try: fd=service.runner_fd(directory,create=True); break
@@ -51,6 +53,7 @@ def run(directory,*,factory=service.https.Client,clock=service.time.time,interva
             j=None
             try:
                 j=hg.Journal(directory); s=service.Service(j,factory=factory,clock=clock)
+                hg.need(expected_environment is None or service.environment(s.record)==expected_environment,'service_environment_changed')
                 s.tick(run_id)
             except BlockingIOError: pass
             finally:
@@ -61,18 +64,21 @@ def run(directory,*,factory=service.https.Client,clock=service.time.time,interva
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--disposable-regtest',required=True,action='store_true')
+    mode=p.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--disposable-regtest',action='store_true')
+    mode.add_argument('--mainnet',action='store_true')
     p.add_argument('directory',type=Path); p.add_argument('mode',choices=('init','action','run')); args=p.parse_args()
     os.umask(0o077)
+    environment='mainnet' if args.mainnet else 'regtest'
     try:
-        if args.mode=='init':service.initialize(args.directory); result=dict(initialized=True,regtest_only=True)
+        if args.mode=='init':service.initialize(args.directory,environment); result=dict(initialized=True,regtest_only=environment=='regtest')
         elif args.mode=='run':
             stop=threading.Event()
             for sig in (signal.SIGTERM,signal.SIGINT):signal.signal(sig,lambda *a:stop.set())
-            run(args.directory,stop=stop); return 0
+            run(args.directory,stop=stop,expected_environment=environment); return 0
         else:
             raw=sys.stdin.read(hg.MAX_BYTES+1); hg.need(len(raw)<=hg.MAX_BYTES,'service_request_invalid')
-            result=execute(args.directory,json.loads(raw,object_pairs_hook=hg.unique_object))
+            result=execute(args.directory,json.loads(raw,object_pairs_hook=hg.unique_object),expected_environment=environment)
         print(json.dumps(dict(result=result))); return 0
     except Exception as e:
         reason='service_busy' if isinstance(e,BlockingIOError) else str(e) if isinstance(e,ValueError) and str(e) in SAFE else 'service_request_refused'

@@ -1,7 +1,7 @@
 """Migration service: private atomic history and immutable per-swap HTTPS authority.
 
-Disposable regtest only. This entry point is deliberately separate from installed
-StartOS actions and backup paths until the migrated node package is validated.
+Explicitly initialized environment. Old regtest records retain their schema;
+mainnet authority uses a separate schema and cannot adopt a regtest pairing.
 """
 import copy
 import fcntl
@@ -24,19 +24,27 @@ MAX_JOBS = 32
 MAX_PAIRINGS = 16
 
 
-def empty():
-    return dict(schema=1, format=FORMAT, selected={d:None for d in DIRECTIONS},
+def empty(environment='regtest'):
+    hg.need(environment in ba.ci.ENVIRONMENTS, 'service_environment_invalid')
+    result = dict(schema=1, format=FORMAT, selected={d:None for d in DIRECTIONS},
                 pairings={}, jobs={}, paused=False, markup_bps=0, heartbeat=None)
+    if environment == 'mainnet': result.update(schema=2, environment=environment)
+    return result
+
+
+def environment(r):
+    return 'regtest' if r.get('schema') == 1 else r.get('environment')
 
 
 def validate(r):
-    hg.need(type(r) is dict and set(r)==set(empty()) and type(r['schema']) is int
-            and r['schema']==1 and r['format']==FORMAT, 'service_record_invalid')
+    hg.need(type(r) is dict and set(r)==set(empty(environment(r))) and type(r['schema']) is int
+            and r['schema']==(1 if environment(r)=='regtest' else 2) and r['format']==FORMAT, 'service_record_invalid')
     hg.need(type(r['paused']) is bool and hg.integer(r['markup_bps'],0,500), 'service_record_invalid')
     hg.need(type(r['pairings']) is dict and len(r['pairings'])<=MAX_PAIRINGS
             and type(r['jobs']) is dict and len(r['jobs'])<=MAX_JOBS, 'service_record_invalid')
     for gid,b in r['pairings'].items():
         wp.binding(b); hg.need(gid==ba.digest(b),'service_pairing_changed')
+        hg.need(all(n['grant']['chain']['environment']==environment(r) for n in b['nodes'].values()), 'service_environment_changed')
     hg.need(type(r['selected']) is dict and set(r['selected'])==set(DIRECTIONS),'service_record_invalid')
     for d,gid in r['selected'].items():
         hg.need(gid is None or (gid in r['pairings'] and r['pairings'][gid]['direction']==d),'service_pairing_changed')
@@ -57,14 +65,14 @@ def validate(r):
     return r
 
 
-def initialize(directory):
+def initialize(directory, environment='regtest'):
     directory=Path(directory)
     hg.need(not any(p.is_symlink() for p in (directory,*directory.parents)), 'service_path_refused')
     hg.need(not restore_barrier.blocked(directory), "service_restored")
     directory.mkdir(mode=0o700)  # Refuse existing state; never auto-initialize recovery.
     fd=os.open(directory/'state.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'w') as f:
-        json.dump(empty(),f); f.flush(); os.fsync(f.fileno())
+        json.dump(empty(environment),f); f.flush(); os.fsync(f.fileno())
     for p in (directory,directory.parent):
         fd=os.open(p,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
         try: os.fsync(fd)
@@ -143,6 +151,7 @@ class Service:
     def pair(self,binding,*,confirmed=False):
         self.guard(admission=True); hg.need(confirmed is True,'confirmation_required')
         b=copy.deepcopy(wp.binding(binding)); gid=ba.digest(b)
+        hg.need(all(n['grant']['chain']['environment']==environment(self.record) for n in b['nodes'].values()), 'service_environment_changed')
         hg.need(gid in self.record['pairings'] or len(self.record['pairings'])<MAX_PAIRINGS,'service_history_full')
         # Always authenticate both endpoints before selecting even a saved pair.
         m=Memory(self.journal,dict(schema=1,format=wp.FORMAT,binding=None))
@@ -174,7 +183,7 @@ class Service:
     def status(self):
         h=self.record['heartbeat']; now=int(self.clock())
         fresh=h is not None and 0<=now-h['at']<=120 and runner_alive(self.journal.directory)
-        return dict(format=FORMAT,read_only=True,regtest_only=True,paused=self.record['paused'],
+        return dict(format=FORMAT,read_only=True,regtest_only=environment(self.record)=='regtest',paused=self.record['paused'],
                     restored=restore_barrier.blocked(self.journal.directory),worker_fresh=fresh,
                     markup_bps=self.record['markup_bps'],selected=copy.deepcopy(self.record['selected']),
                     grants={direction: None if gid is None else {kind:dict(

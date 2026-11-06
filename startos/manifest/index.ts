@@ -6,6 +6,6 @@ export const manifest = setupManifest({
   upstreamRepo: 'https://github.com/BitcoinMechanic/lightning',
   marketingUrl: 'https://github.com/BitcoinMechanic/lightning', donationUrl: null, description: { short, long },
   volumes: ['main'],
-  images: { controller: { source: { dockerBuild: { dockerfile: 'Dockerfile', workdir: '.' } }, arch: ['x86_64'] } },
+  images: { controller: { source: { dockerBuild: { dockerfile: 'Dockerfile.live', workdir: '.' } }, arch: ['x86_64'] } },
   dependencies: {},
 })

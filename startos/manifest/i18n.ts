@@ -1,2 +1,2 @@
-export const short = { en_US: 'Read-only pairing and health for BTC and XBT coordinators' }
-export const long = { en_US: 'Experimental controller preparation. Verifies two remote CLN identities over HTTPS using dedicated restricted runes. No wallet, swap execution, quote API or inbound network interface. Connection health is not a liquidity or routing check.' }
+export const short = { en_US: 'BTC/XBT swaps with reviewed grants and market pricing' }
+export const long = { en_US: 'Dedicated controller candidate. Pair bounded coordinator credentials, review a recipient invoice and Neoxa price, explicitly confirm, then pay once. An automatic service recovers saved attempts. Operator markup defaults to 0%. Fresh installation only; no legacy state import.' }

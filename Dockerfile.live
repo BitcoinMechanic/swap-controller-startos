@@ -1,0 +1,8 @@
+# 0102: requires exact accepted image IDs and sealed runtime staged by the bundle.
+ARG CLI_IMAGE
+ARG PARENT_IMAGE
+FROM ${CLI_IMAGE} AS cli
+FROM ${PARENT_IMAGE}
+USER root
+RUN rm -rf /usr/local/libexec/swap-controller
+COPY runtime/ /usr/local/libexec/swap-controller/
