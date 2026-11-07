@@ -144,5 +144,33 @@ class UpgradeTests(unittest.TestCase):
         folder,r=fixture(self.root,index=20,direction='reverse')
         r['incoming_pin']=r['contract']['channels']['btc'];save(self.root,folder+'/record.json',r);self.refused()
 
+    def test_inert_atomic_leftovers_preserved(self):
+        for value,kind in ((dict(checked_at=1000,mode='restored'),'heartbeat'),
+                           (dict(checked_at=1000,needs_attention=False),'clear_pilot_status'),
+                           (dict(checked_at=1000,needs_attention=True),'pilot_attention_status')):
+            save(self.root,'execution/.controller-neojew6c',value)
+            before=(self.root/'execution/.controller-neojew6c').read_bytes()
+            r=v.validate(self.root)
+            self.assertEqual(r['inert_temporary_files_preserved'],{kind:1})
+            self.assertEqual((self.root/'execution/.controller-neojew6c').read_bytes(),before)
+
+    def test_authority_and_uncertain_temporary_files_refused(self):
+        for value in ({'blocked':True},{'epoch':'a'*64},self.record,{'rune':'PRIVATE'},
+                      {'jobs':[]},{'checked_at':1000,'needs_attention':1},
+                      {'checked_at':True,'mode':'disabled'},{'checked_at':1,'mode':'unknown'},
+                      {'checked_at':1,'mode':'disabled','extra':'PRIVATE'}):
+            save(self.root,'execution/.controller-neojew6c',value);self.refused()
+        for raw in ('','{','{"checked_at":1,"checked_at":2,"mode":"disabled"}'):
+            (self.root/'execution/.controller-neojew6c').write_text(raw);self.refused()
+
+    def test_temp_directory_and_symlink_refused(self):
+        p=self.root/'execution/.controller-neojew6c';p.mkdir();self.refused();p.rmdir()
+        p.symlink_to(self.root/'pairing.json');self.refused()
+
+    def test_attention_telemetry_never_admits_pending_or_restored_authority(self):
+        save(self.root,'execution/.controller-neojew6c',dict(checked_at=1000,needs_attention=True))
+        self.change(phase='send_intent');self.refused()
+        self.change(phase='settled');save(self.root,'swap-restored.json',{'blocked':True});self.refused()
+
 
 if __name__=='__main__':unittest.main()

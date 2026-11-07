@@ -40,6 +40,7 @@ def main():
     for index in range(7,11):fixture(root,index=index,phase='expired')
     fixture(root,index=11,phase='cancelled')
     for index in range(12,14):fixture(root,index=index,direction='reverse')
+    save(root,'execution/.controller-neojew6c',dict(checked_at=1000,needs_attention=True))
     before=snapshot(root)
     check=['python3','-I','-B','-c',PROGRAM,'/data','admit']
     report=json.loads(container(root,check,readonly=True));assert report['admitted'] and len(report['records'])==13

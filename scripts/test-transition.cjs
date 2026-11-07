@@ -7,7 +7,7 @@ function load(file,mocks={}) {
 }
 async function main() {
  const bundled=require(path.resolve(process.argv[2]||'javascript/index.js'))
- assert.equal(bundled.manifest.version,'#privkeyio:0.1.0:1');assert.equal(bundled.manifest.id,'swap-controller')
+ assert.equal(bundled.manifest.version,'#privkeyio:0.1.0:2');assert.equal(bundled.manifest.id,'swap-controller')
  assert.deepEqual(bundled.manifest.volumes,['main']);assert.deepEqual(Object.keys(bundled.manifest.images),['controller'])
  const ids=['migrated-initialize','legacy-history',...['forward','reverse'].flatMap(d=>['pair','new','confirm','cancel'].map(a=>'migrated-'+a+'-'+d)),
   'migrated-status','migrated-history','migrated-invoice','migrated-settings']
@@ -31,13 +31,15 @@ async function main() {
  let admitted=0,reject=false
  const current=load('startos/versions/current.ts',{'../live/legacy':{inspectLegacy:async()=>{admitted++;if(reject)throw Error('refused')}}}).current
  const previous=load('startos/versions/v_privkeyio0.1.0_0.ts').v_privkeyio_0_1_0_0
- const graph=load('startos/versions/index.ts',{'./current':{current},'./v_privkeyio0.1.0_0':{v_privkeyio_0_1_0_0:previous}}).versionGraph
+ const priorOne=load('startos/versions/v_privkeyio0.1.0_1.ts',{'../live/legacy':{inspectLegacy:async()=>assert.fail('historical admission selected')},'../live/legacyProgramV1':load('startos/live/legacyProgramV1.ts')}).v_privkeyio_0_1_0_1
+ const graph=load('startos/versions/index.ts',{'./current':{current},'./v_privkeyio0.1.0_1':{v_privkeyio_0_1_0_1:priorOne},'./v_privkeyio0.1.0_0':{v_privkeyio_0_1_0_0:previous}}).versionGraph
  const {ExtendedVersion}=Module.createRequire(require.resolve('@start9labs/start-sdk'))('@start9labs/start-core/exver')
- const parse=v=>ExtendedVersion.parse(v),to=parse('#privkeyio:0.1.0:1'),from=parse('0.1.0:24')
+ const parse=v=>ExtendedVersion.parse(v),to=parse('#privkeyio:0.1.0:2'),from=parse('0.1.0:24')
  const versions=[],e={setDataVersion:async({version})=>versions.push(version)}
  await graph.migrate({effects:e,from,to});assert.equal(admitted,1);assert.equal(versions.at(-1),to.toString())
  reject=true;await assert.rejects(()=>graph.migrate({effects:e,from,to}));assert.equal(versions.length,1)
  await graph.migrate({effects:e,from:parse('#privkeyio:0.1.0:0'),to});assert.equal(admitted,2)
+ await graph.migrate({effects:e,from:parse('#privkeyio:0.1.0:1'),to});assert.equal(admitted,2)
  for(const v of ['0.1.0:23','0.1.0:25','#other:0.1.0:24','0.1.1:0'])assert.equal(graph.canMigrateFrom().satisfiedBy(parse(v)),false,v)
  assert.equal(graph.canMigrateTo().satisfiedBy(from),false)
  let taskCount=0,exists=false,setup
@@ -63,11 +65,11 @@ async function main() {
  let checked=0,execs=0,deny=false
  const actionSdk={...realSdk,SubContainer:{withTemp:async(e,i,m,n,fn)=>fn({exec:async()=>{execs++;return {exitCode:0,stdout:'{"result":{"initialized":true}}'}}})}}
  const mod=load('startos/live/actions.ts',{'../sdk':{sdk:actionSdk},'../utils':{mounts:{}},
-  './legacy':{inspectLegacy:async()=>({records:[{direction:'forward',phase:'settled'}]}),present:async()=>true,
+  './legacy':{inspectLegacy:async()=>({records:[{direction:'forward',phase:'settled'}],inert_temporary_files_preserved:{pilot_attention_status:1}}),present:async()=>true,
     verifyInitialization:async()=>{checked++;if(deny)throw Error('refused')}}})
  const historyAction=mod.createActions().get('legacy-history');await historyAction.getInput({effects})
  const history=await historyAction.run({effects,input:{}})
- assert.equal(history.result.value[0].value,'1');assert.ok(!JSON.stringify(history).includes('PRIVATE'))
+ assert.equal(history.result.value[0].value,'1');assert.equal(history.result.value.at(-1).name,'Retained historical worker warning files');assert.equal(history.result.value.at(-1).value,'1');assert.ok(!JSON.stringify(history).includes('PRIVATE'))
  await assert.rejects(()=>mod.invoke(effects,{action:'initialize',confirmed:false}));assert.equal(checked,0);assert.equal(execs,0)
  deny=true;await assert.rejects(()=>mod.invoke(effects,{action:'initialize',confirmed:true}));assert.equal(execs,0)
  deny=false;await mod.invoke(effects,{action:'initialize',confirmed:true});assert.equal(checked,2);assert.equal(execs,1)

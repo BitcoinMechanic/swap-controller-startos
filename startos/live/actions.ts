@@ -117,6 +117,9 @@ export function createActions(call: Call = invoke) {
           rows.push({ name: (direction === 'forward' ? 'BTC → XBT' : 'XBT → BTC') + ' / ' + phase,
             value: String(count), type: 'single', description: null, copyable: false, masked: false, qr: false })
         }
+        const warnings = report.inert_temporary_files_preserved?.pilot_attention_status
+        if (Number.isSafeInteger(warnings) && warnings > 0) rows.push({ name: 'Retained historical worker warning files',
+          value: String(warnings), type: 'single', description: null, copyable: false, masked: false, qr: false })
       }
       return { version: '1' as const, title: 'Legacy Swap History',
         message: 'Retained local history only. Old credentials and restore barriers remain unchanged. No legacy authority is imported; these labels are not new settlement proofs.',

@@ -8,10 +8,10 @@ export async function present(name: string) {
   catch (error: any) { if (error?.code === 'ENOENT') return false; throw error }
 }
 
-export async function inspectLegacy(effects: T.Effects, mode: 'admit' | 'history' = 'admit') {
+export async function inspectLegacy(effects: T.Effects, mode: 'admit' | 'history' = 'admit', program = legacyProgram) {
   const mounts = sdk.Mounts.of().mountVolume({ volumeId: 'main', subpath: null, mountpoint: '/data', readonly: true })
   return sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'legacy-controller-check', async sub => {
-    const result = await sub.exec(['python3', '-I', '-B', '-c', legacyProgram, '/data', mode])
+    const result = await sub.exec(['python3', '-I', '-B', '-c', program, '/data', mode])
     let report: any
     try { report = JSON.parse(String(result.stdout)) } catch { throw new Error('Legacy controller records could not be verified; all records preserved.') }
     if (result.exitCode !== 0 || report?.legacy_records_preserved !== true || report?.legacy_authority_imported !== false || (mode === 'admit' && report?.admitted !== true)) {

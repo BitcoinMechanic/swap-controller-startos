@@ -6,6 +6,7 @@ initialization and verified pairing; root restore fences always refuse admission
 """
 import json
 from pathlib import Path
+import re
 import sys
 import time
 import legacy_audit as audit
@@ -19,6 +20,24 @@ class Refused(Exception):
 def need(ok, reason):
     if not ok:
         raise Refused(reason)
+
+
+def inert_temporary(value):
+    """Only complete, non-authoritative telemetry from the legacy atomic writer.
+
+    Never accept empty/partial writes, restore markers, epochs, histories,
+    credentials or execution records merely because their filename is temporary.
+    """
+    if type(value) is not dict or type(value.get('checked_at')) is not int or not 0 <= value['checked_at'] < 2**35:
+        return None
+    if set(value) == {'checked_at','mode'} and value['mode'] in ('disabled','regtest','restored','backup_paused'):
+        return 'heartbeat'
+    if set(value) == {'checked_at','needs_attention'} and type(value['needs_attention']) is bool:
+        # lifecycle.tick writes this report after a successful poll or any poll
+        # exception. It is telemetry, never a recovery/execution instruction.
+        # Full contract/terminal checks still run; retain the warning distinctly.
+        return 'pilot_attention_status' if value['needs_attention'] else 'clear_pilot_status'
+    return None
 
 
 def validate(root, mode='admit'):
@@ -45,7 +64,15 @@ def validate(root, mode='admit'):
     execution_names = {'jobs','forward-swaps','reverse-swaps','forward-pilot','reverse-pilot',
         'lifecycle.lock','restored.json','forward-pilot-restore-epoch.json','heartbeat.json',
         'forward-pilot-status.json','reverse-pilot-status.json','history.json','regtest-quote-nodes.json'}
-    need(set(snapshot.dirs.get('execution',[])) <= execution_names, 'unknown_execution_state')
+    temporary_counts = {}
+    for name in set(snapshot.dirs.get('execution',[])) - execution_names:
+        need(re.fullmatch(r'\.controller-[a-z0-9_]{8}',name) is not None, 'unknown_execution_state')
+        path='execution/'+name
+        need(path in snapshot.files, 'temporary_execution_entry_not_file')
+        try: kind=inert_temporary(snapshot.json(path))
+        except Exception: kind=None
+        need(kind is not None, 'temporary_execution_state_needs_review')
+        temporary_counts[kind]=temporary_counts.get(kind,0)+1
     records = []
     for path in snapshot.files:
         if not path.endswith('/record.json'):
@@ -107,7 +134,7 @@ def validate(root, mode='admit'):
     need(snapshot.stable(), 'legacy_state_changed')
     return dict(admitted=mode=='admit', legacy_records_preserved=True, legacy_authority_imported=False,
         legacy_execution_barrier_preserved=markers['legacy_execution_barrier']['present'],
-        records=records, settlement_proof_reverified=False)
+        records=records, inert_temporary_files_preserved=temporary_counts, settlement_proof_reverified=False)
 
 
 if __name__ == '__main__':
