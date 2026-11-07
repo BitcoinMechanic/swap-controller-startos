@@ -15,7 +15,8 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def fetch(kind):
     hg.need(kind in ('ticker','orderbook'),'market_unavailable')
     try:
-        req=urllib.request.Request(BASE+kind+'/BTCB2_BTC',headers={'Accept':'application/json','Cache-Control':'no-cache'})
+        req=urllib.request.Request(BASE+kind+'/BTCB2_BTC',headers={
+            'Accept':'application/json','Cache-Control':'no-cache','User-Agent':'SwapController/0.1.0'})
         with urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect()).open(req,timeout=10) as r:
             hg.need(r.status==200,'market_unavailable'); raw=r.read(262145)
         hg.need(len(raw)<=262144,'market_unavailable')

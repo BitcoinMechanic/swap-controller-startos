@@ -7,7 +7,7 @@ function load(file,mocks={}) {
 }
 async function main() {
  const bundled=require(path.resolve(process.argv[2]||'javascript/index.js'))
- assert.equal(bundled.manifest.version,'#privkeyio:0.1.0:3');assert.equal(bundled.manifest.id,'swap-controller')
+ assert.equal(bundled.manifest.version,'#privkeyio:0.1.0:4');assert.equal(bundled.manifest.id,'swap-controller')
  assert.deepEqual(bundled.manifest.volumes,['main']);assert.deepEqual(Object.keys(bundled.manifest.images),['controller'])
  const ids=['migrated-initialize','legacy-history',...['forward','reverse'].flatMap(d=>['pair','new','confirm','cancel'].map(a=>'migrated-'+a+'-'+d)),
   'migrated-status','migrated-history','migrated-invoice','migrated-settings']
@@ -33,15 +33,17 @@ async function main() {
  const previous=load('startos/versions/v_privkeyio0.1.0_0.ts').v_privkeyio_0_1_0_0
  const priorOne=load('startos/versions/v_privkeyio0.1.0_1.ts',{'../live/legacy':{inspectLegacy:async()=>assert.fail('historical admission selected')},'../live/legacyProgramV1':load('startos/live/legacyProgramV1.ts')}).v_privkeyio_0_1_0_1
  const priorTwo=load('startos/versions/v_privkeyio0.1.0_2.ts',{'../live/legacy':{inspectLegacy:async()=>assert.fail('historical admission selected')},'../live/legacyProgramV2':load('startos/live/legacyProgramV2.ts')}).v_privkeyio_0_1_0_2
- const graph=load('startos/versions/index.ts',{'./current':{current},'./v_privkeyio0.1.0_2':{v_privkeyio_0_1_0_2:priorTwo},'./v_privkeyio0.1.0_1':{v_privkeyio_0_1_0_1:priorOne},'./v_privkeyio0.1.0_0':{v_privkeyio_0_1_0_0:previous}}).versionGraph
+ const priorThree=load('startos/versions/v_privkeyio0.1.0_3.ts',{'../live/legacy':{inspectLegacy:async()=>{throw Error('historical admission selected')}}}).v_privkeyio_0_1_0_3
+ const graph=load('startos/versions/index.ts',{'./current':{current},'./v_privkeyio0.1.0_3':{v_privkeyio_0_1_0_3:priorThree},'./v_privkeyio0.1.0_2':{v_privkeyio_0_1_0_2:priorTwo},'./v_privkeyio0.1.0_1':{v_privkeyio_0_1_0_1:priorOne},'./v_privkeyio0.1.0_0':{v_privkeyio_0_1_0_0:previous}}).versionGraph
  const {ExtendedVersion}=Module.createRequire(require.resolve('@start9labs/start-sdk'))('@start9labs/start-core/exver')
- const parse=v=>ExtendedVersion.parse(v),to=parse('#privkeyio:0.1.0:3'),from=parse('0.1.0:24')
+ const parse=v=>ExtendedVersion.parse(v),to=parse('#privkeyio:0.1.0:4'),from=parse('0.1.0:24')
  const versions=[],e={setDataVersion:async({version})=>versions.push(version)}
  await graph.migrate({effects:e,from,to});assert.equal(admitted,1);assert.equal(versions.at(-1),to.toString())
  reject=true;await assert.rejects(()=>graph.migrate({effects:e,from,to}));assert.equal(versions.length,1)
  await graph.migrate({effects:e,from:parse('#privkeyio:0.1.0:0'),to});assert.equal(admitted,2)
  await graph.migrate({effects:e,from:parse('#privkeyio:0.1.0:1'),to});assert.equal(admitted,2)
  await graph.migrate({effects:e,from:parse('#privkeyio:0.1.0:2'),to});assert.equal(admitted,2)
+ await graph.migrate({effects:e,from:parse('#privkeyio:0.1.0:3'),to});assert.equal(admitted,2)
  for(const v of ['0.1.0:23','0.1.0:25','#other:0.1.0:24','0.1.1:0'])assert.equal(graph.canMigrateFrom().satisfiedBy(parse(v)),false,v)
  assert.equal(graph.canMigrateTo().satisfiedBy(from),false)
  let taskCount=0,exists=false,setup

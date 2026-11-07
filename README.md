@@ -2666,3 +2666,5 @@ or upgrade acceptance. No installer is produced.
 
 See the controller repository's `docs/migrated-startos-actions.md` for the
 candidate action flow, retained boundaries and remaining activation work.
+
+Public Neoxa pricing requests identify themselves as `SwapController/0.1.0`; Python’s default client name is rejected by the exchange. Version `#privkeyio:0.1.0:4` fixes this request header. Updating from `:3` retains the existing pairing and journals; do not initialize or pair again. If a review previously failed with pricing unavailable, create a new review after updating.

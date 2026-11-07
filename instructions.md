@@ -42,3 +42,5 @@ cannot resolve before its approved deadline. Grants require explicit review.
 0102 validation distinguishes synthetic mainnet policy checks, actual funded
 regtest fixtures, packed-file checks, and pending StartOS host acceptance. It
 does not claim a mainnet swap or StartOS host test from a regtest receipt.
+
+Public Neoxa pricing requests identify themselves as `SwapController/0.1.0`; Python’s default client name is rejected by the exchange. Version `#privkeyio:0.1.0:4` fixes this request header. Updating from `:3` retains the existing pairing and journals; do not initialize or pair again. If a review previously failed with pricing unavailable, create a new review after updating.
