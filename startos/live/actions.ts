@@ -1,6 +1,7 @@
 import { T } from '@start9labs/start-sdk'
 import { sdk } from '../sdk'
 import { mounts } from '../utils'
+import { inspectLegacy, present, verifyInitialization } from './legacy'
 
 // Mainnet actions use a separate immutable-environment journal.
 export const directory = '/data/mainnet-swaps-v1'
@@ -34,8 +35,13 @@ export async function executeRequest(request: Record<string, unknown>, exec: (ar
     if (res.exitCode !== 0 || !reply || !Object.hasOwn(reply, 'result')) throw refused(reply?.reason)
     return reply.result
 }
-export const invoke: Call = async (effects, request) => sdk.SubContainer.withTemp(
-  effects, { imageId: 'controller' }, mounts, 'migrated-swap-action', sub => executeRequest(request, (argv, options) => sub.exec(argv, options)))
+export const invoke: Call = async (effects, request) => {
+  if (request.action === 'initialize') {
+    if (request.confirmed !== true || Object.keys(request).sort().join() !== 'action,confirmed') throw refused('confirmation_required')
+    await verifyInitialization(effects)
+  }
+  return sdk.SubContainer.withTemp(effects, { imageId: 'controller' }, mounts, 'migrated-swap-action', sub => executeRequest(request, (argv, options) => sub.exec(argv, options)))
+}
 const text = (name: string, masked = false) => sdk.Value.text({ name, masked, required: true, default: null, placeholder: null })
 const confirmed = () => sdk.Value.toggle({ name: 'Confirm the exact reviewed terms', default: false })
 const meta = (name: string, group = 'Swaps') => async () => ({ name, group,
@@ -98,6 +104,23 @@ export function createActions(call: Call = invoke) {
     async ({ effects, input }) => {
       if (input.confirmed !== true) throw refused('confirmation_required')
       return display(await call(effects, { action: 'initialize', confirmed: true }))
+    }))
+  add(sdk.Action.withInput('legacy-history', async () => ({ ...await meta('Legacy Swap History', 'Swap Setup')(),
+    allowedStatuses: 'any' as const, warning: null, description: 'Read the retained legacy history. Does not resume old swaps or import credentials.' }),
+    sdk.InputSpec.of({}), async () => {}, async ({ effects }) => {
+      const rows: any[] = []
+      if (await present('execution')) {
+        const report = await inspectLegacy(effects, 'history')
+        if (!Array.isArray(report.records)) throw refused(null)
+        for (const direction of ['forward','reverse']) for (const phase of ['settled','failed','cancelled','expired']) {
+          const count = report.records.filter((r: any) => r.direction === direction && r.phase === phase).length
+          rows.push({ name: (direction === 'forward' ? 'BTC → XBT' : 'XBT → BTC') + ' / ' + phase,
+            value: String(count), type: 'single', description: null, copyable: false, masked: false, qr: false })
+        }
+      }
+      return { version: '1' as const, title: 'Legacy Swap History',
+        message: 'Retained local history only. Old credentials and restore barriers remain unchanged. No legacy authority is imported; these labels are not new settlement proofs.',
+        result: { type: 'group' as const, value: rows } }
     }))
   for (const direction of ['forward', 'reverse'] as const) {
     const label = direction === 'forward' ? 'BTC to XBT' : 'XBT to BTC'

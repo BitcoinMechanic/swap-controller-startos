@@ -1,2 +1,2 @@
 export const short = { en_US: 'BTC/XBT swaps with reviewed grants and market pricing' }
-export const long = { en_US: 'Dedicated controller candidate. Pair bounded coordinator credentials, review a recipient invoice and Neoxa price, explicitly confirm, then pay once. An automatic service recovers saved attempts. Operator markup defaults to 0%. Fresh installation only; no legacy state import.' }
+export const long = { en_US: 'Pair bounded coordinator credentials, review a recipient invoice and Neoxa price, explicitly confirm, then pay once. An automatic service recovers saved attempts. Operator markup defaults to 0%. Checked legacy 0.1.0:24 updates preserve terminal history and restore barriers without importing old authority. Fresh pairing is required.' }

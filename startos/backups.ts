@@ -3,7 +3,14 @@ import { sdk } from './sdk'
 // Credentials and execution journals are not portable authority.
 export const { createBackup, restoreInit } = sdk.setupBackups(async () =>
   sdk.Backups.ofVolumes('main')
-    .setOptions({ exclude: ['mainnet-swaps-v1', 'migrated-swaps-v1'] })
+    .setOptions({ exclude: ['mainnet-swaps-v1', 'migrated-swaps-v1',
+      'pairing.json', 'pairing.lock', 'status.json', '.controller-*',
+      'forward-session-pairing.json', 'reverse-session-pairing.json', 'swap-inspection.json',
+      'btc-gate-observation.json', 'xbt-gate-observation.json',
+      'execution/forward-swaps', 'execution/reverse-swaps', 'execution/forward-pilot', 'execution/reverse-pilot',
+      'execution/jobs', 'execution/regtest-quote-nodes.json', 'execution/heartbeat.json',
+      'execution/lifecycle.lock', 'execution/backup-paused.json',
+      'execution/forward-pilot-status.json', 'execution/reverse-pilot-status.json'] })
     .setPostRestore(async () => {
       const path = sdk.volumes.main.subpath('swap-restored.json')
       try {

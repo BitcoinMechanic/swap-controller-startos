@@ -8,4 +8,4 @@ digest pin, so this development build is not bit-for-bit reproducible.
 
 Run the Python tests, TypeScript check, bundle build and scripts/check-bundle.cjs
 before packaging. Update the StartOS version graph for subsequent releases.
-Never enable swap execution as a side effect of upgrading this observer.
+Legacy transition admission is embedded from scripts/legacy/ by embed.py and uses a read-only temporary mount. Re-run its Python controls, scripts/check-bundle.cjs, TypeScript compilation, and the isolated runtime transition fixture before packaging. Never initialize new authority or execute a swap as a side effect of migration.

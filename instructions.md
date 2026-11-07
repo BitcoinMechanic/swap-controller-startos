@@ -1,14 +1,26 @@
-# 0102 dedicated live integration candidate
+# Swap Controller transition candidate
 
-Build this candidate with the verified 0102 bundle runner. It binds exact engine,
-UI and Python-runtime image IDs into an isolated packaging copy and compiles the
-installed StartOS registry. The source manifest alone is not an installer.
+Candidate **#privkeyio:0.1.0:1** supports a checked same-volume update from
+legacy **0.1.0:24**, or an ordinary update from dedicated candidate
+**#privkeyio:0.1.0:0**. Use the installer bound to the build receipt. Keep the
+existing service and volume; do not uninstall, restore, or remove markers.
 
-Use a fresh dedicated installation. The legacy controller volume/authority is
-not migrated. Complete the Initialize Swap Service task while stopped, then
-start the service. Pair reviewed incoming/outgoing credentials for each direction
-using the coordinator HTTPS address and its StartOS root CA. Credentials are
-masked and sent privately, never included in public status.
+The legacy transition checks local terminal contracts, current pairing and restore
+bindings, publication amounts, and retained incoming channel bindings. It refuses
+pending/unknown records, on-chain recovery, old executor jobs, contradictory state,
+and root restore fences. A recognized legacy execution barrier remains intact.
+These local records are not independent proof of cross-chain settlement.
+
+All old records and credentials stay in place as non-executable history. The
+new worker never reads them or imports their authority. **Legacy Swap History**
+shows retained phase counts. Backups continue to exclude legacy credentials and
+execution authority; restoring a backup fences the new controller.
+
+After the legacy update, complete **Initialize Swap Controller** while stopped,
+then start the service. Initialization creates an empty, separate journal. Pair
+freshly reviewed bounded incoming/outgoing credentials for each direction using
+the coordinator HTTPS address and its StartOS root CA. Pairing checks both nodes
+before replacing the saved pairing. Never paste credentials into chat or logs.
 
 New swap: recipient invoice → review Neoxa price and limits → explicit confirmation
 → pay the published incoming invoice once. The automatic worker preserves the
