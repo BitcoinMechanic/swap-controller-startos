@@ -40,7 +40,7 @@ async function invoke(effects: any, direction: 'forward' | 'reverse', input: obj
       result: { type: 'group' as const, value: Object.entries(report).filter(([key]) => key in labels).map(([key, value]) => ({
         name: labels[key], description: null, type: 'single' as const,
         value: typeof value === 'object' ? JSON.stringify(value) : String(value), masked: false,
-        copyable: ['policy_digest', 'candidate_digest'].includes(key), qr: false,
+        copyable: ['policy_digest', 'candidate_digest'].includes(key), launchable: false, qr: false,
       })) },
     }
   })

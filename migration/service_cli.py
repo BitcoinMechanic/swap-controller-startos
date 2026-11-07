@@ -23,7 +23,7 @@ SAFE={'confirmation_required','service_pairing_required','service_previous_swap_
 
 def execute(directory,request,*,expected_environment=None,**options):
     hg.need(type(request) is dict and type(request.get('action')) is str,'service_request_invalid')
-    action=request['action']; fields={'status':set(),'history':set(),'pair':{'binding','confirmed'},
+    action=request['action']; fields={'status':set(),'history':set(),'pair':{'binding','confirmed'},'pair_local':{'bindings','confirmed'},
         'prepare':{'direction','invoice'},'confirm':{'cid','confirmation','confirmed'},
         'cancel':{'cid','confirmation'},'invoice':{'cid'},'configure':{'paused','markup_bps'},
         'recovery_review':{'cid'},'recovery_confirm':{'cid','confirmation','confirmed'}}
@@ -67,11 +67,17 @@ def main():
     mode=p.add_mutually_exclusive_group(required=True)
     mode.add_argument('--disposable-regtest',action='store_true')
     mode.add_argument('--mainnet',action='store_true')
-    p.add_argument('directory',type=Path); p.add_argument('mode',choices=('init','action','run')); args=p.parse_args()
+    p.add_argument('directory',type=Path); p.add_argument('mode',choices=('init','action','run','local-run')); p.add_argument('--local-config',type=Path); args=p.parse_args()
     os.umask(0o077)
     environment='mainnet' if args.mainnet else 'regtest'
     try:
         if args.mode=='init':service.initialize(args.directory,environment); result=dict(initialized=True,regtest_only=environment=='regtest')
+        elif args.mode=='local-run':
+            import local_pairing
+            hg.need(args.local_config is not None,'service_request_invalid')
+            stop=threading.Event()
+            for sig in (signal.SIGTERM,signal.SIGINT):signal.signal(sig,lambda *a:stop.set())
+            local_pairing.run(args.directory,args.local_config,environment,stop=stop); return 0
         elif args.mode=='run':
             stop=threading.Event()
             for sig in (signal.SIGTERM,signal.SIGINT):signal.signal(sig,lambda *a:stop.set())

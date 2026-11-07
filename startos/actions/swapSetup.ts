@@ -29,7 +29,7 @@ async function readAction(effects: any, mode: string, input: object) {
     return { version: '1' as const, title: 'Swap Setup',
       message: 'Read-only inspection. No invoice published and no payment started.',
       result: { type: 'group' as const, value: choices.map(row => ({ ...row, description: null,
-        type: 'single' as const, masked: false, copyable: mode === 'inspect', qr: false })) } }
+        type: 'single' as const, masked: false, copyable: mode === 'inspect', launchable: false, qr: false })) } }
   })
 }
 export const saveSwapInspection = sdk.Action.withInput('save-swap-inspection', meta('Save Swap Inspection Credentials',

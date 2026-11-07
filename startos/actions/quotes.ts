@@ -46,7 +46,7 @@ async function invoke(effects: T.Effects, mode: 'status' | 'review' | 'prepare' 
         name: labels[key], description: null, type: 'single' as const,
         value: typeof value === 'object' ? JSON.stringify(value) : String(value),
         masked: ['btc_invoice', 'xbt_invoice'].includes(key), copyable: ['job', 'review_digest', 'recipient', 'btc_invoice', 'xbt_invoice'].includes(key),
-        qr: ['btc_invoice', 'xbt_invoice'].includes(key),
+        launchable: false, qr: ['btc_invoice', 'xbt_invoice'].includes(key),
       })) },
     }
   })

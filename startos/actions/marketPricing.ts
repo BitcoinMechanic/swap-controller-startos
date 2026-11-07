@@ -13,5 +13,5 @@ export const marketPricing=sdk.Action.withInput('market-pricing',async()=>({
 }),sdk.InputSpec.of({markupBps:sdk.Value.number({name:'Operator markup (basis points; 100 = 1%)',description:'0 means no additional operator markup. Quotes include the selected coordinator routing fee. Maximum 500 = 5%.',required:true,integer:true,min:0,max:500,default:0,placeholder:null})}),
   async({effects})=>request(effects,'get'),async({effects,input})=>{
     const r=await request(effects,'configure',input)
-    return {version:'1' as const,title:'Market Pricing',message:'Saved for new market quotes. Existing quotes retain their original amounts.',result:{type:'single' as const,value:String(r.markupBps/100)+'% operator markup',copyable:false,qr:false,masked:false}}
+    return {version:'1' as const,title:'Market Pricing',message:'Saved for new market quotes. Existing quotes retain their original amounts.',result:{type:'single' as const,value:String(r.markupBps/100)+'% operator markup',copyable:false,launchable:false,qr:false,masked:false}}
   })

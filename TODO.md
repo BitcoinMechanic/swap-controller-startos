@@ -1,3 +1,11 @@
+# Same-server automatic node setup
+
+- [x] Discover local bridge HTTPS bindings and StartOS root CA.
+- [x] Share only approved bounded grants from node public volumes.
+- [x] Atomically pair both directions, preserve manual setup and active recovery.
+- [x] Validate native four-grant HTTPS pairing without payments.
+- [x] Complete package and isolated StartOS acceptance (native regtest plus installed read-only bridge fixtures).
+
 # Neoxa pricing candidate (0064)
 
 - [x] Add explicit bounded market grants in both directions; preserve old authority.

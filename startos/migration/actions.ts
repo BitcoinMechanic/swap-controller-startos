@@ -52,7 +52,7 @@ const states: Record<string, string> = {
 export function display(report: any, title = 'Swap Status'): T.ActionResult & { version: '1' } {
   const rows: any[] = []
   const add = (name: string, value: string, copyable = false, qr = false, masked = false) => rows.push({ name,
-    description: null, type: 'single', value, copyable, qr, masked })
+    description: null, type: 'single', value, copyable, launchable: false, qr, masked })
   if (!report || typeof report !== 'object') throw refused(null)
   for (const key of ['worker_fresh', 'paused', 'restored', 'paired', 'existing_swaps_unchanged', 'initialized']) {
     if (typeof report[key] === 'boolean') add(key.replaceAll('_', ' '), String(report[key]))

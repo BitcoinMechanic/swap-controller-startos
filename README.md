@@ -2740,3 +2740,34 @@ Missing state is never created by `run`. The buyer's staged plugin exposes
 `xbt-merchant-review`, `xbt-merchant-accept`, `xbt-merchant-status` and
 `xbt-merchant-list`, with capability and confirmation-intent persistence in CLN's
 datastore. No production installer or UI integration is included in this increment.
+
+
+## Automatic setup with Lightning nodes on this server
+
+Update BTC Core Lightning to **#privkeyio:26.6.10:3**, XBT Core Lightning to
+**#privkeyio:26.6.9:5**, and Swap Controller to **#privkeyio:0.1.0:6**. Keep the
+existing services and volumes. Local Node Setup is enabled by default.
+
+On each node, enable the swap coordinator and approve its incoming/outgoing grants,
+then enable **Connect Local Swap Controller** once. The controller resolves the
+actual StartOS bridge HTTPS ports, obtains the StartOS root CA and imports the
+restricted grants locally. It pairs BTC→XBT and XBT→BTC together after authenticating
+all four grants and both node identities. No URL, certificate or credential copying
+is required. Local Lightning Nodes shows missing setup and connection status.
+
+Approved replacement grants are picked up automatically. Existing swaps keep their
+original pairings. Changes wait until active swaps finish. A manual pairing is never
+replaced automatically: manual users can disable Local Node Setup and continue using
+the existing Pair Grants actions. Automatic setup never initializes missing controller
+journals, removes restore fences, opens channels or increases grant budgets.
+
+Connection publications are mounted read-only from the nodes' `public` volumes.
+Those mounts are excluded from controller backups, and the generated configuration
+is private, ephemeral container data. Only the existing read-only HTTPS pairing
+checks run before a single atomic commit. Repeated unchanged setup does not write
+or repeatedly probe nodes while payment recovery is running. A failure leaves both
+directions unchanged and retries setup later. New swap admission still checks current
+grant authority. Disabling automatic setup preserves existing pairing and recovery.
+
+The package now uses Start SDK 3.1.1 for the supported StartOS root-CA API; action
+result metadata and dependency declarations are updated accordingly.

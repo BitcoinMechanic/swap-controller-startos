@@ -33,7 +33,7 @@ async function invoke(effects: T.Effects, mode: 'status' | 'confirm' | 'recover'
       result: { type: 'group' as const, value: Object.entries(report).map(([name, value]) => ({
         name, description: null, type: 'single' as const,
         value: typeof value === 'object' ? JSON.stringify(value) : String(value),
-        masked: false, copyable: name === 'jobs', qr: false,
+        masked: false, copyable: name === 'jobs', launchable: false, qr: false,
       })) },
     }
   })

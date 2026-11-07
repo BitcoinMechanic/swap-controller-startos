@@ -1,3 +1,4 @@
+import { localSetup } from './localNodes'
 import { T } from '@start9labs/start-sdk'
 import { sdk } from '../sdk'
 import { mounts } from '../utils'
@@ -63,9 +64,9 @@ const states: Record<string, string> = {
 export function display(report: any, title = 'Swap Status'): T.ActionResult & { version: '1' } {
   const rows: any[] = []
   const add = (name: string, value: string, copyable = false, qr = false, masked = false) => rows.push({ name,
-    description: null, type: 'single', value, copyable, qr, masked })
+    description: null, type: 'single', value, copyable, launchable: false, qr, masked })
   if (!report || typeof report !== 'object') throw refused(null)
-  for (const key of ['worker_fresh', 'paused', 'restored', 'paired', 'existing_swaps_unchanged', 'initialized']) {
+  for (const key of ['worker_fresh', 'paused', 'restored', 'paired', 'local_paired', 'existing_swaps_unchanged', 'initialized']) {
     if (typeof report[key] === 'boolean') add(key.replaceAll('_', ' '), String(report[key]))
   }
   for (const direction of ['forward', 'reverse']) for (const kind of ['incoming', 'outgoing']) {
@@ -102,7 +103,7 @@ function credential(raw: unknown): any {
   } catch { throw new Error('Paste the complete bounded credential returned by the coordinator.') }
 }
 export function createActions(call: Call = invoke) {
-  let actions = sdk.Actions.of()
+  let actions = sdk.Actions.of().addAction(localSetup)
   const add = (a: any) => { actions = actions.addAction(a) }
   add(sdk.Action.withInput('migrated-initialize', async () => ({ ...await meta('Initialize Swap Controller', 'Swap Setup')(), allowedStatuses: 'only-stopped' as const }),
     sdk.InputSpec.of({ confirmed: confirmed() }), async () => ({ confirmed: false }),
@@ -120,11 +121,11 @@ export function createActions(call: Call = invoke) {
         for (const direction of ['forward','reverse']) for (const phase of ['settled','failed','cancelled','expired']) {
           const count = report.records.filter((r: any) => r.direction === direction && r.phase === phase).length
           rows.push({ name: (direction === 'forward' ? 'BTC → XBT' : 'XBT → BTC') + ' / ' + phase,
-            value: String(count), type: 'single', description: null, copyable: false, masked: false, qr: false })
+            value: String(count), type: 'single', description: null, copyable: false, masked: false, launchable: false, qr: false })
         }
         const warnings = report.inert_temporary_files_preserved?.pilot_attention_status
         if (Number.isSafeInteger(warnings) && warnings > 0) rows.push({ name: 'Retained historical worker warning files',
-          value: String(warnings), type: 'single', description: null, copyable: false, masked: false, qr: false })
+          value: String(warnings), type: 'single', description: null, copyable: false, masked: false, launchable: false, qr: false })
       }
       return { version: '1' as const, title: 'Legacy Swap History',
         message: 'Retained local history only. Old credentials and restore barriers remain unchanged. No legacy authority is imported; these labels are not new settlement proofs.',

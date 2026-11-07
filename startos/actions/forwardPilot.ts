@@ -28,7 +28,7 @@ export async function invoke(effects: any, mode: string, input: object = {}, scr
       result: { type: 'group' as const, value: Object.entries(report).filter(([key]) => permitted.includes(key)).map(([key,value]) => ({
         name: labels[key] || key, description: null, type: 'single' as const,
         value: key === 'phase' ? (stages[String(value)] || 'Needs inspection') : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : typeof value === 'object' ? JSON.stringify(value) : String(value),
-        masked: ['contract','invoice'].includes(key), copyable: ['pilot_id','contract','invoice'].includes(key), qr: key === 'invoice',
+        masked: ['contract','invoice'].includes(key), copyable: ['pilot_id','contract','invoice'].includes(key), launchable: false, qr: key === 'invoice',
       })) },
     }
   })

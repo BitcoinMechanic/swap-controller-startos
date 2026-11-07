@@ -87,5 +87,5 @@ export const swapStatus = sdk.Action.withInput('swap-status', async () => ({
     }
     return { version: '1', title: i18n('Swap Status'),
       message: i18n('Read-only observations; no payment or route search. A recipient invoice is still needed to check its route, liquidity, fee and timing. Expiry or pause stops new enrollments; already enrolled swaps retain their recovery rights.'),
-      result: { type: 'group', value: rows.map(row => ({ ...row, description: null, type: 'single', masked: false, copyable: false, qr: false })) } }
+      result: { type: 'group', value: rows.map(row => ({ ...row, description: null, type: 'single', masked: false, copyable: false, launchable: false, qr: false })) } }
   }))

@@ -7,9 +7,9 @@ function load(file,mocks={}) {
 }
 async function main() {
  const bundled=require(path.resolve(process.argv[2]||'javascript/index.js'))
- assert.equal(bundled.manifest.version,'#privkeyio:0.1.0:5');assert.equal(bundled.manifest.id,'swap-controller')
+ assert.equal(bundled.manifest.version,'#privkeyio:0.1.0:6');assert.equal(bundled.manifest.id,'swap-controller')
  assert.deepEqual(bundled.manifest.volumes,['main']);assert.deepEqual(Object.keys(bundled.manifest.images),['controller'])
- const ids=['migrated-initialize','legacy-history',...['forward','reverse'].flatMap(d=>['pair','new','confirm','cancel'].map(a=>'migrated-'+a+'-'+d)),
+ const ids=['local-node-setup','migrated-initialize','legacy-history',...['forward','reverse'].flatMap(d=>['pair','new','confirm','cancel'].map(a=>'migrated-'+a+'-'+d)),
   'migrated-status','migrated-history','migrated-invoice','migrated-settings']
  assert.deepEqual(Object.keys(bundled.actions.actions),ids)
  const effects={eventId:'transition-test'};let response,calls=0
@@ -35,23 +35,25 @@ async function main() {
  const priorTwo=load('startos/versions/v_privkeyio0.1.0_2.ts',{'../live/legacy':{inspectLegacy:async()=>assert.fail('historical admission selected')},'../live/legacyProgramV2':load('startos/live/legacyProgramV2.ts')}).v_privkeyio_0_1_0_2
  const priorThree=load('startos/versions/v_privkeyio0.1.0_3.ts',{'../live/legacy':{inspectLegacy:async()=>{throw Error('historical admission selected')}}}).v_privkeyio_0_1_0_3
  const priorFour=load('startos/versions/v_privkeyio0.1.0_4.ts',{'../live/legacy':{inspectLegacy:async()=>{throw Error('historical admission selected')}}}).v_privkeyio_0_1_0_4
- const graph=load('startos/versions/index.ts',{'./current':{current},'./v_privkeyio0.1.0_4':{v_privkeyio_0_1_0_4:priorFour},'./v_privkeyio0.1.0_3':{v_privkeyio_0_1_0_3:priorThree},'./v_privkeyio0.1.0_2':{v_privkeyio_0_1_0_2:priorTwo},'./v_privkeyio0.1.0_1':{v_privkeyio_0_1_0_1:priorOne},'./v_privkeyio0.1.0_0':{v_privkeyio_0_1_0_0:previous}}).versionGraph
+ const priorFive=load('startos/versions/v_privkeyio_0_1_0_5.ts',{'../live/legacy':{inspectLegacy:async()=>{admitted++;if(reject)throw Error('refused')}}}).v_privkeyio_0_1_0_5
+ const graph=load('startos/versions/index.ts',{'./v_privkeyio_0_1_0_5':{v_privkeyio_0_1_0_5:priorFive},'./current':{current},'./v_privkeyio0.1.0_4':{v_privkeyio_0_1_0_4:priorFour},'./v_privkeyio0.1.0_3':{v_privkeyio_0_1_0_3:priorThree},'./v_privkeyio0.1.0_2':{v_privkeyio_0_1_0_2:priorTwo},'./v_privkeyio0.1.0_1':{v_privkeyio_0_1_0_1:priorOne},'./v_privkeyio0.1.0_0':{v_privkeyio_0_1_0_0:previous}}).versionGraph
  const {ExtendedVersion}=Module.createRequire(require.resolve('@start9labs/start-sdk'))('@start9labs/start-core/exver')
- const parse=v=>ExtendedVersion.parse(v),to=parse('#privkeyio:0.1.0:5'),from=parse('0.1.0:24')
+ const parse=v=>ExtendedVersion.parse(v),to=parse('#privkeyio:0.1.0:6'),from=parse('0.1.0:24')
  const versions=[],e={setDataVersion:async({version})=>versions.push(version)}
  await graph.migrate({effects:e,from,to});assert.equal(admitted,1);assert.equal(versions.at(-1),to.toString())
- reject=true;await assert.rejects(()=>graph.migrate({effects:e,from,to}));assert.equal(versions.length,1)
+ reject=true;await assert.rejects(()=>graph.migrate({effects:e,from,to}));assert.equal(versions.length,2)
  await graph.migrate({effects:e,from:parse('#privkeyio:0.1.0:0'),to});assert.equal(admitted,2)
  await graph.migrate({effects:e,from:parse('#privkeyio:0.1.0:1'),to});assert.equal(admitted,2)
  await graph.migrate({effects:e,from:parse('#privkeyio:0.1.0:2'),to});assert.equal(admitted,2)
  await graph.migrate({effects:e,from:parse('#privkeyio:0.1.0:3'),to});assert.equal(admitted,2)
  await graph.migrate({effects:e,from:parse('#privkeyio:0.1.0:4'),to});assert.equal(admitted,2)
+ await graph.migrate({effects:e,from:parse('#privkeyio:0.1.0:5'),to});assert.equal(admitted,2)
  for(const v of ['0.1.0:23','0.1.0:25','#other:0.1.0:24','0.1.1:0'])assert.equal(graph.canMigrateFrom().satisfiedBy(parse(v)),false,v)
  assert.equal(graph.canMigrateTo().satisfiedBy(from),false)
  let taskCount=0,exists=false,setup
  const initSdk={setupOnInit:fn=>{setup=fn;return fn},setupInit:()=>null,setupUninit:()=>null,
   action:{createOwnTask:async(_e,a,severity)=>{assert.equal(a,'initialize');assert.equal(severity,'critical');taskCount++}}}
- load('startos/init/index.ts',{'../sdk':{sdk:initSdk},'../dependencies':{setDependencies:null},'../interfaces':{setInterfaces:null},
+ load('startos/init/index.ts',{'../sdk':{sdk:initSdk},'../dependencies':{dependencies:null},'../interfaces':{setInterfaces:null},
   '../versions':{versionGraph:graph},'../actions':{actions:{get:id=>{assert.equal(id,'migrated-initialize');return 'initialize'}}},
   '../backups':{restoreInit:null},'../live/legacy':{present:async name=>{assert.equal(name,'mainnet-swaps-v1');return exists}}})
  await setup(effects,'update');assert.equal(taskCount,1)
@@ -70,7 +72,7 @@ async function main() {
  const realSdk=require('@start9labs/start-sdk').StartSdk.of().withManifest(bundled.manifest).build(true)
  let checked=0,execs=0,deny=false
  const actionSdk={...realSdk,SubContainer:{withTemp:async(e,i,m,n,fn)=>fn({exec:async()=>{execs++;return {exitCode:0,stdout:'{"result":{"initialized":true}}'}}})}}
- const mod=load('startos/live/actions.ts',{'../sdk':{sdk:actionSdk},'../utils':{mounts:{}},
+ const mod=load('startos/live/actions.ts',{'./localNodes':{localSetup:bundled.actions.actions['local-node-setup']},'../sdk':{sdk:actionSdk},'../utils':{mounts:{}},
   './legacy':{inspectLegacy:async()=>({records:[{direction:'forward',phase:'settled'}],inert_temporary_files_preserved:{pilot_attention_status:1}}),present:async()=>true,
     verifyInitialization:async()=>{checked++;if(deny)throw Error('refused')}}})
  const historyAction=mod.createActions().get('legacy-history');await historyAction.getInput({effects})

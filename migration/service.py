@@ -37,7 +37,7 @@ def environment(r):
 
 
 def validate(r):
-    hg.need(type(r) is dict and set(r)==set(empty(environment(r))) and type(r['schema']) is int
+    hg.need(type(r) is dict and set(r) in (set(empty(environment(r))), set(empty(environment(r)))|{'local_selected'}) and type(r['schema']) is int
             and r['schema']==(1 if environment(r)=='regtest' else 2) and r['format']==FORMAT, 'service_record_invalid')
     hg.need(type(r['paused']) is bool and hg.integer(r['markup_bps'],0,500), 'service_record_invalid')
     hg.need(type(r['pairings']) is dict and len(r['pairings'])<=MAX_PAIRINGS
@@ -48,6 +48,10 @@ def validate(r):
     hg.need(type(r['selected']) is dict and set(r['selected'])==set(DIRECTIONS),'service_record_invalid')
     for d,gid in r['selected'].items():
         hg.need(gid is None or (gid in r['pairings'] and r['pairings'][gid]['direction']==d),'service_pairing_changed')
+    local=r.get('local_selected', {d:None for d in DIRECTIONS})
+    hg.need(type(local) is dict and set(local)==set(DIRECTIONS) and all(
+        g is None or g in r['pairings'] and r['pairings'][g]['direction']==d for d,g in local.items()),
+        'service_record_invalid')
     hashes=set()
     for cid,j in r['jobs'].items():
         hg.need(type(j) is dict and set(j)=={'generation','worker','cancelled','error'}
@@ -156,8 +160,38 @@ class Service:
         # Always authenticate both endpoints before selecting even a saved pair.
         m=Memory(self.journal,dict(schema=1,format=wp.FORMAT,binding=None))
         wp.Pairing(m,factory=self.factory,clock=self.clock).save(b,confirmed=True)
-        r=copy.deepcopy(self.record); r['pairings'][gid]=b; r['selected'][b['direction']]=gid; self.capacity(r); self.commit(r)
+        r=copy.deepcopy(self.record); r['pairings'][gid]=b; r['selected'][b['direction']]=gid
+        if 'local_selected' in r: r['local_selected'][b['direction']]=None
+        self.capacity(r); self.commit(r)
         return dict(direction=b['direction'],generation=gid,paired=True,existing_swaps_unchanged=True)
+
+    def pair_local(self,bindings,*,confirmed=False):
+        """Atomically select both local directions, never take over a manual pair."""
+        self.guard(admission=True); hg.need(confirmed is True,'confirmation_required')
+        hg.need(type(bindings) is dict and set(bindings)==set(DIRECTIONS),'service_pairing_changed')
+        r=copy.deepcopy(self.record); local=r.get('local_selected',{d:None for d in DIRECTIONS})
+        selected={}
+        for direction in DIRECTIONS:
+            b=copy.deepcopy(wp.binding(bindings[direction])); gid=ba.digest(b)
+            hg.need(b['direction']==direction and all(n['grant']['chain']['environment']==environment(r)
+                    for n in b['nodes'].values()),'service_environment_changed')
+            hg.need(r['selected'][direction] is None or r['selected'][direction]==local[direction],
+                    'service_manual_pairing_preserved')
+            r['pairings'][gid]=b; selected[direction]=gid
+        for a,b in (('incoming','outgoing'),('outgoing','incoming')):
+            ba.ci.same_binding(bindings['forward']['nodes'][a]['grant']['chain'],
+                               bindings['reverse']['nodes'][b]['grant']['chain'])
+        if selected==self.record['selected'] and selected==local:
+            return dict(paired=True,existing_swaps_unchanged=True)
+        # Automatic discovery must never hold the recovery lock while probing
+        # absent nodes during an approved payment. Defer changed setup instead.
+        hg.need(all(self.cached(cid)['terminal'] for cid in r['jobs']), 'service_previous_swap_active')
+        hg.need(len(r['pairings'])<=MAX_PAIRINGS,'service_history_full'); self.capacity(r)
+        for direction in DIRECTIONS:
+            m=Memory(self.journal,dict(schema=1,format=wp.FORMAT,binding=None))
+            wp.Pairing(m,factory=self.factory,clock=self.clock).save(bindings[direction],confirmed=True)
+        r['selected']=selected; r['local_selected']=selected.copy(); self.commit(r)
+        return dict(paired=True,existing_swaps_unchanged=True)
 
     def worker(self,cid):
         hg.need(cid in self.record['jobs'],'service_swap_unknown')
@@ -185,6 +219,7 @@ class Service:
         fresh=h is not None and 0<=now-h['at']<=120 and runner_alive(self.journal.directory)
         return dict(format=FORMAT,read_only=True,regtest_only=environment(self.record)=='regtest',paused=self.record['paused'],
                     restored=restore_barrier.blocked(self.journal.directory),worker_fresh=fresh,
+                    local_paired=all(self.record['selected'][d] is not None and self.record.get('local_selected',{}).get(d)==self.record['selected'][d] for d in DIRECTIONS),
                     markup_bps=self.record['markup_bps'],selected=copy.deepcopy(self.record['selected']),
                     grants={direction: None if gid is None else {kind:dict(
                         expires_at=node['grant']['expires_at'],expired=now>=node['grant']['expires_at'],

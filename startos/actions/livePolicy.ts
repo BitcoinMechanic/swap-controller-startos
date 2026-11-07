@@ -24,7 +24,7 @@ export const livePolicy = sdk.Action.withInput('review-live-policy', async () =>
       result: { type: 'group' as const, value: Object.entries(report).filter(([key]) => key in labels).map(([key, value]) => ({
         name: labels[key], description: null, type: 'single' as const,
         value: typeof value === 'object' ? JSON.stringify(value) : String(value),
-        masked: false, copyable: false, qr: false,
+        masked: false, copyable: false, launchable: false, qr: false,
       })) },
     }
   }))
