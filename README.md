@@ -2668,3 +2668,7 @@ See the controller repository's `docs/migrated-startos-actions.md` for the
 candidate action flow, retained boundaries and remaining activation work.
 
 Public Neoxa pricing requests identify themselves as `SwapController/0.1.0`; Python’s default client name is rejected by the exchange. Version `#privkeyio:0.1.0:4` fixes this request header. Updating from `:3` retains the existing pairing and journals; do not initialize or pair again. If a review previously failed with pricing unavailable, create a new review after updating.
+
+Give new quotes a 10-minute payment window while preserving old deadlines. Retire expired unpaid swaps promptly with compatible node packages. Show setup and retirement states and prefill the sole waiting payment invoice. Existing journals and pairing are preserved.
+
+For the expiry-workflow release, update the BTC and XBT coordinator packages before the controller. Existing unpaid expired swaps are then retired automatically after fresh unused-authority checks; no journal deletion or initialization is needed. Retired enrollments still consume their original grant slot and budget. A later swap may require a newly reviewed grant. Ten-minute pricing applies only to new controller quotes; never pay a previously expired invoice.

@@ -227,7 +227,7 @@ class Tests(unittest.TestCase):
               'orderbook':dict(success=True,pair='BTCB2_BTC',asks=[dict(price='0.5',quantity='1')],bids=[dict(price='0.49',quantity='1')])}
         for d in service.DIRECTIONS:
             for markup in (0,100):
-                self.assertEqual(service_market.make(d,route,markup,clock=lambda:NOW,reader=data.get),price(d,route,markup,clock=lambda:NOW))
+                self.assertEqual(service_market.make(d,route,markup,clock=lambda:NOW,reader=data.get),dict(price(d,route,markup,clock=lambda:NOW),schema=2,expires_at=NOW+600))
         data['ticker']['ticker']['computedAt']-=30001
         with self.assertRaises(ValueError):service_market.make('forward',route,0,clock=lambda:NOW,reader=data.get)
 
