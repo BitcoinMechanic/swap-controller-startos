@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Explicitly provisioned TLS quote/status endpoint. No payments or admin proxy."""
+"""Explicitly provisioned TLS quote/accept/status endpoint. No buyer payments or admin proxy."""
 import argparse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
@@ -53,9 +53,37 @@ def dispatcher(directory,service_directory,origin,environment,signer,*,factory=h
             hg.need(service.environment(controller.record)==environment,'provider_environment_changed')
             return api.preview(controller,invoice,origin,rid)
         finally: journal.close()
+    def accept(offer):
+        api.validate_offer(offer)
+        hg.need(offer['terms']['origin']==origin and offer['terms']['environment']==environment,
+                'provider_identity_changed')
+        journal=hg.Journal(service_directory)
+        try:
+            controller=service.Service(journal,factory=factory,clock=clock)
+            hg.need(service.environment(controller.record)==environment,'provider_environment_changed')
+            return controller.accept_quote(offer['contract'],offer['generation'],
+                                           confirmation=offer['terms']['contract_digest'])
+        finally:journal.close()
+    def observe(offer):
+        api.validate_offer(offer);cid=offer['terms']['contract_digest']
+        journal=hg.Journal(service_directory)
+        try:
+            controller=service.Service(journal,factory=factory,clock=clock)
+            hg.need(service.environment(controller.record)==environment,'provider_environment_changed')
+            if cid not in controller.record['jobs']:return None
+            job=controller.record['jobs'][cid];saved=job['worker']['swaps'][cid]
+            hg.need(job['generation']==offer['generation'] and https.ba.equal(saved['contract'],offer['contract'])
+                    and 'approval' in saved and not job['cancelled'],'provider_contract_changed')
+            status=controller.cached(cid)
+            invoice=saved.get('invoice',{}).get('invoice')
+            if status['blocked'] or status['state']!='waiting_for_payment' or int(clock())>=offer['terms']['expires_at']:
+                invoice=None
+            return dict(contract_digest=cid,state=status['state'],terminal=status['terminal'],
+                        blocked=status['blocked'],observed_at=int(clock()),payment_invoice=invoice)
+        finally:journal.close()
     def dispatch(operation,body):
         journal=hg.Journal(directory)
-        try: return api.Gateway(journal,quote=quote,sign=signer,clock=clock).execute(operation,body)
+        try: return api.Gateway(journal,quote=quote,sign=signer,accept=accept,observe=observe,clock=clock).execute(operation,body)
         finally: journal.close()
     return dispatch
 
@@ -88,7 +116,8 @@ def server(address,dispatch,context):
                 # Only fixed public protocol failures cross this boundary.
                 public={'provider_request_unknown':404,'provider_request_conflict':409,
                         'provider_rate_limit':429,'provider_capacity':503,'provider_blocked':503,
-                        'provider_request_invalid':400,'invoice_invalid':400}
+                        'provider_request_invalid':400,'invoice_invalid':400,'provider_confirmation_required':400,
+                        'provider_quote_expired':409,'provider_estimate_only':409,'provider_legacy_read_only':409}
                 reason=str(error)
                 code=public.get(reason,400)
                 reply={'error':reason if reason in public else 'provider_request_refused'}

@@ -50,5 +50,6 @@ Give new quotes a 10-minute payment window while preserving old deadlines. Retir
 For the expiry-workflow release, update the BTC and XBT coordinator packages before the controller. Existing unpaid expired swaps are then retired automatically after fresh unused-authority checks; no journal deletion or initialization is needed. Retired enrollments still consume their original grant slot and budget. A later swap may require a newly reviewed grant. Ten-minute pricing applies only to new controller quotes; never pay a previously expired invoice.
 
 The development customer quote API is not enabled by this installed package.
-Its signed estimates do not reserve liquidity or authorize payment. Continue to
+Version 2 offers can be explicitly accepted by the development buyer, but do not
+send a buyer payment. This API is not enabled on production installations. Continue to
 use the existing explicit review and confirmation workflow for installed swaps.

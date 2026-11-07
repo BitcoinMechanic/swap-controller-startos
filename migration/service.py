@@ -221,6 +221,39 @@ class Service:
         r=copy.deepcopy(self.record); r['jobs'][cid]=dict(generation=gid,worker=m.read(),cancelled=False,error=None)
         self.capacity(r); self.commit(r); return self.cached(cid)
 
+    def accept_quote(self,contract,generation,*,confirmation):
+        """Atomically adopt one exact customer quote with its approval.
+
+        Only fresh admission reads nodes. An already-approved contract returns
+        its original status even after expiry/pairing rotation, without a write.
+        No enrollment or outgoing payment occurs inside this method.
+        """
+        self.guard(); c=copy.deepcopy(cc.validate(contract)); cid=cc.digest(c)
+        hg.need(c['direction']=='reverse' and confirmation==cid,'confirmation_required')
+        if cid in self.record['jobs']:
+            j=self.record['jobs'][cid]; saved=j['worker']['swaps'][cid]
+            hg.need(j['generation']==generation and ba.equal(saved['contract'],c)
+                    and not j['cancelled'] and 'approval' in saved,'service_quote_conflict')
+            return self.cached(cid)
+        self.guard(admission=True)
+        hg.need(self.record['selected']['reverse']==generation and generation in self.record['pairings'],
+                'service_review_superseded')
+        hg.need(self.status()['worker_fresh'],'service_worker_unavailable')
+        b=self.record['pairings'][generation]
+        hg.need(ba.equal(c['grants'],{k:n['grant'] for k,n in b['nodes'].items()}),'service_pairing_changed')
+        hg.need(len(self.record['jobs'])<MAX_JOBS,'service_history_full')
+        for other,j in self.record['jobs'].items():
+            old=j['worker']['swaps'][other]['contract']
+            hg.need(old['incoming']['payment_hash']!=c['incoming']['payment_hash'],'service_invoice_reused')
+            hg.need(old['direction']!='reverse' or self.cached(other)['terminal'],'service_previous_swap_active')
+        memory=Memory(self.journal,dict(schema=1,format=cw.FORMAT,swaps={}))
+        paired=wp.Pairing(Memory(self.journal,dict(schema=1,format=wp.FORMAT,binding=b)),factory=self.factory,clock=self.clock)
+        worker=paired.worker(memory); worker.prepare(c); worker.confirm(cid,cid)
+        r=copy.deepcopy(self.record)
+        r['jobs'][cid]=dict(generation=generation,worker=memory.read(),cancelled=False,error=None)
+        self.capacity(r); self.commit(r)
+        return self.cached(cid)
+
     def confirm(self,cid,confirmation,*,confirmed=False):
         self.guard(); hg.need(confirmed is True and cid==confirmation,'confirmation_required')
         hg.need(cid in self.record['jobs'],'service_swap_unknown'); j=self.record['jobs'][cid]
