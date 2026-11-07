@@ -14,7 +14,9 @@ import market_terms as mt
 
 
 class Refused(Exception):
-    pass
+    def __init__(self, reason, issues=None):
+        super().__init__(reason)
+        self.issues = issues or {}
 
 
 def need(ok, reason):
@@ -38,6 +40,61 @@ def inert_temporary(value):
         # Full contract/terminal checks still run; retain the warning distinctly.
         return 'pilot_attention_status' if value['needs_attention'] else 'clear_pilot_status'
     return None
+
+
+def validate_record(snapshot, path):
+    r = snapshot.json(path)
+    direction = 'reverse' if path.startswith('execution/reverse-') else 'forward'
+    module = audit.reverse if direction == 'reverse' else audit.forward
+    c = module.validate(r['contract'])
+    permitted = {'schema','pilot_id','contract','generation','phase','restore_epoch','transport',
+        'gate_profile','invoice','terms','binding','expiry','incoming_pin'}
+    need(set(r) <= permitted, 'unknown_legacy_record_fields')
+    folder = str(Path(path).parent)
+    need(set(snapshot.dirs[folder]) <= {'record.json','credentials.json','attention.json'}, 'unknown_swap_state')
+    need(not any(d.startswith(folder+'/') for d in snapshot.dirs), 'nested_swap_state')
+    attention = None
+    if 'attention.json' in snapshot.dirs[folder]:
+        need(folder+'/attention.json' in snapshot.files, 'invalid_attention_report')
+        status = snapshot.json(folder+'/attention.json')
+        need(type(status) is dict and set(status)=={'needs_attention'} and type(status['needs_attention']) is bool, 'invalid_attention_report')
+        attention = status['needs_attention']
+    incoming = 'xbt' if direction == 'reverse' else 'btc'
+    pins = c['incoming_channels'] if module.routed(c) else [c['channels'][incoming]]
+    phase = r['phase']
+    has_credentials = folder+'/credentials.json' in snapshot.files
+    if has_credentials:
+        credentials = snapshot.json(folder+'/credentials.json')
+        need(type(credentials) is dict and set(credentials) == {'btc','xbt'} and
+            all(type(v) is str and 0 < len(v) <= 32768 for v in credentials.values()), 'invalid_legacy_credentials')
+    if phase in ('settled','failed'):
+        binding = r.get('binding')
+        need(type(binding) is list and len(binding)==2 and type(binding[1]) is int and
+            0 <= binding[1] < 2**63 and any(binding[0]==p['short_channel_id'] for p in pins), 'invalid_terminal_binding')
+        need(type(r.get('expiry')) is int and 0 < r['expiry'] < 2**32, 'invalid_terminal_expiry')
+        need(has_credentials and 'invoice' in r and 'terms' in r, 'incomplete_terminal_record')
+        if module.routed(c):
+            need(r.get('incoming_pin') in pins and r['incoming_pin']['short_channel_id']==binding[0], 'terminal_funding_changed')
+    if phase == 'cancelled':
+        need(not has_credentials and not any(k in r for k in ('invoice','terms','binding','expiry','incoming_pin')), 'cancelled_record_has_authority')
+    if phase == 'expired':
+        need(not any(k in r for k in ('binding','expiry','incoming_pin')), 'expired_record_has_execution')
+        expires = c['pricing']['expires_at'] if mt.market(c) else c['admission_until']
+        need(expires < time.time(), 'retirement_not_expired')
+    if 'invoice' in r or 'terms' in r:
+        need(type(r.get('invoice')) is str and 0 < len(r['invoice']) <= 20000 and
+            r['invoice'].startswith('lnxbt' if direction == 'reverse' else 'lnbc'), 'invalid_publication')
+        t = r.get('terms')
+        need(type(t) is dict and t.get('payment_hash')==c['payment_hash'] and
+            audit.forward.hex32(t.get('payment_secret')), 'publication_hash_changed')
+        for asset, amount in mt.amounts(c).items():
+            need(type(t.get(asset+'_amount_msat')) is int and t[asset+'_amount_msat']==amount, 'publication_amount_changed')
+        outgoing = 'btc' if direction == 'reverse' else 'xbt'
+        need(t.get(outgoing+'_invoice') == c['invoice'], 'publication_invoice_changed')
+        need(type(t.get('expires_at')) is int and c['created_at'] < t['expires_at'] <= c['admission_until']+120, 'publication_expiry_changed')
+        if mt.market(c):
+            need(t['expires_at']==c['pricing']['expires_at'], 'market_publication_expiry_changed')
+    return dict(direction=direction,phase=phase,attention_report=attention)
 
 
 def validate(root, mode='admit'):
@@ -74,55 +131,18 @@ def validate(root, mode='admit'):
         need(kind is not None, 'temporary_execution_state_needs_review')
         temporary_counts[kind]=temporary_counts.get(kind,0)+1
     records = []
+    record_issues = {}
     for path in snapshot.files:
         if not path.endswith('/record.json'):
             continue
-        r = snapshot.json(path)
-        direction = 'reverse' if path.startswith('execution/reverse-') else 'forward'
-        module = audit.reverse if direction == 'reverse' else audit.forward
-        c = module.validate(r['contract'])
-        permitted = {'schema','pilot_id','contract','generation','phase','restore_epoch','transport',
-            'gate_profile','invoice','terms','binding','expiry','incoming_pin'}
-        need(set(r) <= permitted, 'unknown_legacy_record_fields')
-        folder = str(Path(path).parent)
-        need(set(snapshot.dirs[folder]) <= {'record.json','credentials.json'}, 'unknown_swap_state')
-        need(not any(d.startswith(folder+'/') for d in snapshot.dirs), 'nested_swap_state')
-        incoming = 'xbt' if direction == 'reverse' else 'btc'
-        pins = c['incoming_channels'] if module.routed(c) else [c['channels'][incoming]]
-        phase = r['phase']
-        has_credentials = folder+'/credentials.json' in snapshot.files
-        if has_credentials:
-            credentials = snapshot.json(folder+'/credentials.json')
-            need(type(credentials) is dict and set(credentials) == {'btc','xbt'} and
-                all(type(v) is str and 0 < len(v) <= 32768 for v in credentials.values()), 'invalid_legacy_credentials')
-        if phase in ('settled','failed'):
-            binding = r.get('binding')
-            need(type(binding) is list and len(binding)==2 and type(binding[1]) is int and
-                0 <= binding[1] < 2**63 and any(binding[0]==p['short_channel_id'] for p in pins), 'invalid_terminal_binding')
-            need(type(r.get('expiry')) is int and 0 < r['expiry'] < 2**32, 'invalid_terminal_expiry')
-            need(has_credentials and 'invoice' in r and 'terms' in r, 'incomplete_terminal_record')
-            if module.routed(c):
-                need(r.get('incoming_pin') in pins and r['incoming_pin']['short_channel_id']==binding[0], 'terminal_funding_changed')
-        if phase == 'cancelled':
-            need(not has_credentials and not any(k in r for k in ('invoice','terms','binding','expiry','incoming_pin')), 'cancelled_record_has_authority')
-        if phase == 'expired':
-            need(not any(k in r for k in ('binding','expiry','incoming_pin')), 'expired_record_has_execution')
-            expires = c['pricing']['expires_at'] if mt.market(c) else c['admission_until']
-            need(expires < time.time(), 'retirement_not_expired')
-        if 'invoice' in r or 'terms' in r:
-            need(type(r.get('invoice')) is str and 0 < len(r['invoice']) <= 20000 and
-                r['invoice'].startswith('lnxbt' if direction == 'reverse' else 'lnbc'), 'invalid_publication')
-            t = r.get('terms')
-            need(type(t) is dict and t.get('payment_hash')==c['payment_hash'] and
-                audit.forward.hex32(t.get('payment_secret')), 'publication_hash_changed')
-            for asset, amount in mt.amounts(c).items():
-                need(type(t.get(asset+'_amount_msat')) is int and t[asset+'_amount_msat']==amount, 'publication_amount_changed')
-            outgoing = 'btc' if direction == 'reverse' else 'xbt'
-            need(t.get(outgoing+'_invoice') == c['invoice'], 'publication_invoice_changed')
-            need(type(t.get('expires_at')) is int and c['created_at'] < t['expires_at'] <= c['admission_until']+120, 'publication_expiry_changed')
-            if mt.market(c):
-                need(t['expires_at']==c['pricing']['expires_at'], 'market_publication_expiry_changed')
-        records.append(dict(direction=direction,phase=phase))
+        try:
+            records.append(validate_record(snapshot,path))
+        except Refused as error:
+            record_issues[str(error)]=record_issues.get(str(error),0)+1
+        except Exception:
+            record_issues['invalid_legacy_record']=record_issues.get('invalid_legacy_record',0)+1
+    if record_issues:
+        raise Refused(sorted(record_issues)[0],record_issues)
     # Every entry in each history directory must be an inspected contract directory.
     known_folders = {str(Path(p).parent) for p in snapshot.files if p.endswith('/record.json')}
     for direction in ('forward','reverse'):
@@ -134,7 +154,7 @@ def validate(root, mode='admit'):
     need(snapshot.stable(), 'legacy_state_changed')
     return dict(admitted=mode=='admit', legacy_records_preserved=True, legacy_authority_imported=False,
         legacy_execution_barrier_preserved=markers['legacy_execution_barrier']['present'],
-        records=records, inert_temporary_files_preserved=temporary_counts, settlement_proof_reverified=False)
+        records=records, attention_reports_preserved=dict(clear=sum(r['attention_report'] is False for r in records), warning=sum(r['attention_report'] is True for r in records)), inert_temporary_files_preserved=temporary_counts, settlement_proof_reverified=False)
 
 
 if __name__ == '__main__':
@@ -143,5 +163,5 @@ if __name__ == '__main__':
         print(json.dumps(validate(sys.argv[1],sys.argv[2])))
     except Exception as error:
         reason=str(error) if isinstance(error,Refused) else 'legacy_state_unverified'
-        print(json.dumps(dict(admitted=False,reason=reason,records_preserved=True)))
+        print(json.dumps(dict(admitted=False,reason=reason,record_issues=error.issues if isinstance(error,Refused) else {},records_preserved=True)))
         sys.exit(1)

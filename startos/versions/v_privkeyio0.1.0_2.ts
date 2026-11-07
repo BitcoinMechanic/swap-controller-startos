@@ -1,0 +1,11 @@
+import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
+import { inspectLegacy } from '../live/legacy'
+import { legacyProgramV2 } from '../live/legacyProgramV2'
+export const v_privkeyio_0_1_0_2 = VersionInfo.of({
+  version: '#privkeyio:0.1.0:2',
+  releaseNotes: { en_US: 'Recognize complete inert legacy atomic-write telemetry, including retained worker warning reports. Checked same-volume transition from legacy 0.1.0:24. Retains terminal history and its execution restore barrier without importing credentials or old spending authority. Requires explicit initialization and fresh bounded pairing. Pending, contradictory, unknown or restored new-runtime state is refused.' },
+  migrations: { up: IMPOSSIBLE, down: IMPOSSIBLE,
+    other: { '=#privkeyio:0.1.0:1': { up: async () => {} }, '=0.1.0:24': { up: async ({ effects }) => { await inspectLegacy(effects, 'admit', legacyProgramV2) } },
+      '=#privkeyio:0.1.0:0': { up: async () => {} } },
+  },
+})

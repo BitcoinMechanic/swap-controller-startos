@@ -172,5 +172,29 @@ class UpgradeTests(unittest.TestCase):
         self.change(phase='send_intent');self.refused()
         self.change(phase='settled');save(self.root,'swap-restored.json',{'blocked':True});self.refused()
 
+    def test_per_swap_attention_reports_preserved(self):
+        for value in (True,False):
+            save(self.root,self.folder+'/attention.json',{'needs_attention':value})
+            before=(self.root/self.folder/'attention.json').read_bytes()
+            result=v.validate(self.root)
+            self.assertEqual(result['attention_reports_preserved'],{'clear':int(not value),'warning':int(value)})
+            self.assertEqual((self.root/self.folder/'attention.json').read_bytes(),before)
+        self.change(phase='send_intent');self.refused()
+
+    def test_invalid_per_swap_attention_refused(self):
+        for value in ({'needs_attention':1},{'needs_attention':False,'rune':'PRIVATE'}, {'blocked':True}):
+            save(self.root,self.folder+'/attention.json',value);self.refused()
+        p=self.root/self.folder/'attention.json';p.unlink();p.symlink_to(self.root/'pairing.json');self.refused()
+
+    def test_record_failures_collected_without_private_details(self):
+        save(self.root,self.folder+'/attention.json',{'needs_attention':'PRIVATE'})
+        folder,r=fixture(self.root,index=2)
+        r['terms']['btc_amount_msat']=42;save(self.root,folder+'/record.json',r)
+        folder,r=fixture(self.root,index=3)
+        save(self.root,folder+'/PRIVATE_FILENAME',{'PRIVATE':'PRIVATE'})
+        with self.assertRaises(v.Refused) as caught:v.validate(self.root)
+        self.assertEqual(caught.exception.issues,{'invalid_attention_report':1,'publication_amount_changed':1,'unknown_swap_state':1})
+        self.assertNotIn('PRIVATE',json.dumps(caught.exception.issues))
+
 
 if __name__=='__main__':unittest.main()

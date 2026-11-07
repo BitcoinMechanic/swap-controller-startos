@@ -1,8 +1,8 @@
 # Swap Controller transition candidate
 
-Candidate **#privkeyio:0.1.0:2** supports a checked same-volume update from
+Candidate **#privkeyio:0.1.0:3** supports a checked same-volume update from
 legacy **0.1.0:24**, or an ordinary update from dedicated candidate
-**#privkeyio:0.1.0:0** or **#privkeyio:0.1.0:1**. Use the installer bound to the build receipt. Keep the
+**#privkeyio:0.1.0:0**, **#privkeyio:0.1.0:1**, or **#privkeyio:0.1.0:2**. Use the installer bound to the build receipt. Keep the
 existing service and volume; do not uninstall, restore, or remove markers.
 
 The legacy transition checks local terminal contracts, current pairing and restore
@@ -12,7 +12,9 @@ and root restore fences. A recognized legacy execution barrier remains intact.
 Complete atomic-write heartbeat/status leftovers are preserved, including historical
 worker warning reports. Their filenames alone never waive validation; incomplete
 writes, restore/authority records and unknown contents remain refused.
-These local records are not independent proof of cross-chain settlement.
+Per-swap `attention.json` files are preserved after checking their exact boolean
+status schema. Validation reports failures across all records without exposing
+private details. These local records are not independent proof of cross-chain settlement.
 
 All old records and credentials stay in place as non-executable history. The
 new worker never reads them or imports their authority. **Legacy Swap History**

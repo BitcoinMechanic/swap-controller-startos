@@ -68,10 +68,10 @@ with tarfile.open(archive) as t:
 with (P/'javascript/index.js').open('a') as out:
     out.write('\nmodule.exports.manifest.images.controller.source='+json.dumps({'ociLayout':{'path':str(archive)}})+';\n')
 manifest=json.loads(run(['node','-e','console.log(JSON.stringify(require("./javascript/index.js").manifest))'],cwd=P,text=True))
-assert manifest['id']=='swap-controller' and manifest['version']=='#privkeyio:0.1.0:2'
-expected={'=#privkeyio:0.1.0:1','=#privkeyio:0.1.0:2','=#privkeyio:0.1.0:0','=0.1.0:24'}
+assert manifest['id']=='swap-controller' and manifest['version']=='#privkeyio:0.1.0:3'
+expected={'=#privkeyio:0.1.0:2','=#privkeyio:0.1.0:1','=#privkeyio:0.1.0:3','=#privkeyio:0.1.0:0','=0.1.0:24'}
 assert clauses(manifest['canMigrateFrom'])==expected
-assert manifest['canMigrateTo']=='=#privkeyio:0.1.0:2'
+assert manifest['canMigrateTo']=='=#privkeyio:0.1.0:3'
 assert manifest['volumes']==['main'] and manifest['dependencies']=={}
 assert set(manifest['images'])=={'controller'}
 assert manifest['images']['controller']['arch']==['x86_64'] and manifest['images']['controller']['emulateMissingAs'] is None
@@ -117,7 +117,7 @@ receipt=dict(version=manifest['version'],sha256=sha(output),baseline_sha256=BASE
     image=IMAGE,immutable_docker_image_unchanged=True,packed_runtime_files_identical=True,
     packed_os_mount_differences='Eight exact checked Docker mount placeholder differences; see packed-runtime-comparison.json',
     packed_environment='Image-declared PATH and Python flags retained by newer packer',legacy_credentials_imported=False,
-    checks=['23 admission controls','SDK version graph and readonly wiring','backup credential exclusions and restore fence',
+    checks=['26 admission controls','SDK version graph and readonly wiring','backup credential exclusions and restore fence',
         'explicit initialization task','14 installed actions and legacy history','typecheck and SDK lint','packed manifest JavaScript and image readback'],
     runtime_transition=transition,inherited_payment_engine_tests='0102c historical receipt; not rerun',
     live_StartOS_acceptance=False,routed_cross_chain_swaps_rerun=False)

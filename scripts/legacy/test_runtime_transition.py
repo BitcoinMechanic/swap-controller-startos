@@ -40,10 +40,17 @@ def main():
     for index in range(7,11):fixture(root,index=index,phase='expired')
     fixture(root,index=11,phase='cancelled')
     for index in range(12,14):fixture(root,index=index,direction='reverse')
+    for record in list(root.rglob('record.json')):
+        row=json.loads(record.read_text())
+        if int(row['contract']['nonce'],16)==1:
+            record.parent.rename(root/'execution/forward-pilot')
+        elif row['phase']!='cancelled':
+            save(root,str(record.parent.relative_to(root))+'/attention.json',dict(needs_attention=False))
     save(root,'execution/.controller-neojew6c',dict(checked_at=1000,needs_attention=True))
     before=snapshot(root)
     check=['python3','-I','-B','-c',PROGRAM,'/data','admit']
     report=json.loads(container(root,check,readonly=True));assert report['admitted'] and len(report['records'])==13
+    assert report['attention_reports_preserved']==dict(clear=11,warning=0)
     assert snapshot(root)==before and not (root/'mainnet-swaps-v1').exists()
     # The worker cannot silently initialize itself on first start.
     container(root,[ENTRY,'--mainnet','/data/mainnet-swaps-v1','run'],ok=False)
@@ -78,7 +85,7 @@ def main():
     container(fenced,[ENTRY,'--mainnet','/data/another-fresh-journal','init'],ok=False)
     assert (fenced/'swap-restored.json').exists() and not (fenced/'another-fresh-journal').exists()
     assert snapshot(root)==before
-    result=dict(synthetic_legacy_records=13,readonly_admission=True,legacy_bytes_and_barrier_preserved=True,
+    result=dict(synthetic_legacy_records=13,attention_reports_preserved=11,readonly_admission=True,legacy_bytes_and_barrier_preserved=True,
         implicit_initialization=False,legacy_authority_imported=False,explicit_empty_mainnet_initialization=True,
         worker_start_and_restart=True,restore_fence_refused=True,network_disabled=True,
         lightning_payments=False,live_StartOS_acceptance=False)
