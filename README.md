@@ -2672,3 +2672,49 @@ Public Neoxa pricing requests identify themselves as `SwapController/0.1.0`; Pyt
 Give new quotes a 10-minute payment window while preserving old deadlines. Retire expired unpaid swaps promptly with compatible node packages. Show setup and retirement states and prefill the sole waiting payment invoice. Existing journals and pairing are preserved.
 
 For the expiry-workflow release, update the BTC and XBT coordinator packages before the controller. Existing unpaid expired swaps are then retired automatically after fresh unused-authority checks; no journal deletion or initialization is needed. Retired enrollments still consume their original grant slot and budget. A later swap may require a newly reviewed grant. Ten-minute pricing applies only to new controller quotes; never pay a previously expired invoice.
+
+## Development: customer quote gateway
+
+`migration/provider_server.py` is a separately provisioned, TLS-only development
+endpoint. It is not started by the production package. It supports only
+`POST /v1/merchant/quote` and `POST /v1/merchant/status`; it cannot confirm,
+enroll, pay, cancel, pair, or change an operator grant.
+
+Quote bodies contain `request_id` and `token` (independently generated random
+32-byte lowercase hex values) plus `invoice` (the exact BTC BOLT11). Status bodies
+contain only the same request ID and token. The caller must durably retain both
+before submitting. Tokens are bearer capabilities; send them only in the TLS
+POST body, never URLs or logs. Only a SHA256 token digest is saved by the gateway.
+Reusing an ID with a different invoice is refused. A lost response can be recovered
+by status or the identical request; a saved quote is never refreshed under its old
+ID. A crash leaving `pending` requires operator inspection, not automatic repricing.
+Responses expose `pending`, `quoted`, or `unavailable`, and the saved signed quote
+when present. HTTP failures use fixed public codes and omit private node details.
+
+Quotes run the existing reverse-direction route, pricing and admission checks
+against an in-memory service copy with a read-only coordinator client. They do
+not create an operator job or reserve a grant. Signed terms bind provider XBT node,
+HTTPS origin, environment, request ID, exact invoice digest, payment hash, BTC
+recipient amount, XBT invoice amount, BTC route fee, markup, expiry and contract
+digest. `reserved` and `payment_available` are false. The buyer's routing fee is
+not included; this is not a final total-cost approval or a payable offer.
+The buyer verifies the BTC invoice and the signature with its own CLN `decode`
+and `checkmessage`, explicitly specifying the configured provider public key.
+The shared verifier/strict HTTPS client lives in `lightning/tools/swap/provider_quote.py`.
+
+The gateway uses a separate private request journal, capped at 128 retained
+requests and eight new requests per minute. It does not evict idempotency history.
+It needs explicit initialization in a new directory, and a mode-0600 config with
+`service_directory`, canonical `origin`, `environment`, `signer`, `certificate`
+and `key`. The signer object contains its CLNrest `url`, `ca_pem` and a **separate
+private rune limited to `getinfo` or `signmessage`**. Operator swap credentials
+are never issued to customers. Both signer identity and TLS are checked. The
+configured public origin must match the endpoint clients pin. The development
+server binds loopback by default and requires a certificate/key; it has no
+plaintext mode, redirects, proxy support or automatic retries.
+
+Run with the current Lightning `tools/swap` and controller `migration` directories
+on `PYTHONPATH`: `python3 migration/provider_server.py initialize --directory PATH`,
+then `python3 migration/provider_server.py run --directory PATH --config FILE`.
+Missing state is never created by `run`. This increment has no packaged public
+interface, buyer RPC/UI integration, quote acceptance, or automatic payment flow.

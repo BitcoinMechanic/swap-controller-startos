@@ -48,3 +48,7 @@ Public Neoxa pricing requests identify themselves as `SwapController/0.1.0`; Pyt
 Give new quotes a 10-minute payment window while preserving old deadlines. Retire expired unpaid swaps promptly with compatible node packages. Show setup and retirement states and prefill the sole waiting payment invoice. Existing journals and pairing are preserved.
 
 For the expiry-workflow release, update the BTC and XBT coordinator packages before the controller. Existing unpaid expired swaps are then retired automatically after fresh unused-authority checks; no journal deletion or initialization is needed. Retired enrollments still consume their original grant slot and budget. A later swap may require a newly reviewed grant. Ten-minute pricing applies only to new controller quotes; never pay a previously expired invoice.
+
+The development customer quote API is not enabled by this installed package.
+Its signed estimates do not reserve liquidity or authorize payment. Continue to
+use the existing explicit review and confirmation workflow for installed swaps.
