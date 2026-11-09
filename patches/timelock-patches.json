@@ -23,6 +23,10 @@
     [
       "    raise ValueError('bounded_route_unavailable')",
       "    if unknown_destination and not hints:\n        raise ValueError('recipient_route_unknown')\n    raise ValueError('bounded_route_unavailable')"
+    ],
+    [
+      "integer(value['max_delay_blocks'], 1, 288)",
+      "integer(value['max_delay_blocks'], 1, 576)"
     ]
   ],
   "bounded_authority.py": [

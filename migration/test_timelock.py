@@ -27,6 +27,29 @@ class TimelockTests(unittest.TestCase):
             self.assertEqual(rp.digest(old),digest)
             self.assertEqual([p for m,p in node.calls if m=='getroutes'][-1]['final_cltv'],80)
 
+    def test_304_and_576_block_routes_preserve_incoming_margin_and_old_bounds(self):
+        import cross_contract as cc
+        from test_cross_contract import example
+        for profile in (ba.ci.BTC,ba.ci.PRIVKEYIO_XBT):
+            node=Fake(profile);set_delay(node,80);node.route[0]['delay']=304
+            with self.assertRaises(ValueError):node.plan() # old 288-block grants stay bounded
+            result=node.plan(bounds=dict(BOUNDS,max_delay_blocks=576))
+            self.assertEqual(result['route'][0]['delay'],304)
+            node.route[0]['delay']=577
+            with self.assertRaises(ValueError):node.plan(bounds=dict(BOUNDS,max_delay_blocks=576))
+        for direction in ('forward','reverse'):
+            for delay in (304,576):
+                c,_=example(direction);plan=copy.deepcopy(c['outgoing'])
+                plan['limits']['max_delay_blocks']=576
+                plan['route'][0]['delay']=delay
+                plan['route'][-1]['delay']=80
+                c['grants']['outgoing']['limits']['max_delay_blocks']=576
+                updated=cc.create(c['grants'],plan,c['pricing'],now=NOW)
+                self.assertEqual(updated['incoming']['min_cltv_delta'],delay+150)
+                updated['incoming']['min_cltv_delta']=delay+149
+                with self.assertRaises(ValueError):cc.validate(updated)
+        with self.assertRaises(ValueError):rp.limits(dict(BOUNDS,max_delay_blocks=577))
+
     def test_unknown_destination_requires_hints_but_does_not_block_valid_hints(self):
         node=Fake();node.answers=[rp.RPCError(205,unknown_destination=True)]
         with self.assertRaisesRegex(ValueError,'recipient_route_unknown'):node.plan()
