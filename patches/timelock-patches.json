@@ -41,12 +41,6 @@
       "        with self.serial:\n            try: return self._invoke(method, params, profile)\n            except ValueError as error:\n                # Only finite, read-only planning failures may cross the boundary.\n                safe = {'recipient_invoice_timing', 'recipient_invoice_limits',\n                        'recipient_route_unknown', 'recipient_invoice_cltv_limit', 'bounded_route_unavailable',\n                        'outgoing_channel_not_ready', 'route_outside_approved_channels',\n                        'route_fee_or_delay_limit', 'approved_channel_changed'}\n                if method == remote.CALL and type(params) is dict and params.get('operation') == 'plan' and str(error) in safe:\n                    return {'admission_error': str(error)}\n                raise"
     ]
   ],
-  "customer_https.py": [
-    [
-      "            return value\n        except Exception:",
-      "            safe = {'recipient_invoice_timing', 'recipient_invoice_limits',\n                    'recipient_route_unknown', 'recipient_invoice_cltv_limit', 'bounded_route_unavailable',\n                    'outgoing_channel_not_ready', 'route_outside_approved_channels',\n                    'route_fee_or_delay_limit', 'approved_channel_changed'}\n            if op == 'plan' and set(value) == {'admission_error'} and type(value['admission_error']) is str and value['admission_error'] in safe:\n                raise HttpsError(value['admission_error'])\n            if 'admission_error' in value: raise HttpsError('coordinator_reply_refused_or_unavailable')\n            return value\n        except HttpsError:\n            raise\n        except Exception:"
-    ]
-  ],
   "authority_plugin.py": [
     [
       "                raise rp.RPCError(error.get('code') if type(error) is dict and type(error.get('code')) is int else None)",

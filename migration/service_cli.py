@@ -9,17 +9,44 @@ import secrets
 import signal
 import sys
 import threading
+import traceback
 import time
 
 import held_gate as hg
 import service
 
-# Only finite admission codes cross the UI boundary; raw remote errors stay opaque.
+# Export actionable codes and structural evidence, never raw remote messages.
 SAFE={'recipient_route_unknown','recipient_invoice_timing','recipient_invoice_limits','recipient_invoice_cltv_limit','outgoing_channel_not_ready','route_outside_approved_channels','route_fee_or_delay_limit','approved_channel_changed','worker_invoice_unavailable','contract_reserve_insufficient','service_lock_timeout','confirmation_required','service_pairing_required','service_previous_swap_active',
       'service_invoice_reused','service_review_superseded','service_worker_unavailable',
       'service_paused','service_restored','service_history_full','service_swap_unknown',
       'service_draft_cancelled','service_approved_swap_cannot_cancel','service_settings_invalid',
       'contract_admission_expired','bounded_route_unavailable','market_unavailable','market_data_invalid','market_amount_limit','market_depth_unavailable'}
+
+SAFE.update({'node_reply_too_large', 'node_connection_refused', 'node_reply_shape_invalid', 'node_reply_json_invalid', 'node_timeout', 'node_rpc_rejected', 'node_connection_error', 'node_content_type_invalid', 'node_admission_code_unknown', 'node_http_error', 'node_dns_error', 'node_client_error', 'node_tls_error'})
+
+def failure_report(error, directory):
+    reason = ('service_busy' if isinstance(error, BlockingIOError) else
+              str(error) if isinstance(error, ValueError) and str(error) in SAFE else
+              'service_request_refused')
+    diagnostic = dict(getattr(error, 'diagnostic', {})) if isinstance(error, service.https.HttpsError) else {}
+    diagnostic['reference'] = secrets.token_hex(8)
+    # Source positions only: exception messages, source lines and locals can contain secrets.
+    frames = traceback.extract_tb(error.__traceback__)
+    diagnostic['locations'] = [f'{Path(f.filename).name}:{f.lineno}' for f in frames
+                              if Path(f.filename).parent == Path(__file__).parent][-6:]
+    report = dict(reason=reason, records_preserved=True, diagnostic=diagnostic)
+    try:
+        folder = Path(directory)/'action-diagnostics'
+        folder.mkdir(mode=0o700, exist_ok=True)
+        target = folder/(str(time.time_ns())+'-'+diagnostic['reference']+'.json')
+        with target.open('x') as output:
+            os.chmod(target, 0o600)
+            json.dump(report, output, sort_keys=True)
+        for old in sorted(folder.glob('*.json'))[:-64]: old.unlink()
+        diagnostic['saved'] = True
+    except OSError:
+        diagnostic['saved'] = False
+    return report
 
 
 def action_journal(directory, timeout=5.0):
@@ -99,8 +126,7 @@ def main():
             result=execute(args.directory,json.loads(raw,object_pairs_hook=hg.unique_object),expected_environment=environment)
         print(json.dumps(dict(result=result))); return 0
     except Exception as e:
-        reason='service_busy' if isinstance(e,BlockingIOError) else str(e) if isinstance(e,ValueError) and str(e) in SAFE else 'service_request_refused'
-        print(json.dumps(dict(reason=reason,records_preserved=True))); return 1
+        print(json.dumps(failure_report(e, args.directory))); return 1
 
 
 if __name__=='__main__':raise SystemExit(main())

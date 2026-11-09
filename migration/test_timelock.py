@@ -109,12 +109,12 @@ class ErrorBoundaryTests(unittest.TestCase):
             for code in ('recipient_route_unknown','recipient_invoice_cltv_limit','bounded_route_unavailable'):
                 conn.return_value.getresponse.return_value=Response({'admission_error':code})
                 with self.assertRaisesRegex(https.HttpsError,'^'+code+'$'):client._request('plan',{})
-            for value in ({'error':'PRIVATE secret'},b'invalid PRIVATE secret'):
+            for value, code in (({'error':'PRIVATE secret'},'node_rpc_rejected'),(b'invalid PRIVATE secret','node_reply_json_invalid')):
                 conn.return_value.getresponse.return_value=Response(value)
-                with self.assertRaisesRegex(https.HttpsError,'^coordinator_reply_refused_or_unavailable$'):client._request('plan',{})
+                with self.assertRaisesRegex(https.HttpsError,'^'+code+'$'):client._request('plan',{})
             conn.return_value.getresponse.return_value=Response({'admission_error':'PRIVATE'})
-            with self.assertRaisesRegex(https.HttpsError,'^coordinator_reply_refused_or_unavailable$'):client._request('plan',{})
+            with self.assertRaisesRegex(https.HttpsError,'^node_admission_code_unknown$'):client._request('plan',{})
             conn.return_value.getresponse.return_value=Response({'admission_error':'recipient_invoice_cltv_limit'})
-            with self.assertRaisesRegex(https.HttpsError,'^coordinator_reply_refused_or_unavailable$'):client._request('send',{})
+            with self.assertRaisesRegex(https.HttpsError,'^node_admission_code_unknown$'):client._request('send',{})
 
 if __name__=='__main__':unittest.main()

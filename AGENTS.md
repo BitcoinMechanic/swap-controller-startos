@@ -21,3 +21,5 @@ Work this package's `TODO.md` from top to bottom. Keep `README.md` (technical re
 - Configuration changes must validate both node identities over verified HTTPS before replacement.
 - Keep status tied to the saved generation; reject stale or future timestamps.
 - Backups omit pairing credentials and restore invalidates existing pairing and status.
+
+- Treat spec incompatibilities and intermittent unexplained Lightning failures as defects to investigate and resolve. Never accept “random failure” as an explanation or hide known causes behind generic messages. Preserve actionable diagnostics and outcome uncertainty; redact secrets, not useful technical evidence.

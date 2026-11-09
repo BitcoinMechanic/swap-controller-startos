@@ -37,18 +37,48 @@ const errors: Record<string, string> = {
   service_lock_timeout: 'The controller stayed busy for five seconds. This action did not start. Check history before trying again.',
   service_busy: 'The worker is updating this record. Check history before retrying.',
 }
-export function refused(reason: unknown): Error {
-  return new Error(typeof reason === 'string' && Object.hasOwn(errors, reason)
-    ? errors[reason] : 'Swap request refused or reply unavailable. Check history; do not repeat a payment. Private details withheld.')
+const transportErrors: Record<string, string> = {
+  node_timeout: 'The Lightning node did not respond within the 15-second transport timeout.',
+  node_tls_error: 'TLS verification or negotiation with the Lightning node failed.',
+  node_dns_error: 'The Lightning node hostname could not be resolved.',
+  node_connection_refused: 'The Lightning node refused the connection.',
+  node_connection_error: 'The connection to the Lightning node was interrupted.',
+  node_http_error: 'The Lightning node returned an unsuccessful HTTP status.',
+  node_rpc_rejected: 'The Lightning node rejected the RPC request. Its RPC code is shown below; the node did not supply a supported admission reason.',
+  node_content_type_invalid: 'The Lightning node returned an unexpected content type.',
+  node_reply_too_large: 'The Lightning node response exceeded the 1 MiB limit.',
+  node_reply_json_invalid: 'The Lightning node returned malformed JSON.',
+  node_reply_shape_invalid: 'The Lightning node returned an unexpected response structure.',
+  node_admission_code_unknown: 'The Lightning node returned an unsupported admission error code.',
+  node_client_error: 'An unexpected error occurred inside the node transport client.',
+  action_execution_failed: 'StartOS could not execute the controller action or obtain its result.',
+  action_reply_invalid: 'The controller action returned an unreadable or incomplete response.',
+}
+export function refused(reason: unknown, diagnostic?: any): Error {
+  const code = typeof reason === 'string' && (Object.hasOwn(errors, reason) || Object.hasOwn(transportErrors, reason)) ? reason : 'service_request_refused'
+  const message = errors[code] || transportErrors[code] || 'An unclassified controller error occurred. The source locations and diagnostic reference below identify where investigation must continue.'
+  const details = [`Code: ${code}`]
+  if (diagnostic && typeof diagnostic === 'object') {
+    for (const key of ['node', 'role', 'operation', 'stage']) {
+      if (typeof diagnostic[key] === 'string' && /^[a-z][a-z0-9_-]{0,40}$/.test(diagnostic[key])) details.push(`${key}: ${diagnostic[key]}`)
+    }
+    for (const key of ['http_status', 'rpc_code']) if (Number.isSafeInteger(diagnostic[key])) details.push(`${key}: ${diagnostic[key]}`)
+    if (typeof diagnostic.reference === 'string' && /^[a-f0-9]{16}$/.test(diagnostic.reference)) details.push(`Reference: ${diagnostic.reference}`)
+    if (Array.isArray(diagnostic.locations)) for (const loc of diagnostic.locations.slice(0, 6)) {
+      if (typeof loc === 'string' && /^[a-z_]+\.py:[0-9]{1,6}$/.test(loc)) details.push(`Source: ${loc}`)
+    }
+    if (diagnostic.saved === false) details.push('Diagnostic file could not be saved.')
+  }
+  return new Error(`${message}\n${details.join('\n')}\nCheck history before retrying: this error alone does not prove whether a remote operation completed. Do not repeat a payment.`)
 }
 export async function executeRequest(request: Record<string, unknown>, exec: (argv: string[], options?: { input: string }) => Promise<any>) {
     const initialize = request.action === 'initialize'
     if (initialize && (request.confirmed !== true || Object.keys(request).sort().join() !== 'action,confirmed')) throw refused('confirmation_required')
     let res: any
-    try { res = await exec([entrypoint, '--mainnet', directory, initialize ? 'init' : 'action'], initialize ? undefined : { input: JSON.stringify(request) }) } catch { throw refused(null) }
+    try { res = await exec([entrypoint, '--mainnet', directory, initialize ? 'init' : 'action'], initialize ? undefined : { input: JSON.stringify(request) }) } catch { throw refused('action_execution_failed') }
     let reply: any
-    try { reply = JSON.parse(String(res.stdout)) } catch { throw refused(null) }
-    if (res.exitCode !== 0 || !reply || !Object.hasOwn(reply, 'result')) throw refused(reply?.reason)
+    try { reply = JSON.parse(String(res.stdout)) } catch { throw refused('action_reply_invalid') }
+    if (res.exitCode !== 0 || !reply || !Object.hasOwn(reply, 'result')) throw refused(reply?.reason || 'action_reply_invalid', reply?.diagnostic)
     return reply.result
 }
 export const invoke: Call = async (effects, request) => {
