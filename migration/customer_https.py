@@ -143,8 +143,12 @@ class Client:
             safe = {'recipient_invoice_timing', 'recipient_invoice_limits',
                     'recipient_route_unknown', 'recipient_invoice_cltv_limit', 'bounded_route_unavailable',
                     'outgoing_channel_not_ready', 'route_outside_approved_channels',
-                    'route_fee_or_delay_limit', 'approved_channel_changed'}
-            if op == 'plan' and set(value) == {'admission_error'} and type(value['admission_error']) is str and value['admission_error'] in safe:
+                    'route_fee_or_delay_limit', 'approved_channel_changed', 'incoming_channel_disconnected', 'incoming_channel_busy', 'incoming_liquidity_insufficient', 'incoming_amount_below_safe_minimum', 'incoming_htlc_policy_limit', 'incoming_hint_unavailable', 'incoming_channels_unavailable', 'channel_fee_metadata_invalid', 'channel_alias_metadata_invalid', 'outside_grant', 'node_not_synced'}
+            if op in ('plan', 'inspect') and set(value) in ({'admission_error'}, {'admission_error', 'admission_details'}) and type(value['admission_error']) is str and value['admission_error'] in safe:
+                extra = value.get('admission_details', {})
+                if type(extra) is not dict or not set(extra) <= {'amount_msat', 'minimum_msat'} or not all(type(n) is int and 0 < n <= 2**53-1 for n in extra.values()):
+                    raise HttpsError('node_reply_shape_invalid')
+                detail.update(extra)
                 raise HttpsError(value['admission_error'])
             if 'admission_error' in value: raise HttpsError('node_admission_code_unknown')
             return value

@@ -10,6 +10,17 @@ export const directory = '/data/mainnet-swaps-v1'
 export const entrypoint = '/usr/local/libexec/swap-controller/package_service.py'
 export type Call = (effects: T.Effects, request: Record<string, unknown>) => Promise<any>
 const errors: Record<string, string> = {
+  incoming_amount_below_safe_minimum: 'The incoming payment is too small to meet the channel’s on-chain HTLC safety threshold. Increase the swap amount. No new swap was created.',
+  incoming_channel_disconnected: 'The incoming channel is disconnected or has not finished reconnecting.',
+  incoming_channel_busy: 'The incoming channel still has pending HTLCs. Wait for them to resolve.',
+  incoming_liquidity_insufficient: 'The approved incoming channels do not have enough inbound liquidity for this payment.',
+  incoming_htlc_policy_limit: 'The incoming amount is outside the peer’s advertised HTLC limits, or that policy is unavailable.',
+  incoming_hint_unavailable: 'No usable private-channel routing hint is available for the incoming channel.',
+  incoming_channels_unavailable: 'No approved incoming channel passes all connection, liquidity, HTLC safety and routing-hint checks.',
+  channel_fee_metadata_invalid: 'The node supplied missing or invalid channel fee/dust metadata; safe HTLC admission cannot be checked.',
+  channel_alias_metadata_invalid: 'The node supplied invalid channel alias metadata.',
+  outside_grant: 'The requested amount exceeds the saved node grant.',
+  node_not_synced: 'The Lightning node is not synced.',
   recipient_route_unknown: 'The receiving node is unknown to the routing graph and the invoice contains no private-channel route hints. Open the receiving wallet and generate a fresh invoice with route hints enabled.',
   recipient_invoice_timing: 'The recipient invoice has expired or has less than two minutes remaining. Generate a fresh invoice.',
   recipient_invoice_limits: 'The recipient invoice amount is missing or outside the supported amount range.',
@@ -62,6 +73,7 @@ export function refused(reason: unknown, diagnostic?: any): Error {
     for (const key of ['node', 'role', 'operation', 'stage']) {
       if (typeof diagnostic[key] === 'string' && /^[a-z][a-z0-9_-]{0,40}$/.test(diagnostic[key])) details.push(`${key}: ${diagnostic[key]}`)
     }
+    for (const [key, label] of [['amount_msat', 'Incoming amount'], ['minimum_msat', 'Minimum safe incoming amount']]) if (Number.isSafeInteger(diagnostic[key]) && diagnostic[key] > 0) details.push(`${label}: ${diagnostic[key] / 1000} sats${key === 'minimum_msat' ? ` (use at least ${Math.ceil(diagnostic[key] / 1000)} whole sats)` : ''}`)
     for (const key of ['http_status', 'rpc_code']) if (Number.isSafeInteger(diagnostic[key])) details.push(`${key}: ${diagnostic[key]}`)
     if (typeof diagnostic.reference === 'string' && /^[a-f0-9]{16}$/.test(diagnostic.reference)) details.push(`Reference: ${diagnostic.reference}`)
     if (Array.isArray(diagnostic.locations)) for (const loc of diagnostic.locations.slice(0, 6)) {

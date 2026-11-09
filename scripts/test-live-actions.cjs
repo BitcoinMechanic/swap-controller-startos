@@ -37,6 +37,7 @@ async function tests(files) {
         await assert.rejects(mod.executeRequest({action:'prepare'},async()=>({exitCode:1,stdout:JSON.stringify({reason})})),e=>e.message.includes(expected))
       }
       await assert.rejects(mod.executeRequest({action:'prepare'},async()=>({exitCode:1,stdout:JSON.stringify({reason:'node_timeout',diagnostic:{node:'btc-cln-v1',operation:'plan',stage:'response_headers',reference:'1234567890abcdef',locations:['service.py:123'],http_status:503,url:'PRIVATE_URL',rune:'PRIVATE_RUNE'}})})),e=>e.message.includes('15-second') && e.message.includes('plan') && e.message.includes('503') && e.message.includes('service.py:123') && !e.message.includes('PRIVATE'))
+      await assert.rejects(mod.executeRequest({action:'prepare'},async()=>({exitCode:1,stdout:JSON.stringify({reason:'incoming_amount_below_safe_minimum',diagnostic:{node:'btc-cln-v1',operation:'inspect',amount_msat:39000,minimum_msat:546001}})})),e=>e.message.includes('39 sats') && e.message.includes('547 whole sats') && e.message.includes('too small'))
       let res=await execute(file,'migrated-new-forward',{invoice:'private-invoice'},async r=>{assert.equal(r.action,'prepare');return {confirmation:cid,direction:'forward',btc_msat:1,xbt_msat:2,rune:'SECRET',url:'SECRET'}})
       assert.deepEqual(Object.keys(res.form.spec),['invoice']);assert.ok(!JSON.stringify(res.output).includes('SECRET'))
       assert.equal(res.form.spec.invoice.masked,true)

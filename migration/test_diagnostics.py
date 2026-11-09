@@ -48,6 +48,19 @@ class Tests(unittest.TestCase):
             if code=='node_rpc_rejected' or status==500:self.assertEqual(caught.exception.diagnostic['rpc_code'],-32603)
             self.assertNotIn('SECRET',json.dumps(caught.exception.diagnostic))
 
+    def test_inspect_minimum_details_are_validated(self):
+        for details,expected in [({'amount_msat':39000,'minimum_msat':546001},'incoming_amount_below_safe_minimum'),
+                                 ({'amount_msat':'SECRET'},'node_reply_shape_invalid'),
+                                 ({'rune':'SECRET'},'node_reply_shape_invalid')]:
+            response=Mock(status=201); response.getheader.return_value='application/json'
+            response.read.return_value=json.dumps({'admission_error':'incoming_amount_below_safe_minimum','admission_details':details}).encode()
+            connection=Mock();connection.getresponse.return_value=response
+            with patch.object(https.http.client,'HTTPSConnection',return_value=connection):
+                with self.assertRaises(https.HttpsError) as caught:self.client()._request('inspect',{'amount_msat':39000})
+            self.assertEqual(str(caught.exception),expected)
+            if expected=='incoming_amount_below_safe_minimum':self.assertEqual(caught.exception.diagnostic['minimum_msat'],546001)
+            self.assertNotIn('SECRET',json.dumps(caught.exception.diagnostic))
+
     def test_reports_bounded_private_and_preserve_state(self):
         with tempfile.TemporaryDirectory() as root:
             state=Path(root)/'state.json';state.write_text('UNCHANGED')
