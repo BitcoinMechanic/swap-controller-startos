@@ -14,8 +14,8 @@ import time
 import held_gate as hg
 import service
 
-# Only these local admission errors cross the UI boundary. Remote errors stay opaque.
-SAFE={'contract_reserve_insufficient','service_lock_timeout','confirmation_required','service_pairing_required','service_previous_swap_active',
+# Only finite admission codes cross the UI boundary; raw remote errors stay opaque.
+SAFE={'recipient_route_unknown','recipient_invoice_timing','recipient_invoice_limits','recipient_invoice_cltv_limit','outgoing_channel_not_ready','route_outside_approved_channels','route_fee_or_delay_limit','approved_channel_changed','worker_invoice_unavailable','contract_reserve_insufficient','service_lock_timeout','confirmation_required','service_pairing_required','service_previous_swap_active',
       'service_invoice_reused','service_review_superseded','service_worker_unavailable',
       'service_paused','service_restored','service_history_full','service_swap_unknown',
       'service_draft_cancelled','service_approved_swap_cannot_cancel','service_settings_invalid',

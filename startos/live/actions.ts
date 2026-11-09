@@ -10,6 +10,16 @@ export const directory = '/data/mainnet-swaps-v1'
 export const entrypoint = '/usr/local/libexec/swap-controller/package_service.py'
 export type Call = (effects: T.Effects, request: Record<string, unknown>) => Promise<any>
 const errors: Record<string, string> = {
+  recipient_route_unknown: 'The receiving node is unknown to the routing graph and the invoice contains no private-channel route hints. Open the receiving wallet and generate a fresh invoice with route hints enabled.',
+  recipient_invoice_timing: 'The recipient invoice has expired or has less than two minutes remaining. Generate a fresh invoice.',
+  recipient_invoice_limits: 'The recipient invoice amount is missing or outside the supported amount range.',
+  recipient_invoice_cltv_limit: 'The recipient invoice requires a timelock above the 288-block route limit. Use an invoice with a shorter timelock.',
+  outgoing_channel_not_ready: 'The outgoing channel is disconnected, busy, or has insufficient spendable funds. Check the Lightning node channel status.',
+  route_outside_approved_channels: 'The available route uses a channel outside the current swap grant. Refresh the local node setup.',
+  route_fee_or_delay_limit: 'The route exceeds the allowed fee or timelock budget. No swap was created.',
+  approved_channel_changed: 'A channel in the swap grant has changed or is missing. Refresh the local node setup.',
+  worker_invoice_unavailable: 'The payment invoice is still being prepared. Check Swap Status, then reopen Payment Invoice for this same swap.',
+
   contract_reserve_insufficient: 'Each Lightning node needs at least 25,000 sats in confirmed, unreserved on-chain funds. Add the shortfall to the affected node and wait for confirmation.',
   confirmation_required: 'Confirm the exact review before continuing.',
   service_pairing_required: 'Pair the bounded grants for this direction first.',

@@ -9,3 +9,6 @@ for name in ('market_quote.py','service_market.py','service_cli.py','cross_contr
     shutil.copyfile(source/name,runtime/name)
     manifest['files'][name]=hashlib.sha256((runtime/name).read_bytes()).hexdigest()
 p.write_text(json.dumps(manifest,sort_keys=True,indent=2)+'\n')
+
+import subprocess
+subprocess.run([sys.executable,str(source.parent/"patches/stage-timelock-runtime.py"),str(runtime)],check=True)

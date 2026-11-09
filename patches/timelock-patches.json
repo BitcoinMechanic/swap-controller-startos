@@ -1,0 +1,52 @@
+{
+  "route_plan.py": [
+    [
+      "    validate_route(plan['route'], plan['chain']['node_id'], plan['recipient'], plan['amount_msat'], 40, plan['limits'])",
+      "    need(type(plan['route']) is list and 1 <= len(plan['route']) <= plan['limits']['max_hops']\n         and type(plan['route'][-1]) is dict, 'plan_route_invalid')\n    final_cltv = plan['route'][-1].get('delay')\n    need(integer(final_cltv, 40, plan['limits']['max_delay_blocks']), 'recipient_invoice_cltv_limit')\n    validate_route(plan['route'], plan['chain']['node_id'], plan['recipient'], plan['amount_msat'], final_cltv, plan['limits'])"
+    ],
+    [
+      "    need(integer(decoded['amount_msat'], 1, 1000000000)\n         and integer(decoded.get('min_final_cltv_expiry'), 1, 40), 'recipient_invoice_limits')",
+      "    need(integer(decoded['amount_msat'], 1, 1000000000), 'recipient_invoice_limits')\n    need(integer(decoded.get('min_final_cltv_expiry'), 1, bounds['max_delay_blocks']),\n         'recipient_invoice_cltv_limit')"
+    ],
+    [
+      "    def __init__(self, code=None):\n        super().__init__('route_rpc_unavailable')\n        self.code = code if type(code) is int else None",
+      "    def __init__(self, code=None, *, unknown_destination=False):\n        super().__init__('route_rpc_unavailable')\n        self.code = code if type(code) is int else None\n        self.unknown_destination = unknown_destination is True"
+    ],
+    [
+      "    try:\n        reply = query(rpc, source, destination, amount, final_cltv, bounds)",
+      "    unknown_destination = False\n    try:\n        reply = query(rpc, source, destination, amount, final_cltv, bounds)"
+    ],
+    [
+      "        if error.code not in (205, 206):\n            raise\n    else:",
+      "        if error.code not in (205, 206):\n            raise\n        unknown_destination = error.unknown_destination\n    else:"
+    ],
+    [
+      "    raise ValueError('bounded_route_unavailable')",
+      "    if unknown_destination and not hints:\n        raise ValueError('recipient_route_unknown')\n    raise ValueError('bounded_route_unavailable')"
+    ]
+  ],
+  "bounded_authority.py": [
+    [
+      "and data['created_at'] <= now and hg.integer(d.get('min_final_cltv_expiry'), 1, 40),",
+      "and data['created_at'] <= now\n                and hg.integer(d.get('min_final_cltv_expiry'), 1, data['limits']['max_delay_blocks'])\n                and data['route'][-1]['delay'] == max(40, d['min_final_cltv_expiry']),"
+    ]
+  ],
+  "customer_plugin.py": [
+    [
+      "        with self.serial: return self._invoke(method, params, profile)",
+      "        with self.serial:\n            try: return self._invoke(method, params, profile)\n            except ValueError as error:\n                # Only finite, read-only planning failures may cross the boundary.\n                safe = {'recipient_invoice_timing', 'recipient_invoice_limits',\n                        'recipient_route_unknown', 'recipient_invoice_cltv_limit', 'bounded_route_unavailable',\n                        'outgoing_channel_not_ready', 'route_outside_approved_channels',\n                        'route_fee_or_delay_limit', 'approved_channel_changed'}\n                if method == remote.CALL and type(params) is dict and params.get('operation') == 'plan' and str(error) in safe:\n                    return {'admission_error': str(error)}\n                raise"
+    ]
+  ],
+  "customer_https.py": [
+    [
+      "            return value\n        except Exception:",
+      "            safe = {'recipient_invoice_timing', 'recipient_invoice_limits',\n                    'recipient_route_unknown', 'recipient_invoice_cltv_limit', 'bounded_route_unavailable',\n                    'outgoing_channel_not_ready', 'route_outside_approved_channels',\n                    'route_fee_or_delay_limit', 'approved_channel_changed'}\n            if op == 'plan' and set(value) == {'admission_error'} and type(value['admission_error']) is str and value['admission_error'] in safe:\n                raise HttpsError(value['admission_error'])\n            if 'admission_error' in value: raise HttpsError('coordinator_reply_refused_or_unavailable')\n            return value\n        except HttpsError:\n            raise\n        except Exception:"
+    ]
+  ],
+  "authority_plugin.py": [
+    [
+      "                raise rp.RPCError(error.get('code') if type(error) is dict and type(error.get('code')) is int else None)",
+      "                code = error.get('code') if type(error) is dict and type(error.get('code')) is int else None\n                message = error.get('message') if type(error) is dict else None\n                # Classify one known read-only routing refusal; never forward text.\n                unknown = method == 'getroutes' and code == 205 and type(message) is str and message.lower().startswith('unknown destination')\n                raise rp.RPCError(code, unknown_destination=unknown)"
+    ]
+  ]
+}

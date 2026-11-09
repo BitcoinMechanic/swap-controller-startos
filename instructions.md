@@ -138,3 +138,6 @@ swap terms. A shortfall now produces a specific reserve error.
 
 Runtime staging also includes the package-owned `migration/cross_contract.py`;
 `scripts/stage-market-runtime.py` updates its integrity hash during packaging.
+
+Recipient invoice timelocks (including 80 blocks) are supported within the existing 288-block total route budget. The final hop must match the invoice, and the incoming swap deadline includes the outgoing route delay plus the existing recovery margin. Invoice timing, amount, timelock and route refusals have specific messages; unknown or uncertain failures remain private.
+An unknown recipient with no routing hints is reported separately: create a fresh invoice in the connected receiving wallet with private-channel route hints enabled. Increasing fees does not supply missing routes.
