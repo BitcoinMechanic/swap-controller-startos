@@ -22,4 +22,6 @@ ociLayout.path in the generated JS. start-cli s9pk pack --arch=x86_64 built
 the candidate using this development workspace key. Use the established
 release packaging workspace/key for an actual update distribution.
 
-The source and candidate are not deployed to a live StartOS server.
+Version 0.1.0:7 was installed on an explicitly authorized fresh StartOS server.
+Version 0.1.0:8 reuses the identical runtime image, fixes interface ALPN, and
+was verified as an in-place update with the same development signing key.

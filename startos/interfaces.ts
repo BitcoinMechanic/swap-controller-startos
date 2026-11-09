@@ -5,7 +5,7 @@ export const setInterfaces = sdk.setupInterfaces(async ({ effects }) => {
   const host = sdk.MultiHost.of(effects, 'wallet-discovery')
   const binding = await host.bindPort(9080, {
     protocol: 'http', preferredExternalPort: 9080,
-    addSsl: { alpn: null, preferredExternalPort: 9443 },
+    addSsl: { alpn: ['http/1.1'], preferredExternalPort: 9443 },
   })
   const api = sdk.createInterface(effects, {
     name: 'Wallet Discovery', id: 'wallet-discovery',

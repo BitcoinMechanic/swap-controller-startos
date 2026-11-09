@@ -4,7 +4,7 @@
 - [x] StartOS interface configurable for HTTPS clearnet and Tor bindings.
 - [x] Wallet manual add/QR, directory search, saved identity and connection checks.
 - [ ] Select/deploy public bootstrap directory sources.
-- [ ] Installed StartOS acceptance of the new interface and volume.
+- [x] Installed StartOS acceptance: LAN HTTPS, Tor plugin URL and actual Tor requests, restart persistence; 0.1.0:8 fixes HTTP ALPN.
 - [ ] Connect verified signed quote/accept/status flows to the wallet separately.
 
 # Same-server automatic node setup

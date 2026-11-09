@@ -99,3 +99,8 @@ result metadata and dependency declarations are updated accordingly.
 This interface allows discovery only. It cannot execute swaps or administer the
 controller, and saving it does not grant payment authority. Disabling publishing
 makes discovery return unavailable without affecting existing swaps.
+
+For HTTPS access on your LAN, trust your StartOS root certificate on the client.
+The interface supports HTTP/1.1; its onion address is served through the Tor
+service. The Local Lightning Nodes check remains waiting until both nodes have
+approved incoming and outgoing grants. Discovery works independently of grants.

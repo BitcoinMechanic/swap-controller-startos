@@ -2803,13 +2803,32 @@ Validation for discovery: Python HTTP/TLS tests pass (including missing config,
 unknown routes, forbidden private fields and untrusted certificates); TypeScript
 check, JS bundle and migration/restore regression tests pass. Android integration
 used a disposable HTTPS server and rejected an untrusted CA and changed identity.
-The separate SOCKS test verified the onion hostname is sent unresolved. This is
-not a deployed onion end-to-end test or installed StartOS interface acceptance.
+The separate SOCKS test verified the onion hostname is sent unresolved. Initial validation used fixtures; installed acceptance is recorded below.
 
 The candidate installer retains the existing 0.1.0:6 controller runtime from the
 verified local installer (SHA256 89bcb85fdd88a57b3a22a993c182f7983c9ca8d8c8e4216b0dda389af3c4c287),
 adds only the separate discovery server, and passes the sealed runtime integrity
 check. It was built in a new development packaging workspace, so its signing key
-is different from the earlier release workspace. It has not been installed over
-an existing deployment. Use the original release workspace/key for distribution
-updates; do not replace a live installation or its signing trust based on this artifact.
+is different from the earlier release workspace. It was subsequently installed on an explicitly authorized fresh StartOS server,
+then upgraded in place to 0.1.0:8 with the same development key. Established
+release-key installations still require packaging with their release key.
+
+### Installed discovery acceptance (0.1.0:8)
+
+Installed both matching Lightning packages and controller on a LAN StartOS
+server backed by bitcoind (BLAKE2b) and knots-prerdts (SHA256). Both Lightning
+nodes reached healthy RPC/UI/sync status. Fresh coordinator initialization and
+restart preserved their node identities; no channels or grants were created.
+The controller worker and discovery health checks pass. Local-node pairing
+correctly waits for approved bounded grants, so no funded swap claim is made.
+
+Live testing found that explicit null ALPN allowed clients to negotiate HTTP/2
+with the HTTP/1-only Python server, causing a reset (backend did not open with
+SETTINGS). Version 0.1.0:8 explicitly advertises http/1.1. Normal HTTPS requests
+now succeed using the StartOS CA, including from another LAN machine.
+
+The Wallet Discovery interface and Tor plugin onion entry are registered in
+StartOS. Both metadata and directory requests succeed over LAN HTTPS and Tor;
+the hostname and public metadata survive controller restart/update. Mutation
+POSTs are rejected. Public WAN clearnet forwarding and phone integration were
+not exercised. The read-only interface remains separate from quote/accept/status.
