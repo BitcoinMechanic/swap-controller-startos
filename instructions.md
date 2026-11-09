@@ -143,3 +143,5 @@ Recipient invoice timelocks (including 80 blocks) are supported within the 576-b
 An unknown recipient with no routing hints is reported separately: create a fresh invoice in the connected receiving wallet with private-channel route hints enabled. Increasing fees does not supply missing routes.
 
 New automatically managed outgoing grants allow up to 576 blocks of route delay. Existing idle managed grants refresh automatically; active recovery and manual grants are preserved. Incoming swap deadlines still cover the actual outgoing route delay plus 144 recovery blocks and 6 propagation blocks. Fee and hop limits are unchanged.
+
+Routine Lightning-node health messages, readiness and restart-status updates do not restart the Swap Controller. Discovery watches whether each node package exists; it still reacts to installation/removal, approved-grant publication changes and changes to its HTTPS bridge address. Existing approved swaps retain their saved recovery state.

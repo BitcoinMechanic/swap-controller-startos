@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises'
-import { FileHelper, T } from '@start9labs/start-sdk'
+import { FileHelper, T, utils } from '@start9labs/start-sdk'
 import { sdk } from '../sdk'
 
 const profiles = { 'c-lightning': 'btc-cln-v1', 'xbt-cln': 'xbt-privkeyio-v1' } as const
@@ -14,6 +14,12 @@ export function parsePublication(raw: string, profile: string) {
   }
   return v
 }
+// Discovery needs package presence, not its changing health/readiness messages.
+// Keep recovery workers alive across ordinary node status and restart updates.
+// Publication and bridge-address watches below detect actual connection changes.
+export const nodePresence = (effects: T.Effects, packageId: string) =>
+  utils.Watchable.combine(effects, [sdk.getStatus(effects, { packageId })], ([status]) => status !== null)
+
 export async function discover(effects: T.Effects, reactive: boolean) {
   const read = <V>(w: { const(): Promise<V>; once(): Promise<V> }) => reactive ? w.const() : w.once()
   const enabled = await (reactive ? FileHelper.string(settingsPath()).read().const(effects) : FileHelper.string(settingsPath()).read().once())
@@ -21,10 +27,10 @@ export async function discover(effects: T.Effects, reactive: boolean) {
   const nodes: Record<string, any> = {}; const missing: string[] = []
   for (const [packageId, profile] of Object.entries(profiles)) {
     // Subscribe even while absent so installing the dependency later heals setup.
-    const status = await read(sdk.getStatus(effects, { packageId }))
+    const present = await read(nodePresence(effects, packageId))
     const location = sdk.volumes.main.subpath('.local-node-mounts/'+packageId)
     try {
-      if (status === null) throw Error()
+      if (!present) throw Error()
       await mkdir(location, { recursive: true })
       await sdk.mount(effects, { location, target: { packageId, volumeId: 'public', subpath: null, readonly: true, idmap: [] } })
       const file = FileHelper.string(location+'/swap-controller.json')
