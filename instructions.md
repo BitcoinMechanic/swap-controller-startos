@@ -126,3 +126,15 @@ Actions wait up to five seconds for the journal lock before starting. Brief work
 updates no longer fail immediately. A lock timeout explicitly says the action did
 not start; failures after dispatch remain uncertain and are never automatically
 replayed. History and existing recovery records are preserved.
+
+## On-chain reserve (0.1.0:12)
+
+The controller requires at least 25,000 confirmed, unreserved on-chain sats on
+each node, for both swap directions. This replaces the earlier 50,000-sat check.
+Unconfirmed deposits and reserved outputs do not count. The policy is separate
+from CLN anchor-channel fee reserves and applies to private channels too. It
+does not change channel balances, fee estimates, protection deadlines or saved
+swap terms. A shortfall now produces a specific reserve error.
+
+Runtime staging also includes the package-owned `migration/cross_contract.py`;
+`scripts/stage-market-runtime.py` updates its integrity hash during packaging.

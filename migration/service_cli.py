@@ -15,7 +15,7 @@ import held_gate as hg
 import service
 
 # Only these local admission errors cross the UI boundary. Remote errors stay opaque.
-SAFE={'service_lock_timeout','confirmation_required','service_pairing_required','service_previous_swap_active',
+SAFE={'contract_reserve_insufficient','service_lock_timeout','confirmation_required','service_pairing_required','service_previous_swap_active',
       'service_invoice_reused','service_review_superseded','service_worker_unavailable',
       'service_paused','service_restored','service_history_full','service_swap_unknown',
       'service_draft_cancelled','service_approved_swap_cannot_cancel','service_settings_invalid',

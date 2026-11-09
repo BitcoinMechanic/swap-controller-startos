@@ -10,6 +10,7 @@ export const directory = '/data/mainnet-swaps-v1'
 export const entrypoint = '/usr/local/libexec/swap-controller/package_service.py'
 export type Call = (effects: T.Effects, request: Record<string, unknown>) => Promise<any>
 const errors: Record<string, string> = {
+  contract_reserve_insufficient: 'Each Lightning node needs at least 25,000 sats in confirmed, unreserved on-chain funds. Add the shortfall to the affected node and wait for confirmation.',
   confirmation_required: 'Confirm the exact review before continuing.',
   service_pairing_required: 'Pair the bounded grants for this direction first.',
   service_previous_swap_active: 'Finish the existing swap or cancel its unapproved draft.',
