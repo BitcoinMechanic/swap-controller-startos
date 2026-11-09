@@ -33,7 +33,7 @@ async function tests(files) {
       await assert.rejects(mod.executeRequest({action:'status'},exec),e=>!e.message.includes('PRIVATE_ERROR'))
     }
     if(asset==='controller') {
-      for(const [reason,expected] of [['market_amount_limit','1,000,000 XBT'],['market_depth_unavailable','order-book liquidity'],['market_data_invalid','data failed validation']]) {
+      for(const [reason,expected] of [['service_lock_timeout','action did not start'],['market_amount_limit','1,000,000 XBT'],['market_depth_unavailable','order-book liquidity'],['market_data_invalid','data failed validation']]) {
         await assert.rejects(mod.executeRequest({action:'prepare'},async()=>({exitCode:1,stdout:JSON.stringify({reason})})),e=>e.message.includes(expected))
       }
       let res=await execute(file,'migrated-new-forward',{invoice:'private-invoice'},async r=>{assert.equal(r.action,'prepare');return {confirmation:cid,direction:'forward',btc_msat:1,xbt_msat:2,rune:'SECRET',url:'SECRET'}})

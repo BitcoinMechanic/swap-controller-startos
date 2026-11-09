@@ -23,6 +23,7 @@ const errors: Record<string, string> = {
   market_amount_limit: 'The swap exceeds the pricing limit: at most 1,000,000 XBT sats and 10,000 BTC sats. Use a smaller invoice; node grant limits also apply.',
   market_depth_unavailable: 'Neoxa does not have enough usable order-book liquidity within the allowed price range. No quote was approved.',
   market_data_invalid: 'Neoxa data failed validation. No new quote was approved.',
+  service_lock_timeout: 'The controller stayed busy for five seconds. This action did not start. Check history before trying again.',
   service_busy: 'The worker is updating this record. Check history before retrying.',
 }
 export function refused(reason: unknown): Error {

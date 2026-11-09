@@ -119,3 +119,10 @@ their original amounts and deadlines.
 The staged controller runtime must include `migration/market_quote.py`,
 `migration/service_market.py` and `migration/service_cli.py`; use
 `scripts/stage-market-runtime.py` to update their integrity hashes before packaging.
+
+## Worker contention (0.1.0:11)
+
+Actions wait up to five seconds for the journal lock before starting. Brief worker
+updates no longer fail immediately. A lock timeout explicitly says the action did
+not start; failures after dispatch remain uncertain and are never automatically
+replayed. History and existing recovery records are preserved.

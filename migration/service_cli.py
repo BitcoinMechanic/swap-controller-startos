@@ -9,16 +9,28 @@ import secrets
 import signal
 import sys
 import threading
+import time
 
 import held_gate as hg
 import service
 
 # Only these local admission errors cross the UI boundary. Remote errors stay opaque.
-SAFE={'confirmation_required','service_pairing_required','service_previous_swap_active',
+SAFE={'service_lock_timeout','confirmation_required','service_pairing_required','service_previous_swap_active',
       'service_invoice_reused','service_review_superseded','service_worker_unavailable',
       'service_paused','service_restored','service_history_full','service_swap_unknown',
       'service_draft_cancelled','service_approved_swap_cannot_cancel','service_settings_invalid',
       'contract_admission_expired','bounded_route_unavailable','market_unavailable','market_data_invalid','market_amount_limit','market_depth_unavailable'}
+
+
+def action_journal(directory, timeout=5.0):
+    """Wait only before dispatch; never replay an action after it has begun."""
+    deadline=time.monotonic()+timeout
+    while True:
+        try:return hg.Journal(directory)
+        except BlockingIOError:
+            remaining=deadline-time.monotonic()
+            if remaining<=0:raise ValueError('service_lock_timeout') from None
+            time.sleep(min(.05,remaining))
 
 
 def execute(directory,request,*,expected_environment=None,**options):
@@ -28,7 +40,7 @@ def execute(directory,request,*,expected_environment=None,**options):
         'cancel':{'cid','confirmation'},'invoice':{'cid'},'configure':{'paused','markup_bps'},
         'recovery_review':{'cid'},'recovery_confirm':{'cid','confirmation','confirmed'}}
     hg.need(action in fields and set(request)==fields[action]|{'action'},'service_request_invalid')
-    j=hg.Journal(directory)
+    j=action_journal(directory)
     try:
         s=service.Service(j,**options)
         hg.need(expected_environment is None or service.environment(s.record)==expected_environment,'service_environment_changed')
