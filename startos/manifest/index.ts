@@ -5,6 +5,6 @@ export const manifest = setupManifest({
   packageRepo: 'https://github.com/BitcoinMechanic/swap-controller-startos',
   upstreamRepo: 'https://github.com/BitcoinMechanic/lightning',
   marketingUrl: 'https://github.com/BitcoinMechanic/lightning', donationUrl: null, description: { short, long },
-  volumes: ['main'],
+  volumes: ['main', 'discovery'],
   images: { controller: { source: { dockerBuild: { dockerfile: 'Dockerfile.live', workdir: '.' } }, arch: ['x86_64'], emulateMissing: false } },
 })

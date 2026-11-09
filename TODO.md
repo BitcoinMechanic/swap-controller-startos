@@ -1,3 +1,12 @@
+# Wallet controller discovery (0.1.0:7)
+
+- [x] Read-only public information and directory, isolated from swap authority.
+- [x] StartOS interface configurable for HTTPS clearnet and Tor bindings.
+- [x] Wallet manual add/QR, directory search, saved identity and connection checks.
+- [ ] Select/deploy public bootstrap directory sources.
+- [ ] Installed StartOS acceptance of the new interface and volume.
+- [ ] Connect verified signed quote/accept/status flows to the wallet separately.
+
 # Same-server automatic node setup
 
 - [x] Discover local bridge HTTPS bindings and StartOS root CA.

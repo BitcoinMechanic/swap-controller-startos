@@ -1,0 +1,25 @@
+Discovery candidate build provenance
+
+Source base: 4149e33, latest local merchant-provider-api-20261107, ahead of
+fetched remote main, privkeyio-compat and controller-legacy-upgrade-0.1.0.
+Development branch: wallet-discovery-20261108.
+
+Use Node 22 for the SDK regression scripts (system Node 18 cannot require
+one ESM dependency). npm ci --ignore-scripts; npm run check; npm run build;
+node scripts/check-bundle.cjs. Run python3 -m unittest discover -s discovery.
+
+Dockerfile.live retains the existing sealed-runtime build inputs and adds
+COPY discovery/ /usr/local/libexec/swap-discovery/ outside the sealed runtime.
+For this local candidate, the known 0.1.0:6 installer supplied the rootfs:
+SHA256 89bcb85fdd88a57b3a22a993c182f7983c9ca8d8c8e4216b0dda389af3c4c287.
+Its images/x86_64/controller.squashfs was extracted, imported with its
+controller.json env/workdir/user/entrypoint, and extended with discovery/.
+The runtime-manifest integrity verifier passed inside the resulting image.
+No sealed-runtime files were replaced.
+
+The image was docker-saved and assigned as manifest.images.controller.source
+ociLayout.path in the generated JS. start-cli s9pk pack --arch=x86_64 built
+the candidate using this development workspace key. Use the established
+release packaging workspace/key for an actual update distribution.
+
+The source and candidate are not deployed to a live StartOS server.

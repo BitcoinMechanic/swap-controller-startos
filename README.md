@@ -2771,3 +2771,45 @@ grant authority. Disabling automatic setup preserves existing pairing and recove
 
 The package now uses Start SDK 3.1.1 for the supported StartOS root-CA API; action
 result metadata and dependency declarations are updated accordingly.
+
+## Wallet discovery (0.1.0:7)
+
+The Wallet Discovery interface serves read-only controller metadata and a directory.
+It is a separate process with only the public discovery volume mounted read-only;
+it has no pairing credentials, grant journals, signer, or payment methods. The
+existing quote/accept/status gateway remains a separately provisioned development
+service and is not exposed by this interface. Discovery does not attest liquidity
+or enable payments.
+
+Use Swap Setup → Wallet Discovery to publish a name, XBT Lightning public key,
+and enabled endpoint origins. HTTPS clearnet and HTTP/HTTPS v3 onion origins are
+supported. StartOS interface settings control reachability; a Tor service and an
+explicit onion binding are required, and public clearnet addresses are enabled by
+the operator. The wallet verifies normal HTTPS certificates; use a publicly
+trusted certificate or the onion interface, not a TLS verification bypass.
+
+GET /v1/provider/info returns xbt-swap-provider-v1; GET /v1/providers returns
+xbt-swap-directory-v1 with this controller as its single entry. Independent
+directories can serve the same envelope with up to 100 entries. No public
+bootstrap directory has been deployed or selected. A directory listing is only
+a lead: the wallet contacts the provider, checks network and advertised address,
+and retains the claimed public key to detect changes. This is transport-based
+first-use identity pinning, not proof of node-key ownership. Signed quote/invoice
+verification is still required before implementing payments.
+
+See docs/wallet-discovery.md for the protocol and validation boundaries.
+
+Validation for discovery: Python HTTP/TLS tests pass (including missing config,
+unknown routes, forbidden private fields and untrusted certificates); TypeScript
+check, JS bundle and migration/restore regression tests pass. Android integration
+used a disposable HTTPS server and rejected an untrusted CA and changed identity.
+The separate SOCKS test verified the onion hostname is sent unresolved. This is
+not a deployed onion end-to-end test or installed StartOS interface acceptance.
+
+The candidate installer retains the existing 0.1.0:6 controller runtime from the
+verified local installer (SHA256 89bcb85fdd88a57b3a22a993c182f7983c9ca8d8c8e4216b0dda389af3c4c287),
+adds only the separate discovery server, and passes the sealed runtime integrity
+check. It was built in a new development packaging workspace, so its signing key
+is different from the earlier release workspace. It has not been installed over
+an existing deployment. Use the original release workspace/key for distribution
+updates; do not replace a live installation or its signing trust based on this artifact.

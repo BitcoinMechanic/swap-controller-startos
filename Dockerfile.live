@@ -6,3 +6,5 @@ FROM ${PARENT_IMAGE}
 USER root
 RUN rm -rf /usr/local/libexec/swap-controller
 COPY runtime/ /usr/local/libexec/swap-controller/
+
+COPY discovery/ /usr/local/libexec/swap-discovery/

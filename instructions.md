@@ -84,3 +84,18 @@ grant authority. Disabling automatic setup preserves existing pairing and recove
 
 The package now uses Start SDK 3.1.1 for the supported StartOS root-CA API; action
 result metadata and dependency declarations are updated accordingly.
+
+## Add this controller to a phone wallet
+
+1. In Interfaces, configure an HTTPS address for Wallet Discovery, and/or add an
+   onion address using the Tor service. Enable the addresses you want to use.
+2. In Swap Setup → Wallet Discovery, enable publishing and enter the public name,
+   your XBT Lightning public key, and those endpoint origins (no path).
+3. In the wallet’s dots menu → Swap controllers → Add controller, enter or scan
+   an address. Check the returned identity and save. Onion connections use Tor.
+4. Search directory accepts the same discovery address, or an independent
+   directory implementing the protocol. There is no bundled public directory yet.
+
+This interface allows discovery only. It cannot execute swaps or administer the
+controller, and saving it does not grant payment authority. Disabling publishing
+makes discovery return unavailable without affecting existing swaps.

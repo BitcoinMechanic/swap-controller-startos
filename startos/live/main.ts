@@ -43,5 +43,18 @@ export const main = sdk.setupMain(async ({ effects }) => {
       requires: [],
     }) as typeof daemons
   }
+  const publicMounts = sdk.Mounts.of().mountVolume({ volumeId: 'discovery', subpath: null, mountpoint: '/public', readonly: true })
+  const discovery = sdk.SubContainer.of(effects, { imageId: 'controller' }, publicMounts, 'wallet-discovery')
+  daemons = daemons.addDaemon('wallet-discovery', {
+    subcontainer: discovery, requires: [],
+    exec: { command: ['python3', '/usr/local/libexec/swap-discovery/server.py', '--bind', '0.0.0.0', '--config', '/public/provider.json'] },
+    ready: { display: 'Wallet Discovery', fn: async () => {
+      try {
+        const result = await discovery.exec(['python3', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:9080/v1/provider/info", timeout=3).read(65537)'])
+        return result.exitCode === 0 ? { result: 'success', message: 'Public controller information available.' }
+          : { result: 'disabled', message: 'Configure Wallet Discovery to advertise this controller.' }
+      } catch { return { result: 'failure', message: 'Discovery endpoint unavailable.' } }
+    } },
+  }) as typeof daemons
   return daemons
 })
