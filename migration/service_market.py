@@ -43,4 +43,7 @@ def make(direction,route,markup_bps,*,clock=time.time,reader=fetch):
             markup_bps=markup_bps,fetched_at_ms=now,ticker_at_ms=t['computedAt'],expires_at=now//1000+600,
             bid=str(t['bestBid']),ask=str(t['bestAsk']),levels=levels,recipient_msat=route[-1]['amount_msat'],
             routing_fee_msat=route[0]['amount_msat']-route[-1]['amount_msat'],btc_msat=0,xbt_msat=0),compute=True)
+    except ValueError as e:
+        if str(e) in {'market_amount_limit','market_depth_unavailable','market_unavailable'}: raise
+        raise ValueError('market_data_invalid') from None
     except Exception: raise ValueError('market_data_invalid') from None

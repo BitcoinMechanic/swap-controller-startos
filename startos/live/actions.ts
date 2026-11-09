@@ -20,6 +20,8 @@ const errors: Record<string, string> = {
   contract_admission_expired: 'This review expired. Cancel its unapproved draft and use a fresh invoice.',
   bounded_route_unavailable: 'No route fits the saved fee, delay and hop limits. Check liquidity and private invoice hints.',
   market_unavailable: 'Neoxa pricing is unavailable. Try a new review later.',
+  market_amount_limit: 'The swap exceeds the pricing limit: at most 1,000,000 XBT sats and 10,000 BTC sats. Use a smaller invoice; node grant limits also apply.',
+  market_depth_unavailable: 'Neoxa does not have enough usable order-book liquidity within the allowed price range. No quote was approved.',
   market_data_invalid: 'Neoxa data failed validation. No new quote was approved.',
   service_busy: 'The worker is updating this record. Check history before retrying.',
 }

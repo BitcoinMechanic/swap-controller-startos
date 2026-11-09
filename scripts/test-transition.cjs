@@ -7,7 +7,7 @@ function load(file,mocks={}) {
 }
 async function main() {
  const bundled=require(path.resolve(process.argv[2]||'javascript/index.js'))
- assert.equal(bundled.manifest.version,'#privkeyio:0.1.0:9');assert.equal(bundled.manifest.id,'swap-controller')
+ assert.equal(bundled.manifest.version,'#privkeyio:0.1.0:10');assert.equal(bundled.manifest.id,'swap-controller')
  assert.deepEqual(bundled.manifest.volumes,['main','discovery']);assert.deepEqual(Object.keys(bundled.manifest.images),['controller'])
  const ids=['local-node-setup','migrated-initialize','legacy-history',...['forward','reverse'].flatMap(d=>['pair','new','confirm','cancel'].map(a=>'migrated-'+a+'-'+d)),
   'migrated-status','migrated-history','migrated-invoice','migrated-settings','wallet-discovery']
@@ -38,7 +38,7 @@ async function main() {
  const priorFive=load('startos/versions/v_privkeyio_0_1_0_5.ts',{'../live/legacy':{inspectLegacy:async()=>{admitted++;if(reject)throw Error('refused')}}}).v_privkeyio_0_1_0_5
  const graph=load('startos/versions/index.ts',{'./v_privkeyio_0_1_0_5':{v_privkeyio_0_1_0_5:priorFive},'./current':{current},'./v_privkeyio0.1.0_4':{v_privkeyio_0_1_0_4:priorFour},'./v_privkeyio0.1.0_3':{v_privkeyio_0_1_0_3:priorThree},'./v_privkeyio0.1.0_2':{v_privkeyio_0_1_0_2:priorTwo},'./v_privkeyio0.1.0_1':{v_privkeyio_0_1_0_1:priorOne},'./v_privkeyio0.1.0_0':{v_privkeyio_0_1_0_0:previous}}).versionGraph
  const {ExtendedVersion}=Module.createRequire(require.resolve('@start9labs/start-sdk'))('@start9labs/start-core/exver')
- const parse=v=>ExtendedVersion.parse(v),to=parse('#privkeyio:0.1.0:9'),from=parse('0.1.0:24')
+ const parse=v=>ExtendedVersion.parse(v),to=parse('#privkeyio:0.1.0:10'),from=parse('0.1.0:24')
  const versions=[],e={setDataVersion:async({version})=>versions.push(version)}
  await graph.migrate({effects:e,from,to});assert.equal(admitted,1);assert.equal(versions.at(-1),to.toString())
  reject=true;await assert.rejects(()=>graph.migrate({effects:e,from,to}));assert.equal(versions.length,2)

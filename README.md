@@ -2835,3 +2835,15 @@ StartOS. Both metadata and directory requests succeed over LAN HTTPS and Tor;
 the hostname and public metadata survive controller restart/update. Mutation
 POSTs are rejected. Public WAN clearnet forwarding and phone integration were
 not exercised. The read-only interface remains separate from quote/accept/status.
+
+## Quote limits (0.1.0:10)
+
+New quotes allow up to 1,000,000 XBT sats and 10,000 BTC sats, subject to node
+grant limits and channel liquidity. Amount-limit and insufficient-order-book-depth
+errors are distinct from malformed exchange data. Price freshness, spread, depth,
+slippage and exact arithmetic checks are unchanged. Previously saved quotes retain
+their original amounts and deadlines.
+
+The staged controller runtime must include `migration/market_quote.py`,
+`migration/service_market.py` and `migration/service_cli.py`; use
+`scripts/stage-market-runtime.py` to update their integrity hashes before packaging.

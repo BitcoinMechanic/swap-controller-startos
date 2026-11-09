@@ -18,7 +18,7 @@ SAFE={'confirmation_required','service_pairing_required','service_previous_swap_
       'service_invoice_reused','service_review_superseded','service_worker_unavailable',
       'service_paused','service_restored','service_history_full','service_swap_unknown',
       'service_draft_cancelled','service_approved_swap_cannot_cancel','service_settings_invalid',
-      'contract_admission_expired','bounded_route_unavailable','market_unavailable','market_data_invalid'}
+      'contract_admission_expired','bounded_route_unavailable','market_unavailable','market_data_invalid','market_amount_limit','market_depth_unavailable'}
 
 
 def execute(directory,request,*,expected_environment=None,**options):

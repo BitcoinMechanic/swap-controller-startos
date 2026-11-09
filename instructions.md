@@ -107,3 +107,15 @@ For HTTPS access on your LAN, trust your StartOS root certificate on the client.
 The interface supports HTTP/1.1; its onion address is served through the Tor
 service. The Local Lightning Nodes check remains waiting until both nodes have
 approved incoming and outgoing grants. Discovery works independently of grants.
+
+## Quote limits (0.1.0:10)
+
+New quotes allow up to 1,000,000 XBT sats and 10,000 BTC sats, subject to node
+grant limits and channel liquidity. Amount-limit and insufficient-order-book-depth
+errors are distinct from malformed exchange data. Price freshness, spread, depth,
+slippage and exact arithmetic checks are unchanged. Previously saved quotes retain
+their original amounts and deadlines.
+
+The staged controller runtime must include `migration/market_quote.py`,
+`migration/service_market.py` and `migration/service_cli.py`; use
+`scripts/stage-market-runtime.py` to update their integrity hashes before packaging.
