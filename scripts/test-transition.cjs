@@ -10,7 +10,7 @@ async function main() {
  assert.equal(bundled.manifest.version,'#privkeyio:0.1.0:19');assert.equal(bundled.manifest.id,'swap-controller')
  assert.deepEqual(bundled.manifest.volumes,['main','discovery']);assert.deepEqual(Object.keys(bundled.manifest.images),['controller'])
  const ids=['local-node-setup','migrated-initialize','legacy-history',...['forward','reverse'].flatMap(d=>['pair','new','confirm','cancel'].map(a=>'migrated-'+a+'-'+d)),
-  'migrated-status','migrated-history','migrated-invoice','migrated-settings','wallet-discovery']
+  'migrated-status','migrated-history','migrated-grants','migrated-invoice','migrated-settings','wallet-discovery']
  assert.deepEqual(Object.keys(bundled.actions.actions),ids)
  const effects={eventId:'transition-test'};let response,calls=0
  const {legacyProgram}=load('startos/live/legacyProgram.ts')
