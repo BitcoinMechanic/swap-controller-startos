@@ -44,7 +44,7 @@ export async function discover(effects: T.Effects, reactive: boolean) {
       missing.push(packageId === 'c-lightning' ? 'BTC Core Lightning' : 'XBT Core Lightning')
     }
   }
-  return missing.length ? { config: null, message: 'Waiting for '+missing.join(' and ')+'. Enable its coordinator, approve incoming and outgoing grants, then use Connect Local Swap Controller.' }
+  return missing.length ? { config: null, message: 'Waiting for '+missing.join(' and ')+'. Enable Trust Local Swap Controller on each node. Grants become available automatically when channels have suitable liquidity.' }
     : { config: nodes, message: 'Local nodes discovered. Verifying approved grants and both node identities.' }
 }
 export const localSetup = sdk.Action.withInput('local-node-setup', async () => ({

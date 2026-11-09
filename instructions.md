@@ -57,18 +57,21 @@ use the existing explicit review and confirmation workflow for installed swaps.
 
 ## Automatic setup with Lightning nodes on this server
 
-Update BTC Core Lightning to **#privkeyio:26.6.10:3**, XBT Core Lightning to
-**#privkeyio:26.6.9:5**, and Swap Controller to **#privkeyio:0.1.0:6**. Keep the
+Update BTC Core Lightning to **#privkeyio:26.6.10:5**, XBT Core Lightning to
+**#privkeyio:26.6.9:8**, and Swap Controller to **#privkeyio:0.1.0:9**. Keep the
 existing services and volumes. Local Node Setup is enabled by default.
 
-On each node, enable the swap coordinator and approve its incoming/outgoing grants,
-then enable **Connect Local Swap Controller** once. The controller resolves the
+On each node, enable **Trust Local Swap Controller** once. The nodes initialize
+their coordinators and automatically create and renew scoped grants when suitable
+channel liquidity is available. Individual grant approvals are unnecessary. The controller resolves the
 actual StartOS bridge HTTPS ports, obtains the StartOS root CA and imports the
 restricted grants locally. It pairs BTC→XBT and XBT→BTC together after authenticating
 all four grants and both node identities. No URL, certificate or credential copying
 is required. Local Lightning Nodes shows missing setup and connection status.
 
-Approved replacement grants are picked up automatically. Existing swaps keep their
+Automatically renewed grants are picked up without manual approval. Node trust
+can be revoked to pause managed grants. The existing 64-record journal ceiling
+still requires safe maintenance when reached; history is never erased automatically. Existing swaps keep their
 original pairings. Changes wait until active swaps finish. A manual pairing is never
 replaced automatically: manual users can disable Local Node Setup and continue using
 the existing Pair Grants actions. Automatic setup never initializes missing controller
