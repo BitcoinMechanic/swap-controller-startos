@@ -58,6 +58,25 @@ async function tests(files) {
       res=await execute(file,'migrated-settings',{paused:true,markupBps:0},async r=>r)
       assert.deepEqual(res.calls.at(-1),{action:'configure',paused:true,markup_bps:0})
       for(const poison of ['SECRET','__proto__','constructor'])assert.ok(!JSON.stringify(mod.display({state:poison,confirmation:poison,btc_msat:poison,invoice:poison,rune:poison})).includes(poison))
+      const archive=Array.from({length:63},(_,i)=>({confirmation:(i+1).toString(16).padStart(64,'0'),direction:'forward',state:'expired',terminal:true,expires_at:1000+i,btc_msat:3900000,xbt_msat:1000000000}))
+      const current={confirmation:cid,direction:'forward',state:'waiting_for_payment',terminal:false,expires_at:9999,btc_msat:3900000,xbt_msat:1000000000,blocked:false}
+      const crowded={swaps:[...archive,current],worker_fresh:true,grants:{forward:{incoming:{expired:false,limits:{max_swaps:4}}}}}
+      res=await execute(file,'migrated-status',{},async()=>crowded)
+      assert.equal(res.output.result.value[0].name,'Swap ID');assert.equal(res.output.result.value[0].value,cid)
+      assert.equal(res.output.result.value.filter(r=>r.name==='Swap ID').length,1)
+      assert.ok(res.output.result.value.some(r=>r.name==='Pay before (UTC)'))
+      assert.ok(res.output.result.value.length<20)
+      assert.ok(!JSON.stringify(res.output).includes('max_swaps'))
+      res=await execute(file,'migrated-history',{cid:archive[0].confirmation},async()=>crowded)
+      assert.equal(Object.keys(res.form.spec.cid.values).length,64)
+      assert.equal(Object.keys(res.form.spec.cid.values)[0],cid)
+      assert.equal(res.output.result.value[0].value,archive[0].confirmation)
+      assert.equal(res.output.result.value.filter(r=>r.name==='Swap ID').length,1)
+      const completed=mod.display({swaps:archive}).result.value
+      assert.equal(completed.find(r=>r.name==='Swap ID').value,archive.at(-1).confirmation)
+      assert.deepEqual(crowded.swaps,[...archive,current]) // presentation never edits history
+      res=await execute(file,'migrated-grants',{},async()=>crowded)
+      assert.ok(JSON.stringify(res.output).includes('max_swaps'))
       assert.ok(mod.command.includes('--mainnet'));assert.equal(mod.command.at(-1),'run');assert.ok(!mod.command.includes('init'))
     } else {
       await assert.rejects(execute(file,'migrated-admin-init',{confirmed:false},async()=>assert.fail('unconfirmed initialize dispatched')))

@@ -118,24 +118,18 @@ const states: Record<string, string> = {
   waiting_for_payment: 'Awaiting payment', outgoing_pending: 'Recipient payment pending', settled: 'Settled', failed: 'Failed',
   cancelled: 'Cancelled before approval', expired: 'Expired', onchain_recovery: 'On-chain recovery needs inspection',
 }
-export function display(report: any, title = 'Swap Status'): T.ActionResult & { version: '1' } {
+function orderedSwaps(swaps: any[]): any[] {
+  return swaps.filter(r => hex(r?.confirmation)).slice().sort((a, b) =>
+    (number(b.expires_at) ? b.expires_at : 0) - (number(a.expires_at) ? a.expires_at : 0) || a.confirmation.localeCompare(b.confirmation))
+}
+export function display(report: any, title = 'Swap Status', showGrants = false): T.ActionResult & { version: '1' } {
   const rows: any[] = []
   const add = (name: string, value: string, copyable = false, qr = false, masked = false) => rows.push({ name,
     description: null, type: 'single', value, copyable, launchable: false, qr, masked })
   if (!report || typeof report !== 'object') throw refused(null)
-  for (const key of ['worker_fresh', 'paused', 'restored', 'paired', 'local_paired', 'existing_swaps_unchanged', 'initialized']) {
-    if (typeof report[key] === 'boolean') add(key.replaceAll('_', ' '), String(report[key]))
-  }
-  for (const direction of ['forward', 'reverse']) for (const kind of ['incoming', 'outgoing']) {
-    const grant = report.grants?.[direction]?.[kind]
-    if (!grant) continue
-    const prefix = (direction === 'forward' ? 'BTC → XBT' : 'XBT → BTC') + ' / ' + kind + ' grant / '
-    if (typeof grant.expired === 'boolean') add(prefix + 'expired', String(grant.expired))
-    for (const key of ['max_swaps', 'max_amount_msat', 'total_amount_msat', 'max_fee_msat', 'max_delay_blocks', 'max_hops', 'min_cltv_delta', 'max_cltv_delta']) {
-      if (number(grant.limits?.[key])) add(prefix + key, String(grant.limits[key]))
-    }
-  }
-  const list = Array.isArray(report.swaps) ? report.swaps : [report]
+  const all = Array.isArray(report.swaps) ? orderedSwaps(report.swaps) : null
+  const active = all?.filter((r: any) => r.terminal !== true) || []
+  const list = all ? (active.length ? active : all.slice(0, 1)) : [report]
   for (const row of list) {
     if (hex(row?.confirmation)) add('Swap ID', row.confirmation, true)
     if (row?.direction === 'forward' || row?.direction === 'reverse') add('Direction', row.direction === 'forward' ? 'BTC → XBT' : 'XBT → BTC')
@@ -148,7 +142,20 @@ export function display(report: any, title = 'Swap Status'): T.ActionResult & { 
     if (typeof row?.blocked === 'boolean') add('Execution blocked', String(row.blocked))
     if (typeof row?.invoice === 'string' && /^ln[a-z0-9]{100,20000}$/.test(row.invoice)) add('Payment invoice', row.invoice, true, true, true)
   }
-  return { version: '1', title, message: 'New quotes allow 10 minutes total to review, confirm and pay. Check Pay before (UTC). Existing deadlines are unchanged. Pay once; status and history use saved records.',
+  for (const key of ['worker_fresh', 'paused', 'restored', 'paired', 'local_paired', 'existing_swaps_unchanged', 'initialized']) {
+    if (typeof report[key] === 'boolean') add(key.replaceAll('_', ' '), String(report[key]))
+  }
+  if (showGrants) for (const direction of ['forward', 'reverse']) for (const kind of ['incoming', 'outgoing']) {
+    const grant = report.grants?.[direction]?.[kind]
+    if (!grant) continue
+    const prefix = (direction === 'forward' ? 'BTC → XBT' : 'XBT → BTC') + ' / ' + kind + ' grant / '
+    if (typeof grant.expired === 'boolean') add(prefix + 'expired', String(grant.expired))
+    for (const key of ['max_swaps', 'max_amount_msat', 'total_amount_msat', 'max_fee_msat', 'max_delay_blocks', 'max_hops', 'min_cltv_delta', 'max_cltv_delta']) {
+      if (number(grant.limits?.[key])) add(prefix + key, String(grant.limits[key]))
+    }
+  }
+  if (all) add('Saved swaps', `${all.length} — open Swap History to select an older swap`)
+  return { version: '1', title, message: 'New quotes allow 10 minutes total to review, confirm and pay. Check Pay before (UTC). Existing deadlines are unchanged. Swap Status shows active swaps, or the latest swap when none are active. Swap History shows one selected swap. Pay once; statuses come from saved records.',
     result: { type: 'group', value: rows } }
 }
 function credential(raw: unknown): any {
@@ -220,9 +227,27 @@ export function createActions(call: Call = invoke) {
         return display(await call(effects, { action: mode, cid: input.cid, confirmation: input.cid, ...(mode === 'confirm' ? { confirmed: true } : {}) }))
       }))
   }
-  for (const action of ['status', 'history'] as const) add(sdk.Action.withInput('migrated-' + action,
-    meta(action === 'status' ? 'Swap Status' : 'Swap History'), sdk.InputSpec.of({}), async () => {},
-    async ({ effects }) => display(await call(effects, { action }))))
+  add(sdk.Action.withInput('migrated-status', meta('Swap Status'), sdk.InputSpec.of({}), async () => {},
+    async ({ effects }) => display(await call(effects, { action: 'status' }))))
+  add(sdk.Action.withInput('migrated-history', meta('Swap History'), sdk.InputSpec.of({
+    cid: sdk.Value.dynamicSelect(async ({ effects }) => {
+      const report = await call(effects, { action: 'history' })
+      const swaps = orderedSwaps(report.swaps || [])
+      return { name: 'Swap', default: swaps[0]?.confirmation || null,
+        values: Object.fromEntries(swaps.map(r => [r.confirmation,
+          `${r.direction === 'forward' ? 'BTC → XBT' : 'XBT → BTC'} · ${Object.hasOwn(states, r.state) ? states[r.state] : 'Needs inspection'} · ${number(r.expires_at) && r.expires_at <= 2 ** 35 ? new Date(r.expires_at * 1000).toISOString() : 'Unknown deadline'} · ${r.confirmation.slice(0, 12)}`])) }
+    }),
+  }), async () => {}, async ({ effects, input }) => {
+    const report = await call(effects, { action: 'history' })
+    const row = (report.swaps || []).find((r: any) => hex(input.cid) && r.confirmation === input.cid)
+    if (!row) throw new Error('The selected swap is not in saved history. Reopen Swap History and select a record.')
+    return display(row, 'Swap Details')
+  }))
+  add(sdk.Action.withInput('migrated-grants', meta('Grant Status', 'Swap Setup'), sdk.InputSpec.of({}), async () => {},
+    async ({ effects }) => {
+      const report = await call(effects, { action: 'status' })
+      return display({ grants: report.grants, local_paired: report.local_paired }, 'Grant Status', true)
+    }))
   add(sdk.Action.withInput('migrated-invoice', meta('Payment Invoice'), sdk.InputSpec.of({ cid: text('Confirmed swap ID') }), async ({ effects }) => {
       const report = await call(effects, { action: 'status' })
       const waiting = (report.swaps || []).filter((s: any) => s.state === 'waiting_for_payment' && hex(s.confirmation))
