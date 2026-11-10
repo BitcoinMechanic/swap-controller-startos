@@ -2883,3 +2883,5 @@ Incoming admission errors now identify dust safety, liquidity, disconnected/busy
 Swap Status shows active swaps first, or the latest swap if none remain active. It no longer repeats the entire history and every grant limit. Swap History provides a newest-first selector and shows all details for the selected record; records are retained. Grant Status under Swap Setup contains the grant limits. This presentation-only update does not change payment deadlines or worker state.
 
 Local node discovery now uses SDK daemon reconciliation instead of top-level restart subscriptions. Changed grants, credentials or bridge addresses restart only the local pairing helper; missing publications remove that helper until discovery recovers. The payment/recovery worker and wallet discovery server retain their processes. Pairing remains identity-verified and cannot replace saved authority during an active swap. Configuration is written privately only when the pairing helper starts. An explicit package update or user restart still restarts the controller.
+
+Explain quoted grant amount limits with requested and maximum amounts in the correct asset.

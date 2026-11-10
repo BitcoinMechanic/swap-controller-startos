@@ -16,7 +16,7 @@ import held_gate as hg
 import service
 
 # Export actionable codes and structural evidence, never raw remote messages.
-SAFE={'recipient_route_unknown','recipient_invoice_timing','recipient_invoice_limits','recipient_invoice_cltv_limit','outgoing_channel_not_ready','route_outside_approved_channels','route_fee_or_delay_limit','approved_channel_changed','worker_invoice_unavailable','contract_reserve_insufficient','service_lock_timeout','confirmation_required','service_pairing_required','service_previous_swap_active',
+SAFE={'grant_amount_limit','recipient_route_unknown','recipient_invoice_timing','recipient_invoice_limits','recipient_invoice_cltv_limit','outgoing_channel_not_ready','route_outside_approved_channels','route_fee_or_delay_limit','approved_channel_changed','worker_invoice_unavailable','contract_reserve_insufficient','service_lock_timeout','confirmation_required','service_pairing_required','service_previous_swap_active',
       'service_invoice_reused','service_review_superseded','service_worker_unavailable',
       'service_paused','service_restored','service_history_full','service_swap_unknown',
       'service_draft_cancelled','service_approved_swap_cannot_cancel','service_settings_invalid',
@@ -29,7 +29,7 @@ def failure_report(error, directory):
     reason = ('service_busy' if isinstance(error, BlockingIOError) else
               str(error) if isinstance(error, ValueError) and str(error) in SAFE else
               'service_request_refused')
-    diagnostic = dict(getattr(error, 'diagnostic', {})) if isinstance(error, service.https.HttpsError) else {}
+    diagnostic = dict(getattr(error, 'diagnostic', {})) if isinstance(error, (service.https.HttpsError, service.cc.AmountLimitError)) else {}
     diagnostic['reference'] = secrets.token_hex(8)
     # Source positions only: exception messages, source lines and locals can contain secrets.
     frames = traceback.extract_tb(error.__traceback__)

@@ -19,6 +19,7 @@ const errors: Record<string, string> = {
   incoming_channels_unavailable: 'No approved incoming channel passes all connection, liquidity, HTLC safety and routing-hint checks.',
   channel_fee_metadata_invalid: 'The node supplied missing or invalid channel fee/dust metadata; safe HTLC admission cannot be checked.',
   channel_alias_metadata_invalid: 'The node supplied invalid channel alias metadata.',
+  grant_amount_limit: 'The quoted swap amount exceeds the saved node grant. No new swap was created.',
   outside_grant: 'The requested amount exceeds the saved node grant.',
   node_not_synced: 'The Lightning node is not synced.',
   recipient_route_unknown: 'The receiving node is unknown to the routing graph and the invoice contains no private-channel route hints. Open the receiving wallet and generate a fresh invoice with route hints enabled.',
@@ -73,7 +74,8 @@ export function refused(reason: unknown, diagnostic?: any): Error {
     for (const key of ['node', 'role', 'operation', 'stage']) {
       if (typeof diagnostic[key] === 'string' && /^[a-z][a-z0-9_-]{0,40}$/.test(diagnostic[key])) details.push(`${key}: ${diagnostic[key]}`)
     }
-    for (const [key, label] of [['amount_msat', 'Incoming amount'], ['minimum_msat', 'Minimum safe incoming amount']]) if (Number.isSafeInteger(diagnostic[key]) && diagnostic[key] > 0) details.push(`${label}: ${diagnostic[key] / 1000} sats${key === 'minimum_msat' ? ` (use at least ${Math.ceil(diagnostic[key] / 1000)} whole sats)` : ''}`)
+    const asset = diagnostic.node === 'btc-cln-v1' ? 'BTC ' : diagnostic.node === 'xbt-privkeyio-v1' ? 'XBT ' : ''
+    for (const [key, label] of [['amount_msat', 'Requested amount'], ['minimum_msat', 'Minimum safe incoming amount'], ['maximum_msat', 'Maximum approved amount']]) if (Number.isSafeInteger(diagnostic[key]) && diagnostic[key] > 0) details.push(`${label}: ${diagnostic[key] / 1000} ${asset}sats${key === 'minimum_msat' ? ` (use at least ${Math.ceil(diagnostic[key] / 1000)} whole sats)` : ''}`)
     for (const key of ['http_status', 'rpc_code']) if (Number.isSafeInteger(diagnostic[key])) details.push(`${key}: ${diagnostic[key]}`)
     if (typeof diagnostic.reference === 'string' && /^[a-f0-9]{16}$/.test(diagnostic.reference)) details.push(`Reference: ${diagnostic.reference}`)
     if (Array.isArray(diagnostic.locations)) for (const loc of diagnostic.locations.slice(0, 6)) {

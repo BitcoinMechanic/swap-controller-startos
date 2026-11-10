@@ -9,6 +9,16 @@ import customer_https as https
 import service_cli
 
 class Tests(unittest.TestCase):
+    def test_amount_limit_reports_asset_and_actual_limit(self):
+        g=dict(chain=dict(profile='xbt-privkeyio-v1'),kind='incoming',limits=dict(max_amount_msat=500252000))
+        error=service_cli.service.cc.AmountLimitError(g,506701000)
+        with tempfile.TemporaryDirectory() as root:
+            report=service_cli.failure_report(error,root)
+        self.assertEqual(report['reason'],'grant_amount_limit')
+        self.assertEqual(report['diagnostic']['node'],'xbt-privkeyio-v1')
+        self.assertEqual(report['diagnostic']['amount_msat'],506701000)
+        self.assertEqual(report['diagnostic']['maximum_msat'],500252000)
+
     def client(self):
         c = object.__new__(https.Client)
         c.config = {'url':'https://private.example', 'rune':'SECRET_RUNE'}

@@ -62,9 +62,20 @@ def validate(c):
     return c
 
 
+class AmountLimitError(ValueError):
+    def __init__(self, grant, amount):
+        super().__init__('grant_amount_limit')
+        self.diagnostic = dict(node=grant['chain']['profile'], role=grant['kind'],
+                              operation='prepare', stage='grant_validation',
+                              amount_msat=amount, maximum_msat=grant['limits']['max_amount_msat'])
+
+
 def create(grants, plan, pricing, *, now, payment_secret=None, nonce=None):
     pricing = copy.deepcopy(market.quote(pricing))
     grant_pair(grants, pricing['direction']); rp.validate_plan(plan)
+    for kind, amount in (('incoming', pricing[('btc' if pricing['direction']=='forward' else 'xbt')+'_msat']), ('outgoing', plan['amount_msat'])):
+        if amount > grants[kind]['limits']['max_amount_msat']:
+            raise AmountLimitError(grants[kind], amount)
     g = grants['incoming']
     quote = dict(chain=g['chain'], payment_hash=plan['payment_hash'],
         payment_secret=secrets.token_hex(32) if payment_secret is None else payment_secret, amount_msat=pricing[
