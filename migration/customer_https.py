@@ -140,7 +140,7 @@ class Client:
                 if type(error) is dict and type(error.get('code')) is int:
                     detail['rpc_code'] = error['code']
                 raise HttpsError('node_rpc_rejected')
-            safe = {'recipient_invoice_timing', 'recipient_invoice_limits',
+            safe = {'grant_closed', 'channel_requires_recovery', 'previous_enrollment_requires_recovery', 'recipient_invoice_timing', 'recipient_invoice_limits',
                     'recipient_route_unknown', 'recipient_invoice_cltv_limit', 'bounded_route_unavailable',
                     'outgoing_channel_not_ready', 'route_outside_approved_channels',
                     'route_fee_or_delay_limit', 'approved_channel_changed', 'incoming_channel_disconnected', 'incoming_channel_busy', 'incoming_liquidity_insufficient', 'incoming_amount_below_safe_minimum', 'incoming_htlc_policy_limit', 'incoming_hint_unavailable', 'incoming_channels_unavailable', 'channel_fee_metadata_invalid', 'channel_alias_metadata_invalid', 'outside_grant', 'node_not_synced'}

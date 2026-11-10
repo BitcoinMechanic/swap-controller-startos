@@ -106,7 +106,7 @@ class ErrorBoundaryTests(unittest.TestCase):
         remote=Remote()
         with patch.object(https,'context',return_value=object()), patch.object(https.http.client,'HTTPSConnection') as conn:
             client=https.Client(nodes(remote)['outgoing'])
-            for code in ('recipient_route_unknown','recipient_invoice_cltv_limit','bounded_route_unavailable'):
+            for code in ('recipient_route_unknown','recipient_invoice_cltv_limit','bounded_route_unavailable','grant_closed','channel_requires_recovery','previous_enrollment_requires_recovery'):
                 conn.return_value.getresponse.return_value=Response({'admission_error':code})
                 with self.assertRaisesRegex(https.HttpsError,'^'+code+'$'):client._request('plan',{})
             for value, code in (({'error':'PRIVATE secret'},'node_rpc_rejected'),(b'invalid PRIVATE secret','node_reply_json_invalid')):
