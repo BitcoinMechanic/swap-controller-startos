@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { discover } from './localNodes'
 import { sdk } from '../sdk'
 import { mounts } from '../utils'
@@ -7,8 +8,16 @@ import { directory, entrypoint, invoke } from './actions'
 // journal must not be silently initialized by a restart or image replacement.
 export const command: [string, ...string[]] = [entrypoint, '--mainnet', directory, 'run']
 export const main = sdk.setupMain(async ({ effects }) => {
+  // Discovery inputs are volatile. Reconcile them in a child context rather
+  // than letting .const() restart the payment/recovery worker's root context.
+  let previousConfig: string | undefined
+  return sdk.Daemons.dynamic(effects, async ({ effects }) => {
   const worker = sdk.SubContainer.of(effects, { imageId: 'controller' }, mounts, 'migrated-worker')
   const local = await discover(effects, true)
+  const configDigest = createHash('sha256').update(JSON.stringify(local.config)).digest('hex')
+  if (previousConfig !== undefined && previousConfig !== configDigest)
+    console.info('Local node pairing configuration changed; reconciling pairing only. Payment worker is preserved.')
+  previousConfig = configDigest
   let daemons = sdk.Daemons.of(effects).addDaemon('migrated-worker', {
     subcontainer: worker, exec: { command }, requires: [],
     ready: { display: 'Swap Worker', fn: async () => {
@@ -22,11 +31,15 @@ export const main = sdk.setupMain(async ({ effects }) => {
   })
   if (local.config) {
     const pairing = sdk.SubContainer.of(effects, { imageId: 'controller' }, mounts, 'local-node-setup')
-    await pairing.writeFile('/tmp/local-nodes.json', JSON.stringify(local.config))
-    await pairing.exec(['chmod', '600', '/tmp/local-nodes.json'])
     daemons = daemons.addDaemon('local-node-setup', {
-      subcontainer: pairing, requires: [],
-      exec: { command: [entrypoint, '--mainnet', directory, 'local-run', '--local-config', '/tmp/local-nodes.json'] },
+      subcontainer: pairing, requires: [], uses: configDigest,
+      // Keep construction lazy: unchanged entries must not create containers
+      // or rewrite credentials. Only this helper restarts for changed grants.
+      exec: { fn: async sub => {
+        await sub.writeFile('/tmp/local-nodes.json', JSON.stringify(local.config))
+        await sub.exec(['chmod', '600', '/tmp/local-nodes.json'])
+        return { command: [entrypoint, '--mainnet', directory, 'local-run', '--local-config', '/tmp/local-nodes.json'] }
+      } },
       ready: { display: 'Local Lightning Nodes', fn: async () => {
         try {
           const output = await pairing.exec(['cat', '/tmp/local-node-status.json'])
@@ -57,4 +70,5 @@ export const main = sdk.setupMain(async ({ effects }) => {
     } },
   }) as typeof daemons
   return daemons
+  })
 })
