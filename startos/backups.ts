@@ -3,7 +3,7 @@ import { sdk } from './sdk'
 // Credentials and execution journals are not portable authority.
 export const { createBackup, restoreInit } = sdk.setupBackups(async () =>
   sdk.Backups.ofVolumes('main')
-    .setOptions({ exclude: ['.local-node-mounts', 'mainnet-swaps-v1', 'migrated-swaps-v1',
+    .setOptions({ exclude: ['.wallet-receive.json', '.local-node-mounts', 'mainnet-swaps-v1', 'migrated-swaps-v1',
       'pairing.json', 'pairing.lock', 'status.json', '.controller-*',
       'forward-session-pairing.json', 'reverse-session-pairing.json', 'swap-inspection.json',
       'btc-gate-observation.json', 'xbt-gate-observation.json',

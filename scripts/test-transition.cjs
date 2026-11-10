@@ -7,10 +7,10 @@ function load(file,mocks={}) {
 }
 async function main() {
  const bundled=require(path.resolve(process.argv[2]||'javascript/index.js'))
- assert.equal(bundled.manifest.version,'#privkeyio:0.1.0:21');assert.equal(bundled.manifest.id,'swap-controller')
+ assert.equal(bundled.manifest.version,'#privkeyio:0.1.0:22');assert.equal(bundled.manifest.id,'swap-controller')
  assert.deepEqual(bundled.manifest.volumes,['main','discovery']);assert.deepEqual(Object.keys(bundled.manifest.images),['controller'])
  const ids=['local-node-setup','migrated-initialize','legacy-history',...['forward','reverse'].flatMap(d=>['pair','new','confirm','cancel'].map(a=>'migrated-'+a+'-'+d)),
-  'migrated-status','migrated-history','migrated-grants','migrated-invoice','migrated-settings','wallet-discovery']
+  'migrated-status','migrated-history','migrated-grants','migrated-invoice','migrated-settings','wallet-discovery','wallet-receive']
  assert.deepEqual(Object.keys(bundled.actions.actions),ids)
  const effects={eventId:'transition-test'};let response,calls=0
  const {legacyProgram}=load('startos/live/legacyProgram.ts')
@@ -38,7 +38,7 @@ async function main() {
  const priorFive=load('startos/versions/v_privkeyio_0_1_0_5.ts',{'../live/legacy':{inspectLegacy:async()=>{admitted++;if(reject)throw Error('refused')}}}).v_privkeyio_0_1_0_5
  const graph=load('startos/versions/index.ts',{'./v_privkeyio_0_1_0_5':{v_privkeyio_0_1_0_5:priorFive},'./current':{current},'./v_privkeyio0.1.0_4':{v_privkeyio_0_1_0_4:priorFour},'./v_privkeyio0.1.0_3':{v_privkeyio_0_1_0_3:priorThree},'./v_privkeyio0.1.0_2':{v_privkeyio_0_1_0_2:priorTwo},'./v_privkeyio0.1.0_1':{v_privkeyio_0_1_0_1:priorOne},'./v_privkeyio0.1.0_0':{v_privkeyio_0_1_0_0:previous}}).versionGraph
  const {ExtendedVersion}=Module.createRequire(require.resolve('@start9labs/start-sdk'))('@start9labs/start-core/exver')
- const parse=v=>ExtendedVersion.parse(v),to=parse('#privkeyio:0.1.0:21'),from=parse('0.1.0:24')
+ const parse=v=>ExtendedVersion.parse(v),to=parse('#privkeyio:0.1.0:22'),from=parse('0.1.0:24')
  const versions=[],e={setDataVersion:async({version})=>versions.push(version)}
  await graph.migrate({effects:e,from,to});assert.equal(admitted,1);assert.equal(versions.at(-1),to.toString())
  reject=true;await assert.rejects(()=>graph.migrate({effects:e,from,to}));assert.equal(versions.length,2)
@@ -74,7 +74,7 @@ async function main() {
  const realSdk=require('@start9labs/start-sdk').StartSdk.of().withManifest(bundled.manifest).build(true)
  let checked=0,execs=0,deny=false
  const actionSdk={...realSdk,SubContainer:{withTemp:async(e,i,m,n,fn)=>fn({exec:async()=>{execs++;return {exitCode:0,stdout:'{"result":{"initialized":true}}'}}})}}
- const mod=load('startos/live/actions.ts',{'./discovery':{discoverySettings:bundled.actions.actions['wallet-discovery']},'./localNodes':{localSetup:bundled.actions.actions['local-node-setup']},'../sdk':{sdk:actionSdk},'../utils':{mounts:{}},
+ const mod=load('startos/live/actions.ts',{'./walletReceive':{walletReceive:bundled.actions.actions['wallet-receive']},'./discovery':{discoverySettings:bundled.actions.actions['wallet-discovery']},'./localNodes':{localSetup:bundled.actions.actions['local-node-setup']},'../sdk':{sdk:actionSdk},'../utils':{mounts:{}},
   './legacy':{inspectLegacy:async()=>({records:[{direction:'forward',phase:'settled'}],inert_temporary_files_preserved:{pilot_attention_status:1}}),present:async()=>true,
     verifyInitialization:async()=>{checked++;if(deny)throw Error('refused')}}})
  const historyAction=mod.createActions().get('legacy-history');await historyAction.getInput({effects})

@@ -28,9 +28,9 @@ async function main() {
  const running=await reconciler.build()
  const settle=async()=>{for(let n=0;n<20;n++)await new Promise(r=>setImmediate(r));if(reconciler.inFlight)await reconciler.inFlight}
  const update=async value=>{discovered=value;child.constRetry();await settle();assert.equal(rootRetries,0)}
- assert.deepEqual(starts,['migrated-worker','local-node-setup','wallet-discovery'])
+ assert.deepEqual(starts,['migrated-worker','local-node-setup','wallet-discovery','wallet-receive'])
  // Identical publication / health-only changes do not touch any daemon.
- await update({...discovered,message:'new health text'});assert.equal(starts.length,3);assert.equal(stops.length,0)
+ await update({...discovered,message:'new health text'});assert.equal(starts.length,4);assert.equal(stops.length,0)
  // Changed grant/credential or endpoint replaces only pairing.
  for(const next of [
   {...discovered,config:{...discovered.config,btc:{url:'https://fixture-btc',credentials:{incoming:'SECRET_B'}}}},
@@ -42,6 +42,7 @@ async function main() {
  ]) await update(next)
  assert.equal(starts.filter(x=>x==='migrated-worker').length,1)
  assert.equal(starts.filter(x=>x==='wallet-discovery').length,1)
+ assert.equal(starts.filter(x=>x==='wallet-receive').length,1)
  assert.ok(stops.every(x=>x==='local-node-setup'))
  assert.ok(builds>=8)
  // Private config is written only during pairing process startup, never command args or uses.

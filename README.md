@@ -2885,3 +2885,13 @@ Swap Status shows active swaps first, or the latest swap if none remain active. 
 Local node discovery now uses SDK daemon reconciliation instead of top-level restart subscriptions. Changed grants, credentials or bridge addresses restart only the local pairing helper; missing publications remove that helper until discovery recovers. The payment/recovery worker and wallet discovery server retain their processes. Pairing remains identity-verified and cannot replace saved authority during an active swap. Configuration is written privately only when the pairing helper starts. An explicit package update or user restart still restarts the controller.
 
 Explain quoted grant amount limits with requested and maximum amounts in the correct asset.
+
+### Wallet swap receiving
+
+Wallet Receive API is a separate authenticated interface (port 9081; TLS via StartOS or HTTP over Tor). Public Wallet Discovery remains read-only. Under Swap Setup, enable Wallet Receive Access and copy its private key into the phone wallet’s saved-controller settings together with the Wallet Receive API origin. Enable the desired API address under Interfaces. Keys can be rotated or disabled without interrupting existing swap recovery; they are excluded from backups.
+
+Lightning → Receive → Swaps creates a fixed-amount XBT invoice in the phone and requests a BTC invoice for the sender. The amount entered is XBT sats to receive. The caller explicitly requests automatic preparation/confirmation by creating the invoice; the API cannot pay arbitrary invoices, change settings, expose journals or administer nodes. Existing grant, fee, reserve, liquidity, worker, restore and expiry checks apply. A wallet key is private access to create BTC-to-XBT receive swaps, not a public directory credential.
+
+POST /v1/receive accepts only action (create/status), original XBT invoice, environment and expected provider XBT public key. Repeated create requests reuse the exact original contract; status never creates or confirms a swap. Pending publication returns status without an invoice. The worker continues settlement/expiry when the phone closes. The phone validates the returned BTC invoice’s payment hash, amount, features and expiry before showing a QR. API errors retain finite diagnostic codes and source references; invoice/preimage/rune details are not logged.
+
+This first integration retains the controller’s existing one-active-forward-swap and bounded history limits. Swaps require a fixed receive amount; ordinary XBT receiving still supports amountless invoices. The original XBT description is not copied into the controller’s BTC invoice. Public unauthenticated quote access and automatic XBT-to-BTC sending are not included.

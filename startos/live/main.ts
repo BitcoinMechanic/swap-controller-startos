@@ -69,6 +69,16 @@ export const main = sdk.setupMain(async ({ effects }) => {
       } catch { return { result: 'failure', message: 'Discovery endpoint unavailable.' } }
     } },
   }) as typeof daemons
+  const receive = sdk.SubContainer.of(effects, { imageId: 'controller' }, mounts, 'wallet-receive')
+  daemons = daemons.addDaemon('wallet-receive', {
+    subcontainer: receive, requires: [],
+    exec: { command: ['python3', '/usr/local/libexec/swap-wallet/server.py', '--directory', directory, '--config', '/data/.wallet-receive.json'] },
+    ready: { display: 'Wallet Receive API', fn: async () => {
+      try { const r = await receive.exec(['python3', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:9081/health", timeout=3).read()'])
+        return r.exitCode === 0 ? { result: 'success', message: 'Receive API ready; access requires a wallet key.' } : { result: 'failure', message: 'Receive API unavailable.' }
+      } catch { return { result: 'failure', message: 'Receive API unavailable.' } }
+    } },
+  }) as typeof daemons
   return daemons
   })
 })

@@ -1,3 +1,4 @@
+import { walletReceive } from './walletReceive'
 import { discoverySettings } from './discovery'
 import { localSetup } from './localNodes'
 import { T } from '@start9labs/start-sdk'
@@ -268,4 +269,4 @@ export function createActions(call: Call = invoke) {
   }, async ({ effects, input }) => display(await call(effects, { action: 'configure', paused: input.paused, markup_bps: input.markupBps }), 'Swap Settings')))
   return actions
 }
-export const actions = createActions().addAction(discoverySettings)
+export const actions = createActions().addAction(discoverySettings).addAction(walletReceive)
