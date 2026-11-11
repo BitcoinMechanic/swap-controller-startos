@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Authenticated BTC-to-XBT receive adapter; never a general RPC/admin proxy."""
+"""Authenticated wallet swap adapter; never a general RPC/admin proxy."""
 import argparse
 import hmac
 import json
@@ -50,6 +50,58 @@ def receive(service, request):
         state=status['state'], terminal=status['terminal'], blocked=status['blocked'],
         payment_hash=c['outgoing']['payment_hash'], xbt_msat=c['outgoing']['amount_msat'],
         btc_msat=c['incoming']['amount_msat'], expires_at=c['pay_until'])
+    result['fees']=fees(c)
+    if 'invoice' in saved and not status['terminal']:
+        result['invoice']=saved['invoice']['invoice']
+    return result
+
+
+def fees(contract):
+    """Publish only fee arithmetic, never grants, preimages or node credentials."""
+    import market_quote
+    q=contract['pricing']
+    zero=market_quote.quote(dict(q,markup_bps=0),compute=True)
+    asset='btc' if contract['direction']=='forward' else 'xbt'
+    return dict(markup_bps=q['markup_bps'], provider_fee_msat=q[asset+'_msat']-zero[asset+'_msat'],
+                provider_fee_asset=asset, routing_fee_msat=q['routing_fee_msat'],
+                routing_fee_asset='xbt' if asset=='btc' else 'btc',
+                price_source=q['source'], price_checked_at=q['fetched_at_ms'])
+
+
+def send(service, request):
+    import held_gate as hg
+    import service as engine
+    hg.need(type(request) is dict and request.get('action') in ('quote','accept','status','cancel'),'wallet_request_invalid')
+    action=request['action']
+    hg.need(set(request)=={'action','invoice','environment','provider'} | ({'id'} if action in ('accept','cancel') else set()),'wallet_request_invalid')
+    invoice=request['invoice']
+    hg.need(type(invoice) is str and 100<=len(invoice)<=20000,'wallet_invoice_invalid')
+    hg.need(request['environment']==engine.environment(service.record),'wallet_network_mismatch')
+    service.guard()
+    cid=None
+    for key,job in service.record['jobs'].items():
+        c=job['worker']['swaps'][key]['contract']
+        if c['direction']=='reverse' and c['outgoing']['invoice']==invoice:
+            cid=key;break
+    if cid is None:
+        hg.need(action=='quote','wallet_send_not_found')
+        generation=service.record['selected']['reverse']
+        hg.need(generation is not None,'service_pairing_required')
+        binding=service.record['pairings'][generation]
+        hg.need(request['provider']==binding['nodes']['incoming']['grant']['chain']['node_id'],'wallet_provider_changed')
+        cid=service.prepare('reverse',invoice)['confirmation']
+    saved=service.record['jobs'][cid]['worker']['swaps'][cid];c=saved['contract']
+    hg.need(request['provider']==c['incoming']['chain']['node_id'],'wallet_provider_changed')
+    if action in ('accept','cancel'):
+        hg.need(request['id']==cid,'wallet_quote_changed')
+        if action=='accept':service.confirm(cid,cid,confirmed=True)
+        else:service.cancel(cid,cid)
+        saved=service.record['jobs'][cid]['worker']['swaps'][cid]
+    status=service.cached(cid)
+    result=dict(format='xbt-wallet-send-v1',id=cid,provider=request['provider'],environment=request['environment'],
+        state=status['state'],terminal=status['terminal'],blocked=status['blocked'],approved='approval' in saved,
+        payment_hash=c['outgoing']['payment_hash'],btc_msat=c['outgoing']['amount_msat'],
+        xbt_msat=c['incoming']['amount_msat'],expires_at=c['pay_until'],fees=fees(c))
     if 'invoice' in saved and not status['terminal']:
         result['invoice']=saved['invoice']['invoice']
     return result
@@ -74,7 +126,7 @@ def server(address, directory, config, factory=None):
         def do_GET(self):
             self.reply(200 if self.path=='/health' else 404,dict(format=FORMAT))
         def do_POST(self):
-            if self.path!='/v1/receive':return self.reply(404,dict(error='not_found'))
+            if self.path not in ('/v1/receive','/v1/send'):return self.reply(404,dict(error='not_found'))
             try:
                 settings=json.loads(Path(config).read_text())
                 token=settings['token']
@@ -96,11 +148,11 @@ def server(address, directory, config, factory=None):
             try:
                 journal=service_cli.action_journal(Path(directory))
                 instance=(factory or service.Service)(journal)
-                self.reply(200,dict(result=receive(instance,request)))
+                self.reply(200,dict(result=(send if self.path=='/v1/send' else receive)(instance,request)))
             except Exception as error:
                 report=service_cli.failure_report(error,directory)
                 # Fixed local validation codes are also safe for wallet clients.
-                if isinstance(error,ValueError) and str(error) in {'wallet_request_invalid','wallet_invoice_invalid','wallet_network_mismatch','wallet_receive_not_found','wallet_provider_changed'}:
+                if isinstance(error,ValueError) and str(error) in {'wallet_request_invalid','wallet_invoice_invalid','wallet_network_mismatch','wallet_receive_not_found','wallet_send_not_found','wallet_provider_changed','wallet_quote_changed'}:
                     report['reason']=str(error)
                 self.reply(200,dict(error=report['reason'],diagnostic=report['diagnostic']))
             finally:

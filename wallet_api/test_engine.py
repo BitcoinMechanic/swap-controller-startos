@@ -25,3 +25,24 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.remote.calls,before)
         self.assertFalse(any(op=='send' for _,op,_ in self.remote.calls))
         self.assertEqual(len(self.s.record['jobs']),1)
+
+    def test_reverse_quote_accept_and_restart_preserve_fee_and_authority(self):
+        from test_cross_worker import Remote
+        from test_customer_https import nodes
+        self.remote=Remote('reverse')
+        self.remote.c['outgoing']['invoice'] += 'a'*100
+        self.bind=dict(direction='reverse',nodes=nodes(self.remote))
+        self.s.pair(self.bind,confirmed=True);self.live();self.s.configure(markup_bps=100)
+        request=dict(action='quote',invoice=self.remote.c['outgoing']['invoice'],environment='regtest',provider=self.remote.c['incoming']['chain']['node_id'])
+        first=api.send(self.s,request);cid=first['id']
+        self.assertFalse(first['approved']);self.assertGreater(first['fees']['provider_fee_msat'],0)
+        self.assertFalse(self.remote.entries)
+        self.remote.c=copy.deepcopy(self.s.record['jobs'][cid]['worker']['swaps'][cid]['contract'])
+        self.open();self.s.configure(markup_bps=500)
+        self.assertEqual(first,api.send(self.s,request))
+        accepted=api.send(self.s,dict(request,action='accept',id=cid));self.assertTrue(accepted['approved'])
+        self.open();self.assertEqual(accepted,api.send(self.s,dict(request,action='accept',id=cid)))
+        for _ in range(3):self.s.tick('11'*32);self.open()
+        status=api.send(self.s,dict(request,action='status'))
+        self.assertIn('invoice',status);self.assertEqual(status['fees'],first['fees'])
+        self.assertFalse(any(op=='send' for _,op,_ in self.remote.calls))

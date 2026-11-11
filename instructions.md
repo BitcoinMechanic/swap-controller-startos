@@ -158,7 +158,7 @@ Explain quoted grant amount limits with requested and maximum amounts in the cor
 
 ### Wallet swap receiving
 
-Wallet Receive API is a separate authenticated interface (port 9081; TLS via StartOS or HTTP over Tor). Public Wallet Discovery remains read-only. Under Swap Setup, enable Wallet Receive Access and copy its private key into the phone wallet’s saved-controller settings together with the Wallet Receive API origin. Enable the desired API address under Interfaces. Keys can be rotated or disabled without interrupting existing swap recovery; they are excluded from backups.
+Wallet Swap API is a separate authenticated interface (port 9081; TLS via StartOS or HTTP over Tor). Public Wallet Discovery remains read-only. Under Swap Setup, enable Wallet Swap Access and copy its private key into the phone wallet’s saved-controller settings together with the Wallet Swap API origin. Enable the desired API address under Interfaces. Keys can be rotated or disabled without interrupting existing swap recovery; they are excluded from backups.
 
 Lightning → Receive → Swaps creates a fixed-amount XBT invoice in the phone and requests a BTC invoice for the sender. The amount entered is XBT sats to receive. The caller explicitly requests automatic preparation/confirmation by creating the invoice; the API cannot pay arbitrary invoices, change settings, expose journals or administer nodes. Existing grant, fee, reserve, liquidity, worker, restore and expiry checks apply. A wallet key is private access to create BTC-to-XBT receive swaps, not a public directory credential.
 
@@ -167,3 +167,13 @@ POST /v1/receive accepts only action (create/status), original XBT invoice, envi
 This first integration retains the controller’s existing one-active-forward-swap and bounded history limits. Swaps require a fixed receive amount; ordinary XBT receiving still supports amountless invoices. The original XBT description is not copied into the controller’s BTC invoice. Public unauthenticated quote access and automatic XBT-to-BTC sending are not included.
 
 Quote admission errors distinguish expired/replaced grants, channel recovery, and unfinished earlier enrollments. Automatic local trust refreshes idle authority; a recovery requirement must be resolved before new swaps. These errors do not authorize repeating a payment.
+
+## Wallet-initiated outgoing swaps
+
+The Wallet Swap API accepts authenticated `POST /v1/send` requests for XBT-to-BTC swaps. A wallet submits the original amount-bearing BTC recipient invoice with `quote`, reviews the saved amounts and fees, then accepts that exact quote ID with `accept`. The worker publishes an XBT invoice; the wallet retrieves it with `status` and pays only after its user confirms. No per-swap Start9 action is needed. `cancel` retires an unapproved quote. The existing API origin, access key and interface ID remain valid.
+
+The original recipient invoice is the idempotency key. Retrying a quote or acceptance returns the same record and cannot create a second swap. Status never creates or approves a request. Payment submission remains entirely in the wallet. The API cannot change settings or administer nodes. Amountless BTC invoices currently require the recipient to generate an amount-bearing invoice.
+
+Under **Swap Setup → Swap Settings**, **Provider fee** sets the existing 0–500 basis-point markup (100 = 1%, default 0). It applies to new quotes in both directions; saved quotes keep their original amounts and fees. Both wallet API directions disclose this percentage, the exact extra incoming amount compared with the same saved depth quote at zero markup, and the coordinator routing cost. Both costs are included in the quoted incoming amount. The paying wallet's own routing fee is additional. Fees do not require exchange credentials or new node grants.
+
+The phone independently compares the total quote to Neoxa's latest XBT/BTC trade and warns above 5% or when a fresh market comparison is unavailable. Market deviation also includes order-book spread, depth and rounding, so it is not the same number as the provider's fee percentage.

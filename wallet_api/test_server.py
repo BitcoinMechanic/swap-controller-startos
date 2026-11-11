@@ -24,7 +24,7 @@ class Fake:
     def clock(self):return 1800000000
     def prepare(self,direction,invoice):
         self.calls.append(('prepare',direction,invoice))
-        c=dict(direction='forward',outgoing=dict(invoice=invoice,chain=dict(node_id=PROVIDER),payment_hash='e'*64,amount_msat=500000000),incoming=dict(amount_msat=2013000),pay_until=1900000000)
+        c=dict(direction='forward',outgoing=dict(invoice=invoice,chain=dict(node_id=PROVIDER),payment_hash='e'*64,amount_msat=500000000),incoming=dict(amount_msat=2013000),pay_until=1900000000,pricing=__import__('test_service').price('forward',[dict(amount_msat=1000000)],0,clock=lambda:1800000000))
         self.record['jobs'][CID]={'worker':{'swaps':{CID:{'contract':c}}}}
         return {'confirmation':CID}
     def confirm(self,cid,confirmation,confirmed):

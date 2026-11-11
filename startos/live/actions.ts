@@ -265,7 +265,7 @@ export function createActions(call: Call = invoke) {
     }))
   add(sdk.Action.withInput('migrated-settings', meta('Swap Settings', 'Swap Setup'), sdk.InputSpec.of({
     paused: sdk.Value.toggle({ name: 'Pause new swaps (approved recovery continues)', default: false }),
-    markupBps: sdk.Value.number({ name: 'Markup (basis points; 100 = 1%)', required: true, default: 0, integer: true, min: 0, max: 500 }),
+    markupBps: sdk.Value.number({ name: 'Provider fee (basis points; 100 = 1%)', description: 'Added to new quotes and disclosed to wallets separately from routing cost. 0–500 basis points (0–5%). Existing quotes keep their saved fee.', required: true, default: 0, integer: true, min: 0, max: 500 }),
   }), async ({ effects }) => {
     const current = await call(effects, { action: 'status' })
     return { paused: current.paused === true, markupBps: number(current.markup_bps) ? current.markup_bps : 0 }

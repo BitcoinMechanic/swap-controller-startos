@@ -15,8 +15,8 @@ export const setInterfaces = sdk.setupInterfaces(async ({ effects }) => {
   const receiveHost = sdk.MultiHost.of(effects, 'wallet-receive')
   const receiveBinding = await receiveHost.bindPort(9081, { protocol: 'http', preferredExternalPort: 9081,
     addSsl: { alpn: ['http/1.1'], preferredExternalPort: 9444 } })
-  const receiveApi = sdk.createInterface(effects, { name: 'Wallet Receive API', id: 'wallet-receive',
-    description: 'Authenticated BTC-to-XBT receive requests. Configure Wallet Receive Access before use.',
+  const receiveApi = sdk.createInterface(effects, { name: 'Wallet Swap API', id: 'wallet-receive',
+    description: 'Authenticated BTC-to-XBT receive and XBT-to-BTC quote, accept and status requests. Configure Wallet Swap Access before use.',
     type: 'api', masked: true, schemeOverride: null, username: null, path: '', query: {} })
   return [await binding.export([api]), await receiveBinding.export([receiveApi])]
 })
