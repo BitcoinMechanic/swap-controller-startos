@@ -22,6 +22,8 @@ SAFE={'grant_closed','channel_requires_recovery','previous_enrollment_requires_r
       'service_draft_cancelled','service_approved_swap_cannot_cancel','service_settings_invalid',
       'contract_admission_expired','bounded_route_unavailable','market_unavailable','market_data_invalid','market_amount_limit','market_depth_unavailable'}
 
+SAFE.update({'service_manual_pairing_preserved', 'local_configuration_invalid'})
+
 SAFE.update({'node_reply_too_large', 'node_connection_refused', 'node_reply_shape_invalid', 'node_reply_json_invalid', 'node_timeout', 'node_rpc_rejected', 'node_connection_error', 'node_content_type_invalid', 'node_admission_code_unknown', 'node_http_error', 'node_dns_error', 'node_client_error', 'node_tls_error'})
 SAFE.update({'node_not_synced', 'incoming_liquidity_insufficient', 'incoming_hint_unavailable', 'channel_alias_metadata_invalid', 'incoming_htlc_policy_limit', 'incoming_amount_below_safe_minimum', 'channel_fee_metadata_invalid', 'incoming_channel_busy', 'incoming_channel_disconnected', 'incoming_channels_unavailable', 'outside_grant'})
 

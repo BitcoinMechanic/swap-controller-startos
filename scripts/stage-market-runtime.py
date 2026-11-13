@@ -4,7 +4,7 @@ import hashlib,json,shutil,sys
 from pathlib import Path
 runtime=Path(sys.argv[1]);source=Path(__file__).resolve().parent.parent/'migration'
 p=runtime/'runtime-manifest.json';manifest=json.loads(p.read_text())
-for name in ('market_quote.py','service_market.py','service_cli.py','cross_contract.py','customer_https.py'):
+for name in ('market_quote.py','service_market.py','service_cli.py','cross_contract.py','customer_https.py','service.py','local_pairing.py'):
     if name not in manifest['files']:raise SystemExit('Missing runtime manifest entry: '+name)
     shutil.copyfile(source/name,runtime/name)
     manifest['files'][name]=hashlib.sha256((runtime/name).read_bytes()).hexdigest()

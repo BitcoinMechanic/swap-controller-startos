@@ -4,6 +4,21 @@ import { sdk } from '../sdk'
 import { mounts } from '../utils'
 import { directory, entrypoint, invoke } from './actions'
 
+export function localPairingFailure(reason: unknown): string {
+  const messages: Record<string, string> = {
+    service_history_full: 'Pairing renewal is blocked by the saved-history capacity limit.',
+    service_manual_pairing_preserved: 'Automatic pairing is disabled by a saved manual pairing.',
+    service_previous_swap_active: 'Pairing renewal is waiting for the current swap to finish. Recovery continues.',
+    service_paused: 'New swaps are paused. Resume swaps to renew local pairing.',
+    service_restored: 'Restored controller authority is blocked. Preserve its records.',
+    grant_closed: 'Waiting for the Lightning nodes to publish renewed grants.',
+    service_busy: 'The worker is updating its journal. Pairing will retry automatically.',
+    service_lock_timeout: 'The worker journal is busy. Pairing will retry automatically.',
+  }
+  const code = typeof reason === 'string' && /^[a-z][a-z0-9_]{0,79}$/.test(reason) ? reason : 'pairing_status_unavailable'
+  return (messages[code] || 'Automatic local pairing failed. Check controller diagnostics and node readiness.') + ' Code: ' + code
+}
+
 // Initial state must already have been explicitly created. A missing or restored
 // journal must not be silently initialized by a restart or image replacement.
 export const command: [string, ...string[]] = [entrypoint, '--mainnet', directory, 'run']
@@ -46,7 +61,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
           const report = JSON.parse(String(output.stdout))
           const age = Date.now()/1000-report.checked_at
           return output.exitCode === 0 && report.paired === true && Number.isSafeInteger(report.checked_at) && age >= 0 && age <= 120 ? { result: 'success', message: 'Local BTC and XBT approved grants paired in both directions.' }
-            : { result: 'failure', message: 'Local pairing unavailable. Check grants, node readiness, manual pairings and restore status.' }
+            : { result: 'failure', message: localPairingFailure(report.reason) }
         } catch { return { result: 'failure', message: 'Local pairing is waiting for controller initialization and available nodes.' } }
       } },
     }) as typeof daemons

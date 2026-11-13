@@ -29,15 +29,16 @@ def run(directory,config_path,environment,*,stop,interval=30):
     raw=config_path.read_text(); hg.need(len(raw.encode())<=262144,'local_configuration_invalid')
     value=bindings(json.loads(raw,object_pairs_hook=hg.unique_object))
     while not stop.is_set():
-        paired=False
+        paired=False; failure=None
         try:
             service_cli.execute(directory,dict(action='pair_local',bindings=value,confirmed=True),
                                 expected_environment=environment)
             paired=True
-        except Exception:
-            pass  # Missing services, expired grants, manual pairings and restore fences remain refused.
+        except Exception as error:
+            failure=service_cli.failure_report(error, directory)
         status=config_path.parent/'local-node-status.json'
         tmp=status.with_suffix('.tmp')
-        tmp.write_text(json.dumps(dict(paired=paired,checked_at=int(time.time()))))
+        tmp.write_text(json.dumps(dict(paired=paired,checked_at=int(time.time()),
+                                      reason=None if failure is None else failure["reason"])))
         os.replace(tmp,status)
         stop.wait(interval)

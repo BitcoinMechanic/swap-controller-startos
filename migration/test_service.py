@@ -182,16 +182,17 @@ class Tests(unittest.TestCase):
 
     def test_history_capacity_reserves_space_for_enrolled_recovery(self):
         self.enrolled();saved=copy.deepcopy(self.s.record['jobs'][self.cid])
-        for i in range(16):
-            b=copy.deepcopy(self.bind)
-            for kind in service.cw.KINDS:
-                b['nodes'][kind]['url']='https://'+kind+str(i)+'.invalid'
-                b['nodes'][kind]['ca_pem']='-----BEGIN CERTIFICATE-----\n'+'A'*60000+'\n-----END CERTIFICATE-----\n'
-            before=copy.deepcopy(self.s.record)
-            try:self.s.pair(b,confirmed=True)
-            except ValueError as e:
-                self.assertEqual(str(e),'service_history_full');self.assertEqual(before,self.s.record);break
-        else:self.fail('capacity not bounded')
+        b=copy.deepcopy(self.bind)
+        for kind in service.cw.KINDS:
+            b['nodes'][kind]['url']='https://'+kind+'-renewed.invalid'
+            b['nodes'][kind]['ca_pem']='-----BEGIN CERTIFICATE-----\n'+'A'*60000+'\n-----END CERTIFICATE-----\n'
+        before=copy.deepcopy(self.s.record)
+        # A single replacement must still reserve space for pending recovery;
+        # unused historical pairings no longer accumulate to trigger this limit.
+        with patch.object(hg, 'MAX_BYTES', len(json.dumps(before).encode())+150000):
+            with self.assertRaisesRegex(ValueError,'service_history_full'):
+                self.s.pair(b,confirmed=True)
+        self.assertEqual(before,self.s.record)
         self.assertEqual(self.s.record['jobs'][self.cid],saved)
         self.remote.hold();self.s.tick('11'*32);self.remote.complete()
         for _ in range(4):self.s.tick('11'*32)

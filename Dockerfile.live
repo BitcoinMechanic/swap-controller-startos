@@ -12,7 +12,7 @@ COPY wallet_api/ /usr/local/libexec/swap-wallet/
 COPY discovery/ /usr/local/libexec/swap-discovery/
 
 # Keep the staged pricing policy and its integrity manifest aligned.
-COPY migration/market_quote.py migration/service_market.py migration/service_cli.py migration/cross_contract.py migration/customer_https.py /tmp/market-package/migration/
+COPY migration/market_quote.py migration/service_market.py migration/service_cli.py migration/cross_contract.py migration/customer_https.py migration/service.py migration/local_pairing.py /tmp/market-package/migration/
 COPY scripts/stage-market-runtime.py /tmp/market-package/scripts/
 COPY patches/ /tmp/market-package/patches/
 RUN python3 /tmp/market-package/scripts/stage-market-runtime.py /usr/local/libexec/swap-controller && rm -rf /tmp/market-package

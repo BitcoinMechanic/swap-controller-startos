@@ -21,7 +21,7 @@ import worker_pairing as wp
 FORMAT = 'swap-controller-service-v1'
 DIRECTIONS = ('forward', 'reverse')
 MAX_JOBS = 32
-MAX_PAIRINGS = 16
+MAX_PAIRINGS = MAX_JOBS + len(DIRECTIONS)
 
 
 def empty(environment='regtest'):
@@ -67,6 +67,18 @@ def validate(r):
     hg.need(h is None or (type(h) is dict and set(h)=={'run_id','at'} and ba.ci.hex_field(h['run_id'],64)
             and hg.integer(h['at'],1,2**35-1)), 'service_heartbeat_invalid')
     return r
+
+
+def retain_pairings(record):
+    """Keep immutable swap authority and current selections; retire unused generations.
+
+    Terminal jobs also retain their authority for history and recovery rechecks.
+    This operates on a candidate record, committed only after both nodes verify.
+    """
+    keep = {j['generation'] for j in record['jobs'].values()}
+    keep.update(g for g in record['selected'].values() if g is not None)
+    keep.update(g for g in record.get('local_selected', {}).values() if g is not None)
+    record['pairings'] = {g:b for g,b in record['pairings'].items() if g in keep}
 
 
 def initialize(directory, environment='regtest'):
@@ -156,13 +168,12 @@ class Service:
         self.guard(admission=True); hg.need(confirmed is True,'confirmation_required')
         b=copy.deepcopy(wp.binding(binding)); gid=ba.digest(b)
         hg.need(all(n['grant']['chain']['environment']==environment(self.record) for n in b['nodes'].values()), 'service_environment_changed')
-        hg.need(gid in self.record['pairings'] or len(self.record['pairings'])<MAX_PAIRINGS,'service_history_full')
         # Always authenticate both endpoints before selecting even a saved pair.
         m=Memory(self.journal,dict(schema=1,format=wp.FORMAT,binding=None))
         wp.Pairing(m,factory=self.factory,clock=self.clock).save(b,confirmed=True)
         r=copy.deepcopy(self.record); r['pairings'][gid]=b; r['selected'][b['direction']]=gid
         if 'local_selected' in r: r['local_selected'][b['direction']]=None
-        self.capacity(r); self.commit(r)
+        retain_pairings(r); self.capacity(r); self.commit(r)
         return dict(direction=b['direction'],generation=gid,paired=True,existing_swaps_unchanged=True)
 
     def pair_local(self,bindings,*,confirmed=False):
@@ -186,11 +197,13 @@ class Service:
         # Automatic discovery must never hold the recovery lock while probing
         # absent nodes during an approved payment. Defer changed setup instead.
         hg.need(all(self.cached(cid)['terminal'] for cid in r['jobs']), 'service_previous_swap_active')
+        r['selected']=selected; r['local_selected']=selected.copy()
+        retain_pairings(r)
         hg.need(len(r['pairings'])<=MAX_PAIRINGS,'service_history_full'); self.capacity(r)
         for direction in DIRECTIONS:
             m=Memory(self.journal,dict(schema=1,format=wp.FORMAT,binding=None))
             wp.Pairing(m,factory=self.factory,clock=self.clock).save(bindings[direction],confirmed=True)
-        r['selected']=selected; r['local_selected']=selected.copy(); self.commit(r)
+        self.commit(r)
         return dict(paired=True,existing_swaps_unchanged=True)
 
     def worker(self,cid):
