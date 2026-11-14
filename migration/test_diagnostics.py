@@ -58,6 +58,17 @@ class Tests(unittest.TestCase):
             if code=='node_rpc_rejected' or status==500:self.assertEqual(caught.exception.diagnostic['rpc_code'],-32603)
             self.assertNotIn('SECRET',json.dumps(caught.exception.diagnostic))
 
+    def test_route_admission_details_survive_transport_without_invoice_data(self):
+        detail={'route_hint_count':1,'route_hint_entry_unknown':1,'max_fee_msat':10000,'max_delay_blocks':576,'max_hops':4}
+        response=Mock(status=201);response.getheader.return_value='application/json'
+        response.read.return_value=json.dumps({'admission_error':'route_hint_entry_unknown','admission_details':detail}).encode()
+        connection=Mock();connection.getresponse.return_value=response
+        with patch.object(https.http.client,'HTTPSConnection',return_value=connection):
+            with self.assertRaises(https.HttpsError) as caught:self.client()._request('plan',{'invoice':'SECRET_INVOICE'})
+        self.assertEqual(str(caught.exception),'route_hint_entry_unknown')
+        for k,v in detail.items():self.assertEqual(caught.exception.diagnostic[k],v)
+        self.assertNotIn('SECRET',json.dumps(caught.exception.diagnostic))
+
     def test_inspect_minimum_details_are_validated(self):
         for details,expected in [({'amount_msat':39000,'minimum_msat':546001},'incoming_amount_below_safe_minimum'),
                                  ({'amount_msat':'SECRET'},'node_reply_shape_invalid'),

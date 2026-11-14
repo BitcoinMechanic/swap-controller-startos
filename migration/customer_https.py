@@ -90,7 +90,7 @@ def parameters(kind, op, body, grant=None):
     hg.need(set(body) in fields, 'https_parameters_invalid')
     for key in ('entry_id','preimage','confirmation'):
         if key in body: hg.need(ba.ci.hex_field(body[key],64), 'https_parameters_invalid')
-    if 'amount_msat' in body: hg.need(hg.integer(body['amount_msat'],1,1000010000), 'https_parameters_invalid')
+    if 'amount_msat' in body: hg.need(hg.integer(body['amount_msat'],1,10000010000), 'https_parameters_invalid')
     if 'invoice' in body: hg.need(type(body['invoice']) is str and 100 <= len(body['invoice']) <= 16384, 'https_parameters_invalid')
 
 
@@ -141,12 +141,12 @@ class Client:
                     detail['rpc_code'] = error['code']
                 raise HttpsError('node_rpc_rejected')
             safe = {'grant_closed', 'channel_requires_recovery', 'previous_enrollment_requires_recovery', 'recipient_invoice_timing', 'recipient_invoice_limits',
-                    'recipient_route_unknown', 'recipient_invoice_cltv_limit', 'bounded_route_unavailable',
+                    'route_hint_entry_unknown', 'route_hint_path_unavailable', 'route_hint_fee_limit', 'route_hint_delay_limit', 'route_hint_hop_limit', 'recipient_route_unknown', 'recipient_invoice_cltv_limit', 'bounded_route_unavailable',
                     'outgoing_channel_not_ready', 'route_outside_approved_channels',
                     'route_fee_or_delay_limit', 'approved_channel_changed', 'incoming_channel_disconnected', 'incoming_channel_busy', 'incoming_liquidity_insufficient', 'incoming_amount_below_safe_minimum', 'incoming_htlc_policy_limit', 'incoming_hint_unavailable', 'incoming_channels_unavailable', 'channel_fee_metadata_invalid', 'channel_alias_metadata_invalid', 'outside_grant', 'node_not_synced'}
             if op in ('plan', 'inspect') and set(value) in ({'admission_error'}, {'admission_error', 'admission_details'}) and type(value['admission_error']) is str and value['admission_error'] in safe:
                 extra = value.get('admission_details', {})
-                if type(extra) is not dict or not set(extra) <= {'amount_msat', 'minimum_msat'} or not all(type(n) is int and 0 < n <= 2**53-1 for n in extra.values()):
+                if type(extra) is not dict or not set(extra) <= {'amount_msat', 'minimum_msat', 'route_hint_count', 'max_fee_msat', 'max_delay_blocks', 'max_hops', 'route_hint_entry_unknown', 'route_hint_path_unavailable', 'route_hint_fee_limit', 'route_hint_delay_limit', 'route_hint_hop_limit'} or not all(type(n) is int and (0 if k not in ('amount_msat','minimum_msat') else 1) <= n <= 2**53-1 for k,n in extra.items()):
                     raise HttpsError('node_reply_shape_invalid')
                 detail.update(extra)
                 raise HttpsError(value['admission_error'])

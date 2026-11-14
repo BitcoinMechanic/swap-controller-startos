@@ -145,9 +145,42 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ValueError):self.s.prepare('forward',self.remote.c['outgoing']['invoice'])
         self.live();self.assertFalse(self.remote.entries)
 
+    def test_unpaid_cancel_retires_then_waits_for_expiry_across_restart(self):
+        self.enrolled(); original=copy.deepcopy(self.remote.c)
+        self.assertTrue(self.s.cached(self.cid)['can_cancel'])
+        self.assertEqual(self.s.cancel(self.cid,self.cid)['state'],'cancelling')
+        self.open();self.remote.lost=('outgoing','retire');self.s.tick('11'*32)
+        self.open();self.s.cancel(self.cid,self.cid);self.s.tick('11'*32)
+        self.assertEqual(self.s.cached(self.cid)['state'],'cancelling')
+        self.assertFalse(self.s.cached(self.cid)['terminal'])
+        self.remote.entries['incoming']['terminal']='expired'
+        self.now=self.remote.c['pay_until'];self.s.tick('11'*32);self.open()
+        self.assertEqual(self.s.cached(self.cid)['state'],'cancelled')
+        self.assertTrue(self.s.cached(self.cid)['terminal'])
+        self.assertEqual(self.remote.c,original)
+        self.assertFalse(any(op=='send' for _,op,_ in self.remote.calls))
+
+    def test_payment_arriving_during_cancel_is_failed_never_forwarded(self):
+        self.enrolled();self.s.cancel(self.cid,self.cid);self.open()
+        self.remote.hold();self.s.tick('11'*32);self.open()
+        self.remote.lost=('incoming','fail');self.s.tick('11'*32);self.open()
+        self.s.tick('11'*32);self.open()
+        self.assertEqual(self.s.cached(self.cid)['state'],'cancelled')
+        self.assertEqual(self.remote.entries['incoming']['terminal'],'failed')
+        self.assertFalse(any(op in ('send','release') for _,op,_ in self.remote.calls))
+
+    def test_cancel_refuses_uncertain_send_and_unfinished_setup(self):
+        self.prepare();self.live();self.s.confirm(self.cid,self.cid,confirmed=True)
+        with self.assertRaisesRegex(ValueError,'service_cancel_not_ready'):self.s.cancel(self.cid,self.cid)
+        for _ in range(3):self.s.tick('11'*32);self.open()
+        self.remote.hold();self.remote.lost=('outgoing','send');self.s.tick('11'*32);self.open()
+        with self.assertRaisesRegex(ValueError,'service_payment_already_started'):self.s.cancel(self.cid,self.cid)
+        self.assertFalse(self.s.record['jobs'][self.cid].get('cancel_requested',False))
+        self.assertFalse(any(op in ('fail','retire') for _,op,_ in self.remote.calls))
+
     def test_approved_cancel_restore_and_disk_uncertainty_fail_closed(self):
         self.enrolled()
-        with self.assertRaises(ValueError):self.s.cancel(self.cid,self.cid)
+        self.s.cancel(self.cid,self.cid)
         (self.root/'restored.json').write_text('{}');before=len(self.remote.calls)
         self.assertTrue(self.s.status()['restored'])
         for call in (lambda:self.s.tick('11'*32),lambda:self.s.worker(self.cid).payment_invoice(self.cid),

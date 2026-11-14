@@ -73,6 +73,7 @@ class AmountLimitError(ValueError):
 def create(grants, plan, pricing, *, now, payment_secret=None, nonce=None):
     pricing = copy.deepcopy(market.quote(pricing))
     grant_pair(grants, pricing['direction']); rp.validate_plan(plan)
+    hg.need(plan['expires_at'] >= pricing['expires_at']+180, 'recipient_invoice_expiring')
     for kind, amount in (('incoming', pricing[('btc' if pricing['direction']=='forward' else 'xbt')+'_msat']), ('outgoing', plan['amount_msat'])):
         if amount > grants[kind]['limits']['max_amount_msat']:
             raise AmountLimitError(grants[kind], amount)

@@ -54,7 +54,8 @@ def validate(r):
         'service_record_invalid')
     hashes=set()
     for cid,j in r['jobs'].items():
-        hg.need(type(j) is dict and set(j)=={'generation','worker','cancelled','error'}
+        hg.need(type(j) is dict and {'generation','worker','cancelled','error'} <= set(j) <= {'generation','worker','cancelled','error','cancel_requested'}
+                and type(j.get('cancel_requested',False)) is bool
                 and j['generation'] in r['pairings'] and type(j['cancelled']) is bool
                 and j['error'] in (None,'coordinator_unavailable','recovery_refused'), 'service_record_invalid')
         w=cw.validate(j['worker']); hg.need(set(w['swaps'])=={cid},'service_record_invalid')
@@ -62,6 +63,7 @@ def validate(r):
         hg.need(c['direction']==b['direction'] and ba.equal(c['grants'],{k:n['grant'] for k,n in b['nodes'].items()}),
                 'service_pairing_changed')
         hg.need(not j['cancelled'] or set(s)=={'contract','enroll','remote'},'service_cancelled_execution')
+        hg.need(not j.get('cancel_requested') or ('approval' in s and 'invoice' in s and 'send' not in s), 'service_unsafe_cancellation')
         ph=c['incoming']['payment_hash']; hg.need(ph not in hashes,'service_duplicate_payment'); hashes.add(ph)
     h=r['heartbeat']
     hg.need(h is None or (type(h) is dict and set(h)=={'run_id','at'} and ba.ci.hex_field(h['run_id'],64)
@@ -220,7 +222,12 @@ class Service:
         v=w.status(cid); v.update(cc.review(j['worker']['swaps'][cid]['contract']))
         v.update(generation=j['generation'],selected=self.record['selected'][v['direction']]==j['generation'],
                  cancelled=j['cancelled'],error=j['error'])
+        s=j['worker']['swaps'][cid]
         if j['cancelled']: v.update(state='cancelled',terminal=True)
+        if j.get('cancel_requested'):
+            v['state']='cancelled' if v['terminal'] else 'cancelling'
+        v['cancel_requested']=j.get('cancel_requested',False)
+        v['can_cancel']=not v['terminal'] and not v['cancel_requested'] and 'send' not in s and 'decision' not in s and ('approval' not in s or 'invoice' in s)
         v['blocked'] |= self.blocked or restore_barrier.blocked(self.journal.directory)
         if 'recovery_retirement' in j['worker']['swaps'][cid] and j['error'] is not None:
             v['blocked'] = True
@@ -305,7 +312,7 @@ class Service:
     def confirm(self,cid,confirmation,*,confirmed=False):
         self.guard(); hg.need(confirmed is True and cid==confirmation,'confirmation_required')
         hg.need(cid in self.record['jobs'],'service_swap_unknown'); j=self.record['jobs'][cid]
-        hg.need(not j['cancelled'],'service_draft_cancelled')
+        hg.need(not j['cancelled'] and not j.get('cancel_requested'),'service_draft_cancelled')
         if 'approval' not in j['worker']['swaps'][cid]:
             self.guard(admission=True)
             d=j['worker']['swaps'][cid]['contract']['direction']
@@ -315,9 +322,36 @@ class Service:
 
     def cancel(self,cid,confirmation):
         self.guard(); hg.need(cid==confirmation and cid in self.record['jobs'],'confirmation_required')
-        j=self.record['jobs'][cid]
-        hg.need('approval' not in j['worker']['swaps'][cid],'service_approved_swap_cannot_cancel')
-        r=copy.deepcopy(self.record); r['jobs'][cid]['cancelled']=True; self.commit(r); return self.cached(cid)
+        j=self.record['jobs'][cid]; saved=j['worker']['swaps'][cid]
+        if j['cancelled'] or j.get('cancel_requested'): return self.cached(cid)
+        hg.need(not self.cached(cid)['terminal'],'service_swap_already_finished')
+        if 'approval' not in saved:
+            r=copy.deepcopy(self.record); r['jobs'][cid]['cancelled']=True; self.commit(r)
+        else:
+            hg.need('send' not in saved,'service_payment_already_started')
+            hg.need('decision' not in saved,'service_swap_resolving')
+            hg.need('invoice' in saved,'service_cancel_not_ready')
+            observed=self.worker(cid).observe(cid)
+            hg.need('send' not in observed['remote']['outgoing']['entry'],'service_payment_already_started')
+            hg.need(not self.cached(cid)['terminal'],'service_swap_already_finished')
+            # Persist before any revocation RPC. The worker never takes its normal
+            # send path again, including after timeout, lost reply or restart.
+            r=copy.deepcopy(self.record); r['jobs'][cid]['cancel_requested']=True; self.commit(r)
+        return self.cached(cid)
+
+    def cancel_step(self,cid):
+        w=self.worker(cid); s=w.observe(cid)
+        hg.need('send' not in s and 'send' not in s['remote']['outgoing']['entry'],'service_payment_already_started')
+        out=s['remote']['outgoing']['entry']; inc=s['remote']['incoming']['entry']
+        if 'terminal' not in out:
+            w.retire(cid,s)
+            return
+        hg.need(out['terminal']=='retired','service_unsafe_cancellation')
+        if 'incoming' in inc and 'terminal' not in inc:
+            w.cancel(cid,cid)
+            w.step(cid)
+        # With no incoming HTLC, the published invoice must reach its original
+        # expiry. Never declare cancellation complete using cached UI state.
 
     def configure(self,*,paused=None,markup_bps=None):
         self.guard(); r=copy.deepcopy(self.record)
@@ -342,7 +376,9 @@ class Service:
             saved=j['worker']['swaps'][cid]
             if (self.cached(cid)['terminal'] and 'recovery_retirement' not in saved) or 'approval' not in saved: continue
             error=None
-            try: self.worker(cid).step(cid)
+            try:
+                if j.get('cancel_requested'): self.cancel_step(cid)
+                else: self.worker(cid).step(cid)
             except hg.StorageError: raise  # Fresh process must reread uncertain disk state.
             except https.HttpsError: error='coordinator_unavailable'
             except (ValueError,TimeoutError,OSError): error='recovery_refused'

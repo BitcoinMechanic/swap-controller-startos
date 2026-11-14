@@ -1,4 +1,4 @@
-"""Exact Neoxa quote arithmetic with the approved 1,000,000-sat XBT ceiling.
+"""Exact Neoxa quote arithmetic with the approved 10,000,000-sat XBT ceiling.
 
 Only quote validation/arithmetic is shared. No legacy contract, gate, credential
 or profile is accepted. No network or clock reads occur in this module.
@@ -6,7 +6,7 @@ or profile is accepted. No network or clock reads occur in this module.
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 
-CAPS = {'btc': 10000000, 'xbt': 1000000000}
+CAPS = {'btc': 100000000, 'xbt': 10000000000}
 
 def require(ok, reason='market_data_invalid'):
     if not ok: raise ValueError(reason)

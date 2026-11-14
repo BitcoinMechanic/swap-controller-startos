@@ -16,11 +16,13 @@ import held_gate as hg
 import service
 
 # Export actionable codes and structural evidence, never raw remote messages.
-SAFE={'grant_closed','channel_requires_recovery','previous_enrollment_requires_recovery','grant_amount_limit','recipient_route_unknown','recipient_invoice_timing','recipient_invoice_limits','recipient_invoice_cltv_limit','outgoing_channel_not_ready','route_outside_approved_channels','route_fee_or_delay_limit','approved_channel_changed','worker_invoice_unavailable','contract_reserve_insufficient','service_lock_timeout','confirmation_required','service_pairing_required','service_previous_swap_active',
+SAFE={'recipient_invoice_expiring','contract_expiry_invalid','service_swap_resolving','service_swap_cancelled','service_payment_already_started','service_cancel_not_ready','service_swap_already_finished','grant_closed','channel_requires_recovery','previous_enrollment_requires_recovery','grant_amount_limit','recipient_route_unknown','recipient_invoice_timing','recipient_invoice_limits','recipient_invoice_cltv_limit','outgoing_channel_not_ready','route_outside_approved_channels','route_fee_or_delay_limit','approved_channel_changed','worker_invoice_unavailable','contract_reserve_insufficient','service_lock_timeout','confirmation_required','service_pairing_required','service_previous_swap_active',
       'service_invoice_reused','service_review_superseded','service_worker_unavailable',
       'service_paused','service_restored','service_history_full','service_swap_unknown',
       'service_draft_cancelled','service_approved_swap_cannot_cancel','service_settings_invalid',
       'contract_admission_expired','bounded_route_unavailable','market_unavailable','market_data_invalid','market_amount_limit','market_depth_unavailable'}
+
+SAFE.update({'route_hint_entry_unknown', 'route_hint_path_unavailable', 'route_hint_fee_limit', 'route_hint_delay_limit', 'route_hint_hop_limit'})
 
 SAFE.update({'service_manual_pairing_preserved', 'local_configuration_invalid'})
 
@@ -77,7 +79,9 @@ def execute(directory,request,*,expected_environment=None,**options):
         args={k:v for k,v in request.items() if k!='action'}
         if action in ('status','history'): return s.status()
         if action=='invoice':
-            s.guard(); return s.worker(args['cid']).payment_invoice(args['cid'])
+            s.guard(); status=s.cached(args['cid'])
+            hg.need(not status['cancel_requested'] and not status['cancelled'],'service_swap_cancelled')
+            return s.worker(args['cid']).payment_invoice(args['cid'])
         return getattr(s,action)(**args)
     finally: j.close()
 

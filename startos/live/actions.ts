@@ -11,6 +11,13 @@ export const directory = '/data/mainnet-swaps-v1'
 export const entrypoint = '/usr/local/libexec/swap-controller/package_service.py'
 export type Call = (effects: T.Effects, request: Record<string, unknown>) => Promise<any>
 const errors: Record<string, string> = {
+  recipient_invoice_expiring: 'The recipient invoice expires too soon. A new swap needs a 10-minute payment window plus 3 minutes of safety margin. Create a fresh recipient invoice. No new swap was created.',
+  contract_expiry_invalid: 'The controller rejected inconsistent invoice or quote timestamps. No new swap was created.',
+  service_swap_cancelled: 'Cancellation was requested. Do not pay the old invoice. Check Swap Status for cleanup.',
+  service_swap_resolving: 'The swap is already resolving. Follow its status until cleanup completes.',
+  service_payment_already_started: 'The outgoing payment may already have started. Cancellation is refused; follow settlement or recovery.',
+  service_cancel_not_ready: 'The swap is still being set up. Check status and cancel once its payment invoice is ready.',
+  service_swap_already_finished: 'The swap has already finished. Refresh its status.',
   incoming_amount_below_safe_minimum: 'The incoming payment is too small to meet the channel’s on-chain HTLC safety threshold. Increase the swap amount. No new swap was created.',
   incoming_channel_disconnected: 'The incoming channel is disconnected or has not finished reconnecting.',
   incoming_channel_busy: 'The incoming channel still has pending HTLCs. Wait for them to resolve.',
@@ -23,7 +30,7 @@ const errors: Record<string, string> = {
   grant_amount_limit: 'The quoted swap amount exceeds the saved node grant. No new swap was created.',
   outside_grant: 'The requested amount exceeds the saved node grant.',
   node_not_synced: 'The Lightning node is not synced.',
-  recipient_route_unknown: 'The receiving node is unknown to the routing graph and the invoice contains no private-channel route hints. Open the receiving wallet and generate a fresh invoice with route hints enabled.',
+  recipient_route_unknown: "The recipient is unknown to the routing graph, and this invoice contains no private-channel route hints. Ask the recipient for an invoice advertising its receiving channel and any private upstream hops.",
   recipient_invoice_timing: 'The recipient invoice has expired or has less than two minutes remaining. Generate a fresh invoice.',
   recipient_invoice_limits: 'The recipient invoice amount is missing or outside the supported amount range.',
   recipient_invoice_cltv_limit: 'The recipient invoice requires a timelock above the current route limit (up to 576 blocks). Use an invoice with a shorter timelock.',
@@ -45,9 +52,14 @@ const errors: Record<string, string> = {
   service_paused: 'New swaps are paused. Existing approved swaps retain recovery.',
   service_restored: 'Restored authority is blocked. Preserve its records.',
   contract_admission_expired: 'This review expired. Cancel its unapproved draft and use a fresh invoice.',
-  bounded_route_unavailable: 'No route fits the saved fee, delay and hop limits. Check liquidity and private invoice hints.',
+  route_hint_entry_unknown: "The invoice contains route hints, but their entry nodes are unknown to the routing graph. A private upstream hop may be missing. Ask the recipient for a complete route hint from a publicly reachable node.",
+  route_hint_path_unavailable: "The invoice contains route hints, but the coordinator could not find a route to any advertised entry node. Check the upstream path and liquidity; this does not establish that a fee limit was exceeded.",
+  route_hint_fee_limit: "Every advertised route hint alone requires more forwarding fees than the saved routing-fee cap. Check the reported cap and invoice hint fees.",
+  route_hint_delay_limit: "Every advertised route hint exceeds the saved timelock limit before reaching its entry node. Check the invoice timelocks and reported limit.",
+  route_hint_hop_limit: "Every advertised route hint leaves no room for a path to its entry node within the saved hop limit.",
+  bounded_route_unavailable: "No usable route was found. This result alone does not identify a fee limit, missing private hop or liquidity problem. Check the route-hint diagnostics below.",
   market_unavailable: 'Neoxa pricing is unavailable. Try a new review later.',
-  market_amount_limit: 'The swap exceeds the pricing limit: at most 1,000,000 XBT sats and 10,000 BTC sats. Use a smaller invoice; node grant limits also apply.',
+  market_amount_limit: 'The swap exceeds the pricing limit: at most 10,000,000 XBT sats and 100,000 BTC sats. Use a smaller invoice; node grant limits also apply.',
   market_depth_unavailable: 'Neoxa does not have enough usable order-book liquidity within the allowed price range. No quote was approved.',
   market_data_invalid: 'Neoxa data failed validation. No new quote was approved.',
   service_lock_timeout: 'The controller stayed busy for five seconds. This action did not start. Check history before trying again.',
@@ -80,6 +92,8 @@ export function refused(reason: unknown, diagnostic?: any): Error {
     }
     const asset = diagnostic.node === 'btc-cln-v1' ? 'BTC ' : diagnostic.node === 'xbt-privkeyio-v1' ? 'XBT ' : ''
     for (const [key, label] of [['amount_msat', 'Requested amount'], ['minimum_msat', 'Minimum safe incoming amount'], ['maximum_msat', 'Maximum approved amount']]) if (Number.isSafeInteger(diagnostic[key]) && diagnostic[key] > 0) details.push(`${label}: ${diagnostic[key] / 1000} ${asset}sats${key === 'minimum_msat' ? ` (use at least ${Math.ceil(diagnostic[key] / 1000)} whole sats)` : ''}`)
+    if (Number.isSafeInteger(diagnostic.max_fee_msat) && diagnostic.max_fee_msat >= 0) details.push(`Routing fee cap: ${diagnostic.max_fee_msat / 1000} ${asset}sats`)
+    for (const key of ['route_hint_count', 'max_delay_blocks', 'max_hops', 'route_hint_entry_unknown', 'route_hint_path_unavailable', 'route_hint_fee_limit', 'route_hint_delay_limit', 'route_hint_hop_limit']) if (Number.isSafeInteger(diagnostic[key]) && diagnostic[key] >= 0) details.push(`${key}: ${diagnostic[key]}`)
     for (const key of ['http_status', 'rpc_code']) if (Number.isSafeInteger(diagnostic[key])) details.push(`${key}: ${diagnostic[key]}`)
     if (typeof diagnostic.reference === 'string' && /^[a-f0-9]{16}$/.test(diagnostic.reference)) details.push(`Reference: ${diagnostic.reference}`)
     if (Array.isArray(diagnostic.locations)) for (const loc of diagnostic.locations.slice(0, 6)) {
@@ -122,7 +136,7 @@ const states: Record<string, string> = {
   onchain_settled: 'Settled on-chain', onchain_failed: 'Failed on-chain',
   ready_for_confirmation: 'Ready for confirmation', authorizing: 'Authorizing', publishing: 'Publishing payment invoice',
   waiting_for_payment: 'Awaiting payment', outgoing_pending: 'Recipient payment pending', settled: 'Settled', failed: 'Failed',
-  cancelled: 'Cancelled before approval', expired: 'Expired', onchain_recovery: 'On-chain recovery needs inspection',
+  cancelling: 'Cancelling — waiting for cleanup', cancelled: 'Cancelled', expired: 'Expired', onchain_recovery: 'On-chain recovery needs inspection',
 }
 function orderedSwaps(swaps: any[]): any[] {
   return swaps.filter(r => hex(r?.confirmation)).slice().sort((a, b) =>
@@ -225,7 +239,7 @@ export function createActions(call: Call = invoke) {
       invoice: text('Recipient invoice with private routing hints if needed', true),
     }), async () => {}, async ({ effects, input }) => display(await call(effects, { action: 'prepare', direction, invoice: input.invoice.trim() }), 'Review ' + label + ' Swap')))
     for (const mode of ['confirm', 'cancel'] as const) add(sdk.Action.withInput('migrated-' + mode + '-' + direction,
-      meta((mode === 'confirm' ? 'Confirm ' : 'Cancel Unapproved ') + label + ' Swap'), sdk.InputSpec.of({ cid: text('Reviewed swap ID'), confirmed: confirmed() }), prefill,
+      meta((mode === 'confirm' ? 'Confirm ' : 'Cancel ') + label + ' Swap'), sdk.InputSpec.of({ cid: text('Reviewed swap ID'), confirmed: confirmed() }), prefill,
       async ({ effects, input }) => {
         if (input.confirmed !== true || !hex(input.cid)) throw refused('confirmation_required')
         const report = await call(effects, { action: 'status' })

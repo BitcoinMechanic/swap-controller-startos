@@ -27,24 +27,90 @@
     [
       "integer(value['max_delay_blocks'], 1, 288)",
       "integer(value['max_delay_blocks'], 1, 576)"
+    ],
+    [
+      "integer(plan['amount_msat'], 1, 1000000000)",
+      "integer(plan['amount_msat'], 1, 10000000000 if plan['chain']['profile']==ci.PRIVKEYIO_XBT else 1000000000)"
+    ],
+    [
+      "integer(decoded['amount_msat'], 1, 1000000000)",
+      "integer(decoded['amount_msat'], 1, 10000000000 if chain['profile']==ci.PRIVKEYIO_XBT else 1000000000)"
+    ],
+    [
+      "integer(amount, 1, 1000010000)",
+      "integer(amount, 1, 10000010000)"
+    ],
+    [
+      "and row.get('bolt11') == saved_plan['invoice'], 'attempt_changed')",
+      "and ci.invoice_text(row.get('bolt11'), chain)\n         and row['bolt11'].lower() == saved_plan['invoice'].lower(), 'attempt_changed')"
+    ],
+    [
+      "    unknown_destination = False\n    unknown_destination = False\n",
+      "    unknown_destination = False\n"
+    ],
+    [
+      "    if unknown_destination and not hints:\n        raise ValueError('recipient_route_unknown')\n    if unknown_destination and not hints:\n        raise ValueError('recipient_route_unknown')",
+      "    if unknown_destination and not hints:\n        raise ValueError('recipient_route_unknown')"
+    ],
+    [
+      "def search(rpc, decoded, source, bounds):\n    destination, amount = decoded['payee'], decoded['amount_msat']\n    final_cltv = max(40, decoded['min_final_cltv_expiry'])\n    need(final_cltv <= bounds['max_delay_blocks'], 'route_fee_or_delay_limit')\n    hints = decoded.get('routes', [])\n    need(type(hints) is list and len(hints) <= 8, 'hint_count_invalid')\n    unknown_destination = False\n    try:\n        reply = query(rpc, source, destination, amount, final_cltv, bounds)\n    except RPCError as error:\n        # Only genuine routing refusals permit another read-only candidate.\n        # 215 (insufficient funds), unknown errors and transport failures stop.\n        if error.code not in (205, 206):\n            raise\n        unknown_destination = error.unknown_destination\n    else:\n        return convert(reply, source, destination, amount, final_cltv, bounds)\n    for hint in hints:\n        # Malformed authenticated hints are refused, rather than sanitized.\n        tail, entry, entry_amount, entry_delay = hinted_tail(hint, source, destination, amount, final_cltv, bounds)\n        if entry_amount-amount > bounds['max_fee_msat'] or entry_delay > bounds['max_delay_blocks']:\n            continue\n        prefix = []\n        if entry != source:\n            if len(tail) >= bounds['max_hops']:\n                continue\n            prefix_bounds = dict(bounds, max_fee_msat=bounds['max_fee_msat']-(entry_amount-amount),\n                                 max_hops=bounds['max_hops']-len(tail))\n            try:\n                reply = query(rpc, source, entry, entry_amount, entry_delay, prefix_bounds)\n            except RPCError as error:\n                if error.code not in (205, 206):\n                    raise\n                continue\n            prefix = convert(reply, source, entry, entry_amount, entry_delay, prefix_bounds)\n        result = prefix + tail\n        # A valid public prefix may intersect a hint. Try the next bounded hint.\n        if len({source, *(h['id'] for h in result)}) != len(result)+1 or len({h['channel'] for h in result}) != len(result):\n            continue\n        return validate_route(result, source, destination, amount, final_cltv, bounds)\n    if unknown_destination and not hints:\n        raise ValueError('recipient_route_unknown')\n    raise ValueError('bounded_route_unavailable')\n",
+      "def search(rpc, decoded, source, bounds):\n    destination, amount = decoded['payee'], decoded['amount_msat']\n    final_cltv = max(40, decoded['min_final_cltv_expiry'])\n    need(final_cltv <= bounds['max_delay_blocks'], 'route_fee_or_delay_limit')\n    hints = decoded.get('routes', [])\n    need(type(hints) is list and len(hints) <= 8, 'hint_count_invalid')\n    unknown_destination = False\n    failures = {}\n    def rejected(reason): failures[reason] = failures.get(reason, 0) + 1\n    try:\n        reply = query(rpc, source, destination, amount, final_cltv, bounds)\n    except RPCError as error:\n        # These are read-only candidate searches, never payment retries.\n        if error.code not in (205, 206): raise\n        unknown_destination = error.unknown_destination\n    else:\n        return convert(reply, source, destination, amount, final_cltv, bounds)\n    for hint in hints:\n        # Malformed authenticated hints remain errors, not guesses to repair.\n        tail, entry, entry_amount, entry_delay = hinted_tail(hint, source, destination, amount, final_cltv, bounds)\n        if entry_amount-amount > bounds['max_fee_msat']:\n            rejected('route_hint_fee_limit'); continue\n        if entry_delay > bounds['max_delay_blocks']:\n            rejected('route_hint_delay_limit'); continue\n        prefix = []\n        if entry != source:\n            if len(tail) >= bounds['max_hops']:\n                rejected('route_hint_hop_limit'); continue\n            prefix_bounds = dict(bounds, max_fee_msat=bounds['max_fee_msat']-(entry_amount-amount),\n                                 max_hops=bounds['max_hops']-len(tail))\n            try:\n                reply = query(rpc, source, entry, entry_amount, entry_delay, prefix_bounds)\n            except RPCError as error:\n                if error.code not in (205, 206): raise\n                rejected('route_hint_entry_unknown' if error.unknown_destination else 'route_hint_path_unavailable')\n                continue\n            prefix = convert(reply, source, entry, entry_amount, entry_delay, prefix_bounds)\n        result = prefix + tail\n        if len({source, *(h['id'] for h in result)}) != len(result)+1 or len({h['channel'] for h in result}) != len(result):\n            rejected('route_hint_path_unavailable'); continue\n        return validate_route(result, source, destination, amount, final_cltv, bounds)\n    reason = ('recipient_route_unknown' if unknown_destination and not hints else\n              next(iter(failures)) if len(failures)==1 else 'bounded_route_unavailable')\n    raise RouteAdmissionError(reason, route_hint_count=len(hints), **bounds, **failures)"
+    ],
+    [
+      "class RPCError(ValueError):",
+      "class RouteAdmissionError(ValueError):\n    def __init__(self, reason, **details):\n        super().__init__(reason)\n        self.details = details\n\n\nclass RPCError(ValueError):"
     ]
   ],
   "bounded_authority.py": [
     [
       "and data['created_at'] <= now and hg.integer(d.get('min_final_cltv_expiry'), 1, 40),",
       "and data['created_at'] <= now\n                and hg.integer(d.get('min_final_cltv_expiry'), 1, data['limits']['max_delay_blocks'])\n                and data['route'][-1]['delay'] == max(40, d['min_final_cltv_expiry']),"
+    ],
+    [
+      "hg.integer(value['max_amount_msat'], 1, 1000010000)",
+      "hg.integer(value['max_amount_msat'], 1, 10000010000)"
+    ],
+    [
+      "hg.integer(value['total_amount_msat'], value['max_amount_msat'], 10000100000)",
+      "hg.integer(value['total_amount_msat'], value['max_amount_msat'], 100000100000)"
     ]
   ],
   "customer_plugin.py": [
     [
       "        with self.serial: return self._invoke(method, params, profile)",
       "        with self.serial:\n            try: return self._invoke(method, params, profile)\n            except ValueError as error:\n                # Only finite, read-only planning failures may cross the boundary.\n                safe = {'recipient_invoice_timing', 'recipient_invoice_limits',\n                        'recipient_route_unknown', 'recipient_invoice_cltv_limit', 'bounded_route_unavailable',\n                        'outgoing_channel_not_ready', 'route_outside_approved_channels',\n                        'route_fee_or_delay_limit', 'approved_channel_changed'}\n                if method == remote.CALL and type(params) is dict and params.get('operation') == 'plan' and str(error) in safe:\n                    return {'admission_error': str(error)}\n                raise"
+    ],
+    [
+      "'recipient_route_unknown', 'recipient_invoice_cltv_limit'",
+      "'route_hint_entry_unknown', 'route_hint_path_unavailable', 'route_hint_fee_limit', 'route_hint_delay_limit', 'route_hint_hop_limit', 'recipient_route_unknown', 'recipient_invoice_cltv_limit'"
+    ],
+    [
+      "isinstance(error, invoice.AdmissionError)",
+      "isinstance(error, (invoice.AdmissionError, plugin.rp.RouteAdmissionError))"
     ]
   ],
   "authority_plugin.py": [
     [
       "                raise rp.RPCError(error.get('code') if type(error) is dict and type(error.get('code')) is int else None)",
       "                code = error.get('code') if type(error) is dict and type(error.get('code')) is int else None\n                message = error.get('message') if type(error) is dict else None\n                # Classify one known read-only routing refusal; never forward text.\n                unknown = method == 'getroutes' and code == 205 and type(message) is str and message.lower().startswith('unknown destination')\n                raise rp.RPCError(code, unknown_destination=unknown)"
+    ]
+  ],
+  "held_gate.py": [
+    [
+      "integer(value['amount_msat'], 1, 1000000000)",
+      "integer(value['amount_msat'], 1, 10000000000 if expected['profile']==ci.PRIVKEYIO_XBT else 1000000000)"
+    ]
+  ],
+  "customer_https.py": [
+    [
+      "hg.integer(body['amount_msat'],1,1000010000)",
+      "hg.integer(body['amount_msat'],1,10000010000)"
+    ]
+  ],
+  "chain_identity.py": [
+    [
+      "    currency=wire(chain['profile'],chain['environment'])[1]",
+      "    # BOLT11 uses Bech32: all-uppercase and all-lowercase are valid;\n    # mixed case is invalid. Normalize only for this pre-decode boundary.\n    if value != value.lower() and value != value.upper(): return False\n    value=value.lower()\n    currency=wire(chain['profile'],chain['environment'])[1]"
     ]
   ]
 }

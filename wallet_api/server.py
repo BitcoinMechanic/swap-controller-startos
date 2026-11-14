@@ -16,7 +16,7 @@ FORMAT = 'xbt-wallet-receive-v1'
 def receive(service, request):
     import held_gate as hg
     hg.need(type(request) is dict and set(request)=={'action','invoice','environment','provider'}
-            and request['action'] in ('create','status'), 'wallet_request_invalid')
+            and request['action'] in ('create','status','cancel'), 'wallet_request_invalid')
     invoice=request['invoice']
     hg.need(type(invoice) is str and 100<=len(invoice)<=20000,'wallet_invoice_invalid')
     import service as engine
@@ -39,6 +39,7 @@ def receive(service, request):
         cid=view['confirmation']
     job=service.record['jobs'][cid]; saved=job['worker']['swaps'][cid]; c=saved['contract']
     hg.need(request['provider']==c['outgoing']['chain']['node_id'],'wallet_provider_changed')
+    if request['action']=='cancel': service.cancel(cid,cid)
     if request['action']=='create' and 'approval' not in saved:
         if int(service.clock()) >= c['pay_until']:
             service.cancel(cid,cid)
@@ -51,7 +52,8 @@ def receive(service, request):
         payment_hash=c['outgoing']['payment_hash'], xbt_msat=c['outgoing']['amount_msat'],
         btc_msat=c['incoming']['amount_msat'], expires_at=c['pay_until'])
     result['fees']=fees(c)
-    if 'invoice' in saved and not status['terminal']:
+    result.update(can_cancel=status.get('can_cancel',False),cancel_requested=status.get('cancel_requested',False))
+    if 'invoice' in saved and not status['terminal'] and not status.get('cancel_requested'):
         result['invoice']=saved['invoice']['invoice']
     return result
 
@@ -102,7 +104,8 @@ def send(service, request):
         state=status['state'],terminal=status['terminal'],blocked=status['blocked'],approved='approval' in saved,
         payment_hash=c['outgoing']['payment_hash'],btc_msat=c['outgoing']['amount_msat'],
         xbt_msat=c['incoming']['amount_msat'],expires_at=c['pay_until'],fees=fees(c))
-    if 'invoice' in saved and not status['terminal']:
+    result.update(can_cancel=status.get('can_cancel',False),cancel_requested=status.get('cancel_requested',False))
+    if 'invoice' in saved and not status['terminal'] and not status.get('cancel_requested'):
         result['invoice']=saved['invoice']['invoice']
     return result
 

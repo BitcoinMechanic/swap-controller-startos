@@ -110,7 +110,7 @@ approved incoming and outgoing grants. Discovery works independently of grants.
 
 ## Quote limits (0.1.0:10)
 
-New quotes allow up to 1,000,000 XBT sats and 10,000 BTC sats, subject to node
+New quotes allow up to 10,000,000 XBT sats and 100,000 BTC sats, subject to node
 grant limits and channel liquidity. Amount-limit and insufficient-order-book-depth
 errors are distinct from malformed exchange data. Price freshness, spread, depth,
 slippage and exact arithmetic checks are unchanged. Previously saved quotes retain
@@ -170,7 +170,7 @@ Quote admission errors distinguish expired/replaced grants, channel recovery, an
 
 ## Wallet-initiated outgoing swaps
 
-The Wallet Swap API accepts authenticated `POST /v1/send` requests for XBT-to-BTC swaps. A wallet submits the original amount-bearing BTC recipient invoice with `quote`, reviews the saved amounts and fees, then accepts that exact quote ID with `accept`. The worker publishes an XBT invoice; the wallet retrieves it with `status` and pays only after its user confirms. No per-swap Start9 action is needed. `cancel` retires an unapproved quote. The existing API origin, access key and interface ID remain valid.
+The Wallet Swap API accepts authenticated `POST /v1/send` requests for XBT-to-BTC swaps. A wallet submits the original amount-bearing BTC recipient invoice with `quote`, reviews the saved amounts and fees, then accepts that exact quote ID with `accept`. The worker publishes an XBT invoice; the wallet retrieves it with `status` and pays only after its user confirms. No per-swap Start9 action is needed. `cancel` cancels an unapproved quote immediately. An approved swap can also be cancelled once its invoice is ready, provided no outgoing send intent exists. The controller durably stops forwarding, retires outgoing authority, and fails any incoming HTLC. It reports `cancelling` until both sides are terminal; an unpaid invoice must reach its original expiry. Cancellation survives restarts and lost replies, and never deletes history. The receive endpoint also accepts `cancel`, identified by the original recipient invoice. API replies advertise `can_cancel` and `cancel_requested` and omit payment invoices while cancellation is pending. The existing API origin, access key and interface ID remain valid.
 
 The original recipient invoice is the idempotency key. Retrying a quote or acceptance returns the same record and cannot create a second swap. Status never creates or approves a request. Payment submission remains entirely in the wallet. The API cannot change settings or administer nodes. Amountless BTC invoices currently require the recipient to generate an amount-bearing invoice.
 
@@ -179,3 +179,11 @@ Under **Swap Setup → Swap Settings**, **Provider fee** sets the existing 0–5
 The phone independently compares the total quote to Neoxa's latest XBT/BTC trade and warns above 5% or when a fresh market comparison is unavailable. Market deviation also includes order-book spread, depth and rounding, so it is not the same number as the provider's fee percentage.
 
 Automatic local grant renewal retires superseded pairing generations only when no saved swap references them. All payment history, unfinished recovery, and manual selections are preserved. Renewal retries every 30 seconds; it waits during an unfinished swap, a pause, or a restore block. Local Lightning Nodes reports a specific failure code when renewal cannot complete. Saved swap-history capacity remains bounded; unused grant renewals do not consume that capacity.
+
+A recipient invoice must remain valid for the controller’s 10-minute payment window plus a 3-minute safety margin. An invoice with less time remaining is rejected as `recipient_invoice_expiring`, without creating a swap. Generate a fresh invoice instead of repeatedly retrying one near expiry.
+
+Lightning invoices may be all lowercase or all uppercase. Mixed-case invoices are rejected; network, signature, amount and expiry checks still apply.
+
+Settlement also accepts the lowercase form Core Lightning stores for an uppercase invoice. Saved plans remain unchanged; payment hash, recipient, amounts and original attempt identity must still match.
+
+Route planning distinguishes unknown route-hint entry nodes from hint fee, delay and hop limits. Diagnostics include hint counts and saved limits. A failed search alone does not prove a fee limit was exceeded. Private paths may require multiple hinted hops to reach a public node.

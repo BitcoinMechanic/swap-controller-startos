@@ -51,9 +51,15 @@ class QuoteLimits(unittest.TestCase):
         import market_quote
         q=self.quote();self.assertEqual(q['xbt_msat'],1000000000);self.assertEqual(q['btc_msat'],3800000)
         self.assertEqual(market_quote.quote(q),q)
-        with self.assertRaisesRegex(ValueError,'^market_amount_limit$'):self.quote(1000001000)
-        with self.assertRaisesRegex(ValueError,'^market_amount_limit$'):self.quote(10001000,'reverse')
-        with self.assertRaisesRegex(ValueError,'^market_amount_limit$'):self.quote(10000000,'reverse')
+        with self.assertRaisesRegex(ValueError,'^market_amount_limit$'):self.quote(10000001000)
+        with self.assertRaisesRegex(ValueError,'^market_amount_limit$'):self.quote(100001000,'reverse')
+        with self.assertRaisesRegex(ValueError,'^market_amount_limit$'):self.quote(100000000,'reverse')
+    def test_ten_million_xbt_round_trip(self):
+        import market_quote
+        q=self.quote(10000000000)
+        self.assertEqual(q['xbt_msat'],10000000000)
+        self.assertEqual(q['btc_msat'],38000000)
+        self.assertEqual(market_quote.quote(q),q)
     def test_validation_and_depth_remain_distinct(self):
         with self.assertRaisesRegex(ValueError,'^market_data_invalid$'):self.quote(mode='stale')
         with self.assertRaisesRegex(ValueError,'^market_depth_unavailable$'):self.quote(mode='shallow')

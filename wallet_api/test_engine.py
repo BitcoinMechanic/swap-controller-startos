@@ -46,3 +46,34 @@ class Tests(unittest.TestCase):
         status=api.send(self.s,dict(request,action='status'))
         self.assertIn('invoice',status);self.assertEqual(status['fees'],first['fees'])
         self.assertFalse(any(op=='send' for _,op,_ in self.remote.calls))
+
+    def test_receive_cancel_hides_invoice_and_survives_restart(self):
+        self.remote.c['outgoing']['invoice'] += 'a'*100
+        self.s.pair(self.bind,confirmed=True);self.live()
+        request=dict(action='create',invoice=self.remote.c['outgoing']['invoice'],environment='regtest',provider=self.remote.c['outgoing']['chain']['node_id'])
+        first=api.receive(self.s,request);cid=first['id']
+        self.remote.c=copy.deepcopy(self.s.record['jobs'][cid]['worker']['swaps'][cid]['contract'])
+        for _ in range(3):self.s.tick('11'*32);self.open()
+        before=api.receive(self.s,dict(request,action='status'))
+        self.assertTrue(before['can_cancel']);self.assertIn('invoice',before)
+        cancelled=api.receive(self.s,dict(request,action='cancel'))
+        self.assertEqual(cancelled['state'],'cancelling');self.assertFalse(cancelled['terminal'])
+        self.assertNotIn('invoice',cancelled);self.assertFalse(cancelled['can_cancel'])
+        self.open();self.assertEqual(api.receive(self.s,dict(request,action='cancel')),cancelled)
+        self.assertEqual(api.receive(self.s,request),cancelled)
+        self.assertFalse(any(op=='send' for _,op,_ in self.remote.calls))
+
+    def test_reverse_cancel_draft_is_idempotent_and_cannot_be_accepted(self):
+        from test_cross_worker import Remote
+        from test_customer_https import nodes
+        self.remote=Remote('reverse');self.remote.c['outgoing']['invoice'] += 'a'*100
+        self.bind=dict(direction='reverse',nodes=nodes(self.remote));self.s.pair(self.bind,confirmed=True);self.live()
+        request=dict(action='quote',invoice=self.remote.c['outgoing']['invoice'],environment='regtest',provider=self.remote.c['incoming']['chain']['node_id'])
+        quote=api.send(self.s,request);cid=quote['id']
+        self.assertTrue(quote['can_cancel'])
+        with self.assertRaisesRegex(ValueError,'wallet_quote_changed'):api.send(self.s,dict(request,action='cancel',id='f'*64))
+        result=api.send(self.s,dict(request,action='cancel',id=cid))
+        self.assertTrue(result['terminal']);self.assertEqual(result['state'],'cancelled')
+        self.open();self.assertEqual(api.send(self.s,dict(request,action='cancel',id=cid)),result)
+        with self.assertRaisesRegex(ValueError,'service_draft_cancelled'):api.send(self.s,dict(request,action='accept',id=cid))
+        self.assertFalse(self.remote.entries)
