@@ -6,5 +6,5 @@ export const manifest = setupManifest({
   upstreamRepo: 'https://github.com/BitcoinMechanic/lightning',
   marketingUrl: 'https://github.com/BitcoinMechanic/lightning', donationUrl: null, description: { short, long },
   volumes: ['main', 'discovery'],
-  images: { controller: { source: { dockerBuild: { dockerfile: 'Dockerfile.live', workdir: '.' } }, arch: ['x86_64'], emulateMissing: false } },
+  images: { controller: { source: { ociLayout: { path: '.build-inputs/controller-x86_64.tar' } }, arch: ['x86_64'], emulateMissing: false } },
 })

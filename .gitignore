@@ -9,3 +9,5 @@ ncc-cache
 __pycache__/
 *.pyc
 .venv/
+
+.build-inputs/

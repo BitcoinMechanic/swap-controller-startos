@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "architecture": "x86_64",
+  "source_commit": "e6d81e1e0ebc42a07b92f21ed5a3bc1bccc8210d",
+  "images": {
+    "controller": {
+      "url": "https://github.com/BitcoinMechanic/swap-controller-startos/releases/download/build-inputs-20261115/controller-x86_64.tar",
+      "sha256": "454d9ecaba21d41617d7a6aa274318347160a6d8bc2fab45ed717bc6bee9775f",
+      "size": 45929472
+    }
+  },
+  "runtime_source_hashes": {
+    "discovery/server.py": "13c9137b1a1d384f013a76c1b4370e1dac4d10fb8fe9804ea6b8b67a5cb72537",
+    "migration/cross_contract.py": "75b33680ca4fc584344d6d1d320db4e84a4193a89da4171638110077557367c6",
+    "migration/customer_https.py": "51509a71ce27574ee4fe6fb086993caa0848d0c0d0dfca54cc4532abb7ce1b2a",
+    "migration/local_pairing.py": "a9db1127c02ce260d9d9197e94244561736f5f49b9e7bae786afdcbef7db67cf",
+    "migration/market_quote.py": "071bb58e9ab3fb9faa11bd14dd9bf9aeb9f7b8e7c240803c41d588cb224a7ee5",
+    "migration/package_service.py": "f552675c6e49c7912a4584f57afddd46b29e47da82c9ba8de953e84c55714340",
+    "migration/provider_api.py": "7aab4fefd09036488fb4f1bcc1dc306835e45d69a5c7ab0cf4ffa27b3f283467",
+    "migration/provider_server.py": "9f99c4cc0114ed2ea3cfb535962287e6f82b2a6c36247726aa4b49ed4fbf28bb",
+    "migration/service.py": "7acb0de0f3eb5085fd3d833869bbff0f97ea307a8a2a26249670b87c5467ba02",
+    "migration/service_cli.py": "b815c4c2b33b47a31a9415571b20e6e6fc741822dbb09eb51fb463636b07a8ee",
+    "migration/service_market.py": "70467665ff3a254e6c4923ff4c70984645ac114a0e906fe380708e9f8c7f06bb",
+    "wallet_api/server.py": "d001ef494aee8082e750ecbb6aa7686d551e7b7edb1e8bfccbb24417a3dc6369"
+  }
+}

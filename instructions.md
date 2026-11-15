@@ -196,3 +196,6 @@ increases. Existing active swaps and manually approved permissions are not
 rewritten. Fees, route checks, market depth, recovery checks and signed 64-bit
 millisatoshi validation still apply. Update the controller and both Lightning
 node packages together to remove the old limits throughout the payment path.
+
+The published installer is for x86_64 StartOS servers. Its images are pinned and
+verified during CI packaging; ARM installers are not provided by this build.

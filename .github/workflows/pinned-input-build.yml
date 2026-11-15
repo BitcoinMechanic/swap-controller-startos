@@ -1,0 +1,41 @@
+name: Pinned input package build
+on:
+  push:
+    branches: [fix/pinned-ci-inputs]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: Start9Labs/start-technologies/.github/actions/install-start-cli@02dec474a4f9b41980faaa0d42a3a4338682c84a
+      - run: npm ci
+      - name: Provision signing key
+        env:
+          DEV_KEY: ${{ secrets.DEV_KEY }}
+        run: |
+          test -n "$DEV_KEY"
+          mkdir -p .startos
+          umask 077
+          printf '%s' "$DEV_KEY" > .startos/build.key.pem
+      - name: Check input verification
+        run: python3 -m unittest discover -s scripts -p test_build_inputs.py
+      - name: Build from public pinned inputs
+        run: make x86 FORMAT=true
+      - name: Inspect installer and create checksums
+        run: |
+          for package in *.s9pk; do start-cli s9pk inspect "$package" manifest; done
+          sha256sum *.s9pk > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x86_64-installer
+          path: |
+            *.s9pk
+            SHA256SUMS
+          if-no-files-found: error
