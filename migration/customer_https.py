@@ -90,7 +90,7 @@ def parameters(kind, op, body, grant=None):
     hg.need(set(body) in fields, 'https_parameters_invalid')
     for key in ('entry_id','preimage','confirmation'):
         if key in body: hg.need(ba.ci.hex_field(body[key],64), 'https_parameters_invalid')
-    if 'amount_msat' in body: hg.need(hg.integer(body['amount_msat'],1,10000010000), 'https_parameters_invalid')
+    if 'amount_msat' in body: hg.need(hg.integer(body['amount_msat'],1,2**63-1), 'https_parameters_invalid')
     if 'invoice' in body: hg.need(type(body['invoice']) is str and 100 <= len(body['invoice']) <= 16384, 'https_parameters_invalid')
 
 

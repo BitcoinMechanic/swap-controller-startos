@@ -1,4 +1,4 @@
-"""Exact Neoxa quote arithmetic with the approved 10,000,000-sat XBT ceiling.
+"""Exact Neoxa quote arithmetic without a per-swap policy ceiling.
 
 Only quote validation/arithmetic is shared. No legacy contract, gate, credential
 or profile is accepted. No network or clock reads occur in this module.
@@ -6,7 +6,8 @@ or profile is accepted. No network or clock reads occur in this module.
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 
-CAPS = {'btc': 100000000, 'xbt': 10000000000}
+# Numeric representation bound, not an operator swap policy.
+MAX_MSAT = 2**63-1
 
 def require(ok, reason='market_data_invalid'):
     if not ok: raise ValueError(reason)
@@ -30,7 +31,7 @@ def quote(q, *, compute=False, details=False):
     require(integer(q['fetched_at_ms'],0,2**53-1) and integer(q['ticker_at_ms'],0,q['fetched_at_ms'])
         and q['fetched_at_ms']-q['ticker_at_ms']<=30000)
     require(type(q['expires_at']) is int and q['expires_at']==q['fetched_at_ms']//1000+(120 if q['schema']==1 else 600))
-    require(integer(q['recipient_msat'],1000,CAPS['xbt' if q['direction']=='forward' else 'btc']) and q['recipient_msat']%1000==0,'market_amount_limit')
+    require(integer(q['recipient_msat'],1000,MAX_MSAT) and q['recipient_msat']%1000==0,'market_amount_limit')
     require(integer(q['routing_fee_msat'],0,10000))
     bid,ask=number(q['bid']),number(q['ask'])
     require(ask>=bid and (ask-bid)*10000<=bid*500)
@@ -61,5 +62,5 @@ def quote(q, *, compute=False, details=False):
     xbt=q['recipient_msat'] if forward else quantity*1000
     if compute: q=dict(q,btc_msat=btc,xbt_msat=xbt)
     for k,v in [('btc',btc),('xbt',xbt)]:
-        require(integer(q[k+'_msat'],1000,CAPS[k]) and q[k+'_msat']==v,'market_amount_limit')
+        require(integer(q[k+'_msat'],1000,MAX_MSAT) and q[k+'_msat']==v,'market_amount_limit')
     return (q,average) if details else q

@@ -51,9 +51,12 @@ class QuoteLimits(unittest.TestCase):
         import market_quote
         q=self.quote();self.assertEqual(q['xbt_msat'],1000000000);self.assertEqual(q['btc_msat'],3800000)
         self.assertEqual(market_quote.quote(q),q)
-        with self.assertRaisesRegex(ValueError,'^market_amount_limit$'):self.quote(10000001000)
-        with self.assertRaisesRegex(ValueError,'^market_amount_limit$'):self.quote(100001000,'reverse')
-        with self.assertRaisesRegex(ValueError,'^market_amount_limit$'):self.quote(100000000,'reverse')
+        for amount,direction in ((10000001000,'forward'), (50000000000,'forward'), (100001000,'reverse'), (200000000,'reverse')):
+            q=self.quote(amount,direction)
+            self.assertEqual(q['recipient_msat'],amount)
+            self.assertEqual(market_quote.quote(q),q)
+        for amount in (0,-1000,True,1000.0,1001,2**63):
+            with self.assertRaisesRegex(ValueError,'^market_amount_limit$'):self.quote(amount)
     def test_ten_million_xbt_round_trip(self):
         import market_quote
         q=self.quote(10000000000)

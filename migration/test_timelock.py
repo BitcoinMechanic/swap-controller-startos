@@ -55,25 +55,25 @@ class TimelockTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'^attempt_changed$'):
                     rp.observe_attempt(node,plan,observed['identity'])
 
-    def test_ten_million_xbt_invoice_and_existing_btc_schema_limit(self):
-        for profile,cap in ((ba.ci.PRIVKEYIO_XBT,10000000000),(ba.ci.BTC,1000000000)):
+    def test_amounts_above_old_ceilings_and_numeric_validation(self):
+        for profile,cap in ((ba.ci.PRIVKEYIO_XBT,50000000000),(ba.ci.BTC,50000000000)):
             node=Fake(profile);delta=cap-node.decoded['amount_msat']
             node.decoded['amount_msat']=cap
             for hop in node.route:hop['amount_msat']+=delta
             node.rows[0]['spendable_msat']=cap+100000
             plan=node.plan();self.assertEqual(plan['amount_msat'],cap)
             rp.validate_plan(plan)
-            node.decoded['amount_msat']=cap+1
-            with self.assertRaisesRegex(ValueError,'^recipient_invoice_limits$'):node.plan()
+            node.decoded['amount_msat']=2**63
+            with self.assertRaisesRegex(ValueError,'^invalid_invoice_fields$'):node.plan()
         from test_cross_contract import example
         contract,_=example('reverse');terms=copy.deepcopy(contract['incoming'])
-        terms['amount_msat']=10000000000
+        terms['amount_msat']=50000000000
         hg.terms(terms,terms['chain'])
         with self.assertRaisesRegex(ValueError,'^quote_limits_invalid$'):
-            hg.terms(dict(terms,amount_msat=10000000001),terms['chain'])
-        limit=dict(max_swaps=4,max_amount_msat=10000000000,total_amount_msat=30000000000,**BOUNDS)
+            hg.terms(dict(terms,amount_msat=2**63),terms['chain'])
+        limit=dict(max_swaps=4,max_amount_msat=50000000000,total_amount_msat=150000000000,**BOUNDS)
         ba.limits(limit,'outgoing')
-        with self.assertRaises(ValueError):ba.limits(dict(limit,total_amount_msat=100000100001),'outgoing')
+        with self.assertRaises(ValueError):ba.limits(dict(limit,total_amount_msat=2**63),'outgoing')
 
     def test_recipient_expiry_margin_reports_specific_reason(self):
         from test_cross_contract import example

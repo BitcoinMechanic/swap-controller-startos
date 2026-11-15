@@ -19,3 +19,6 @@ for name, edits in patches.items():
     f.write_text(text)
     manifest['files'][name]=hashlib.sha256(f.read_bytes()).hexdigest()
 p.write_text(json.dumps(manifest,sort_keys=True,indent=2)+'\n')
+
+import subprocess
+subprocess.run([sys.executable, str(Path(__file__).with_name('stage-amount-runtime.py')), str(runtime)], check=True)

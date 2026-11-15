@@ -59,7 +59,7 @@ const errors: Record<string, string> = {
   route_hint_hop_limit: "Every advertised route hint leaves no room for a path to its entry node within the saved hop limit.",
   bounded_route_unavailable: "No usable route was found. This result alone does not identify a fee limit, missing private hop or liquidity problem. Check the route-hint diagnostics below.",
   market_unavailable: 'Neoxa pricing is unavailable. Try a new review later.',
-  market_amount_limit: 'The swap exceeds the pricing limit: at most 10,000,000 XBT sats and 100,000 BTC sats. Use a smaller invoice; node grant limits also apply.',
+  market_amount_limit: 'The quote contains an invalid or unsupported amount. Older controller versions may still enforce fixed quote ceilings; update the controller and both Lightning nodes.',
   market_depth_unavailable: 'Neoxa does not have enough usable order-book liquidity within the allowed price range. No quote was approved.',
   market_data_invalid: 'Neoxa data failed validation. No new quote was approved.',
   service_lock_timeout: 'The controller stayed busy for five seconds. This action did not start. Check history before trying again.',

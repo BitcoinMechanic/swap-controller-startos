@@ -110,8 +110,8 @@ approved incoming and outgoing grants. Discovery works independently of grants.
 
 ## Quote limits (0.1.0:10)
 
-New quotes allow up to 10,000,000 XBT sats and 100,000 BTC sats, subject to node
-grant limits and channel liquidity. Amount-limit and insufficient-order-book-depth
+New quotes have no fixed BTC or XBT amount ceiling. Channel liquidity and node
+authority determine which amounts can proceed. Amount-limit and insufficient-order-book-depth
 errors are distinct from malformed exchange data. Price freshness, spread, depth,
 slippage and exact arithmetic checks are unchanged. Previously saved quotes retain
 their original amounts and deadlines.
@@ -187,3 +187,12 @@ Lightning invoices may be all lowercase or all uppercase. Mixed-case invoices ar
 Settlement also accepts the lowercase form Core Lightning stores for an uppercase invoice. Saved plans remain unchanged; payment hash, recipient, amounts and original attempt identity must still match.
 
 Route planning distinguishes unknown route-hint entry nodes from hint fee, delay and hop limits. Diagnostics include hint counts and saved limits. A failed search alone does not prove a fee limit was exceeded. Private paths may require multiple hinted hops to reach a public node.
+
+## Swap amounts
+
+There is no fixed per-swap BTC or XBT amount ceiling. Automatic local-controller
+permissions follow available channel liquidity and grow while idle when liquidity
+increases. Existing active swaps and manually approved permissions are not
+rewritten. Fees, route checks, market depth, recovery checks and signed 64-bit
+millisatoshi validation still apply. Update the controller and both Lightning
+node packages together to remove the old limits throughout the payment path.
